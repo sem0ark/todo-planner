@@ -24,9 +24,14 @@ func main() {
 	}
 
 	// Parse CORS allowed origins from environment
-	corsOrigins := strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",")
-	if len(corsOrigins) == 1 && corsOrigins[0] == "" {
+	corsOriginsStr := os.Getenv("CORS_ALLOWED_ORIGINS")
+	var corsOrigins []string
+	if corsOriginsStr == "" {
 		corsOrigins = []string{"*"}
+	} else {
+		for _, s := range strings.Split(corsOriginsStr, ",") {
+			corsOrigins = append(corsOrigins, strings.TrimSpace(s))
+		}
 	}
 
 	ctx := context.Background()

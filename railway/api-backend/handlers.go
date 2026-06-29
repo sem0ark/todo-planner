@@ -33,7 +33,12 @@ func NewCORSMiddleware(allowedOrigins []string) func(http.HandlerFunc) http.Hand
 			}
 
 			if isAllowed {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
+				if origin != "" {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				}
+				w.Header().Add("Vary", "Origin")
 			}
 
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
