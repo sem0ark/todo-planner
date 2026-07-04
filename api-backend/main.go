@@ -23,10 +23,20 @@ func main() {
 		port = "8080"
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET not set")
+	}
+
 	// Parse CORS allowed origins from environment
-	corsOrigins := strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",")
-	if len(corsOrigins) == 1 && corsOrigins[0] == "" {
+	corsOriginsStr := os.Getenv("CORS_ALLOWED_ORIGINS")
+	var corsOrigins []string
+	if corsOriginsStr == "" {
 		corsOrigins = []string{"*"}
+	} else {
+		for _, s := range strings.Split(corsOriginsStr, ",") {
+			corsOrigins = append(corsOrigins, strings.TrimSpace(s))
+		}
 	}
 
 	ctx := context.Background()
@@ -43,12 +53,12 @@ func main() {
 
 	// Initialize API handlers with CORS middleware
 	corsMiddleware := NewCORSMiddleware(corsOrigins)
-	api := NewAPI(db)
+	api := NewAPI(db, jwtSecret)
 
 	// Register routes
 	http.HandleFunc("/health", api.HealthHandler)
-	http.HandleFunc("/todos", corsMiddleware(api.TodosHandler))
-	http.HandleFunc("/todos/", corsMiddleware(api.TodoHandler))
+	http.HandleFunc("/register", corsMiddleware(api.registerHandler))
+	http.HandleFunc("/login", corsMiddleware(api.loginHandler))
 
 	// Start server
 	log.Printf("Server starting on port %s", port)

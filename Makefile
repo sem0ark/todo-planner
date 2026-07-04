@@ -8,16 +8,16 @@ local:
 lint: format lint-backend lint-frontend
 
 lint-backend:
-	cd railway/api-backend && gofmt -l .
-	cd railway/api-backend && go vet ./...
+	cd api-backend && gofmt -l .
+	cd api-backend && go vet ./...
 
 lint-frontend:
 	cd web-front && pnpm lint
 
 format:
-	cd railway/api-backend && gofmt -w .
+	cd api-backend && gofmt -w .
 	cd web-front && pnpm exec prettier --write . --ignore-unknown || true
 	@echo "Code formatted"
 
 railway:
-	railway up ./railway/api-backend/ --path-as-root
+	railway up ./api-backend/ --path-as-root
