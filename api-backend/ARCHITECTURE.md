@@ -22,10 +22,11 @@ The backend uses a clean, lightweight repository pattern (service-per-table) to 
 
 ### Files
 
-- **`handlers.go`** - HTTP handlers (thin, delegate to repositories)
-- **`user_repository.go`** - UserRepository (CRUD + password hashing)
-- **`main.go`** - Server initialization and routing
-- **`models.go`** - Data models
+- **`handlers.go`** - Main API structure, shared middleware, and request/response utilities.
+- **`handler_....go`** - Feature-specific HTTP handlers (e.g., `handler_health.go`). Define routes, validation, and JSON conversion; delegate business logic to repositories.
+- **`...._repository.go`** - Data access layer (e.g., `user_repository.go`). Wraps SQL and entity-related operations.
+- **`models.go`** - Shared data structures and entities.
+- **`main.go`** - Entry point, environment configuration, and server initialization.
 
 ### Benefits
 
@@ -42,17 +43,17 @@ The backend uses a clean, lightweight repository pattern (service-per-table) to 
 
 ## Resource Optimization for .25 CPU Container
 
-### 1. Pre-allocated Slices
+### Pre-allocated Slices
 **Benefit**: Reduce memory allocations and GC pressure in performance-critical sections.
 
-### 2. Connection Pooling
+### Connection Pooling
 ```go
 // main.go
 config.MaxConns = 5
 config.MinConns = 0
 config.MaxConnIdleTime = 2 * time.Minute
 ```
-**Benefit**: Efficient connection reuse, low memory footprint
+**Benefit**: Efficient connection reuse, low memory footprint,
 
 ## Security Model
 
@@ -60,17 +61,6 @@ config.MaxConnIdleTime = 2 * time.Minute
 - **JWT**: Stateless tokens with HMAC-SHA256 signature
 - **Password**: bcrypt hashing (cost 10)
 - **User Isolation**: All queries filtered by authenticated user ID
-
-## Memory Profile (Estimated)
-
-| Component | Memory | Notes |
-|-----------|--------|-------|
-| Go runtime | ~10 MB | Minimal overhead |
-| pgx pool (5 conns) | ~5 MB | Lightweight driver |
-| Request buffers | ~2 MB | JSON encoding/decoding |
-| **Total baseline** | **~20 MB** | Well within .25 CPU limits |
-
-Per request overhead: ~100 KB (JSON buffers)
 
 ## Repository Pattern Example
 
@@ -131,18 +121,26 @@ func (r *TagRepository) Create(ctx context.Context, input TagInput) (*Tag, error
 ```go
 type API struct {
     db       *pgxpool.Pool
-    todoRepo *TodoRepository
     userRepo *UserRepository
     tagRepo  *TagRepository  // <- Add here
 }
 ```
 
-3. **Use in handlers**: Clean separation maintained
+3. **Create handlers**: `handler_tags.go`
 ```go
 func (api *API) getTags(w http.ResponseWriter, r *http.Request) {
     tags, err := api.tagRepo.FindAll(r.Context())
-    // ...
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    json.NewEncoder(w).Encode(tags)
 }
+```
+
+4. **Register routes**: `main.go`
+```go
+http.HandleFunc("/tags", api.getTags)
 ```
 
 ## Memory Profile (Estimated)
