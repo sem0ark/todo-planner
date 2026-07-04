@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="3" class="size-6">
-  <!-- Circle Path -->
-  <path fill="#E0F7FA" stroke="#E0F7FA" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-
-  <!-- Checkmark Path -->
-  <path fill="#E0F7FA" stroke="#00796B" stroke-linecap="round" stroke-linejoin="round" d="M8 13 L11 16 L16 11" />
-</svg>
