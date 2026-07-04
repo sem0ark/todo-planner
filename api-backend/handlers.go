@@ -10,9 +10,9 @@ import (
 )
 
 type API struct {
-	db         *pgxpool.Pool
-	jwtSecret  string
-	userRepo   *UserRepository
+	db        *pgxpool.Pool
+	jwtSecret string
+	userRepo  *UserRepository
 }
 
 func NewAPI(db *pgxpool.Pool, jwtSecret string) *API {
@@ -71,4 +71,3 @@ func (api *API) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
 }
-

@@ -18,19 +18,19 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 }
 
 // Create registers a new user with hashed password
-func (r *UserRepository) Create(ctx context.Context, email, password string) (*User, error) {
+func (r *UserRepository) Create(ctx context.Context, username, password string) (*User, error) {
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
 	var user User
-	query := `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at`
-	err = r.db.QueryRow(ctx, query, email, string(passwordHash)).Scan(&user.ID, &user.Email, &user.CreatedAt)
+	query := `INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username, created_at`
+	err = r.db.QueryRow(ctx, query, username, string(passwordHash)).Scan(&user.ID, &user.Username, &user.CreatedAt)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
-			return nil, ErrDuplicateEmail
+			return nil, ErrDuplicateUsername
 		}
 		return nil, err
 	}
@@ -38,11 +38,11 @@ func (r *UserRepository) Create(ctx context.Context, email, password string) (*U
 	return &user, nil
 }
 
-// FindByEmail retrieves a user by email
-func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
+// FindByUsername retrieves a user by username
+func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
-	query := `SELECT id, email, password_hash, created_at FROM users WHERE email = $1`
-	err := r.db.QueryRow(ctx, query, email).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.CreatedAt)
+	query := `SELECT id, username, password_hash, created_at FROM users WHERE username = $1`
+	err := r.db.QueryRow(ctx, query, username).Scan(&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -58,11 +58,11 @@ func (r *UserRepository) VerifyPassword(user *User, password string) bool {
 
 // Common errors
 var (
-	ErrDuplicateEmail = &DuplicateEmailError{}
+	ErrDuplicateUsername = &DuplicateUsernameError{}
 )
 
-type DuplicateEmailError struct{}
+type DuplicateUsernameError struct{}
 
-func (e *DuplicateEmailError) Error() string {
-	return "email already exists"
+func (e *DuplicateUsernameError) Error() string {
+	return "username already exists"
 }

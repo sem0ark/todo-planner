@@ -13,13 +13,13 @@ import (
 
 type User struct {
 	ID           int       `json:"id"`
-	Email        string    `json:"email"`
+	Username     string    `json:"username"`
 	PasswordHash string    `json:"-"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
 type AuthRequest struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -29,13 +29,13 @@ type AuthResponse struct {
 }
 
 // Simple JWT implementation (header.payload.signature)
-func createJWT(userID int, email string, secret string) (string, error) {
+func createJWT(userID int, username string, secret string) (string, error) {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 
 	payload := map[string]interface{}{
-		"user_id": userID,
-		"email":   email,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+		"user_id":  userID,
+		"username": username,
+		"exp":      time.Now().Add(24 * time.Hour).Unix(),
 	}
 	payloadBytes, _ := json.Marshal(payload)
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadBytes)
@@ -81,14 +81,13 @@ func verifyJWT(token string, secret string) (int, string, error) {
 		return 0, "", errors.New("invalid user_id")
 	}
 
-	email, ok := payload["email"].(string)
+	username, ok := payload["username"].(string)
 	if !ok {
-		return 0, "", errors.New("invalid email")
+		return 0, "", errors.New("invalid username")
 	}
 
-	return int(userID), email, nil
+	return int(userID), username, nil
 }
-
 
 func (api *API) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +103,7 @@ func (api *API) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		userID, email, err := verifyJWT(tokenParts[1], api.jwtSecret)
+		userID, username, err := verifyJWT(tokenParts[1], api.jwtSecret)
 		if err != nil {
 			http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
 			return
@@ -113,7 +112,7 @@ func (api *API) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Store user info in context
 		ctx := r.Context()
 		ctx = withUserID(ctx, userID)
-		ctx = withUserEmail(ctx, email)
+		ctx = withUsername(ctx, username)
 
 		next(w, r.WithContext(ctx))
 	}
@@ -131,8 +130,8 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || req.Password == "" {
-		http.Error(w, "email and password required", http.StatusBadRequest)
+	if req.Username == "" || req.Password == "" {
+		http.Error(w, "username and password required", http.StatusBadRequest)
 		return
 	}
 
@@ -141,17 +140,17 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := api.userRepo.Create(r.Context(), req.Email, req.Password)
+	user, err := api.userRepo.Create(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if _, ok := err.(*DuplicateEmailError); ok {
-			http.Error(w, "email already exists", http.StatusConflict)
+		if _, ok := err.(*DuplicateUsernameError); ok {
+			http.Error(w, "username already exists", http.StatusConflict)
 			return
 		}
 		http.Error(w, "failed to create user", http.StatusInternalServerError)
 		return
 	}
 
-	token, err := createJWT(user.ID, user.Email, api.jwtSecret)
+	token, err := createJWT(user.ID, user.Username, api.jwtSecret)
 	if err != nil {
 		http.Error(w, "failed to create token", http.StatusInternalServerError)
 		return
@@ -174,7 +173,7 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := api.userRepo.FindByEmail(r.Context(), req.Email)
+	user, err := api.userRepo.FindByUsername(r.Context(), req.Username)
 	if err != nil {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
@@ -185,7 +184,7 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := createJWT(user.ID, user.Email, api.jwtSecret)
+	token, err := createJWT(user.ID, user.Username, api.jwtSecret)
 	if err != nil {
 		http.Error(w, "failed to create token", http.StatusInternalServerError)
 		return
@@ -199,16 +198,16 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 type contextKey string
 
 const (
-	userIDKey    contextKey = "user_id"
-	userEmailKey contextKey = "user_email"
+	userIDKey   contextKey = "user_id"
+	usernameKey contextKey = "username"
 )
 
 func withUserID(ctx context.Context, userID int) context.Context {
 	return context.WithValue(ctx, userIDKey, userID)
 }
 
-func withUserEmail(ctx context.Context, email string) context.Context {
-	return context.WithValue(ctx, userEmailKey, email)
+func withUsername(ctx context.Context, username string) context.Context {
+	return context.WithValue(ctx, usernameKey, username)
 }
 
 func getUserID(ctx context.Context) (int, bool) {
@@ -216,7 +215,7 @@ func getUserID(ctx context.Context) (int, bool) {
 	return userID, ok
 }
 
-func getUserEmail(ctx context.Context) (string, bool) {
-	email, ok := ctx.Value(userEmailKey).(string)
-	return email, ok
+func getUsername(ctx context.Context) (string, bool) {
+	username, ok := ctx.Value(usernameKey).(string)
+	return username, ok
 }
