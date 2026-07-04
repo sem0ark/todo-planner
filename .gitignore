@@ -70,6 +70,7 @@ postgres_data/
 .claude
 .copilot
 
+docs-drafts
 
 # Logs
 logs

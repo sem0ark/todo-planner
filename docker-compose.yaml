@@ -15,7 +15,7 @@ services:
 
   api:
     build:
-      context: ./railway/api-backend
+      context: ./api-backend
       dockerfile: Dockerfile
     container_name: todo-planner-api
     env_file:
