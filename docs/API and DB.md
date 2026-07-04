@@ -59,7 +59,7 @@ erDiagram
 
     USER {
         integer id PK
-        string email
+        string username
         string password_hash
         timestamp created_at
     }
@@ -288,7 +288,7 @@ Creates a new user account and returns a JWT token.
 **Input:**
 ```json
 {
-  "email": "string",
+  "username": "string",
   "password": "string"
 }
 ```
@@ -303,7 +303,7 @@ Creates a new user account and returns a JWT token.
 
 **Errors:**
 - `400` — missing or malformed fields
-- `409` — email already registered
+- `409` — username already registered
 
 ### `POST /auth/login`
 Authenticates an existing user and returns a JWT token.
@@ -311,7 +311,7 @@ Authenticates an existing user and returns a JWT token.
 **Input:**
 ```json
 {
-  "email": "string",
+  "username": "string",
   "password": "string"
 }
 ```
