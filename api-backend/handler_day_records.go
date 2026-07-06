@@ -162,6 +162,110 @@ func (api *API) putDayRecordStatusHandler(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(record)
 }
 
+// postDayEventsHandler appends day events and recomputes actual blocks
+func (api *API) postDayEventsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := getUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Extract ID from path
+	path := strings.TrimPrefix(r.URL.Path, "/day-records/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[1] != "events" {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(parts[0])
+	if err != nil {
+		http.Error(w, "invalid day record ID", http.StatusBadRequest)
+		return
+	}
+
+	var input DayEventsInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate events
+	if err := validateDayEvents(input.Events); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Create events and recompute actual blocks
+	createdEvents, actualBlocks, err := api.dayRecordRepo.CreateEvents(r.Context(), id, userID, input.Events)
+	if err != nil {
+		// Check error type
+		if strings.Contains(err.Error(), "cannot add events") {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		if strings.Contains(err.Error(), "no rows") {
+			http.Error(w, "day record not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		CreatedEvents []DayEvent    `json:"created_events"`
+		ActualBlocks  []ActualBlock `json:"actual_blocks"`
+	}{
+		CreatedEvents: createdEvents,
+		ActualBlocks:  actualBlocks,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// validateDayEvents validates a batch of day events
+func validateDayEvents(events []DayEventInput) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	// Check event types and required fields
+	for i, event := range events {
+		if event.EventType != "confirmation" && event.EventType != "transition" {
+			return &ValidationError{Message: "invalid event_type: must be 'confirmation' or 'transition'"}
+		}
+
+		if event.EventType == "confirmation" {
+			if event.OutgoingCategoryID != nil || event.IncomingCategoryID != nil {
+				return &ValidationError{Message: "confirmation events must not have category IDs"}
+			}
+		}
+
+		if event.EventType == "transition" {
+			if event.OutgoingCategoryID == nil || event.IncomingCategoryID == nil {
+				return &ValidationError{Message: "transition events must have both outgoing_category_id and incoming_category_id"}
+			}
+		}
+
+		if event.OccurredAt.IsZero() {
+			return &ValidationError{Message: "occurred_at is required"}
+		}
+
+		// Check chronological order
+		if i > 0 && event.OccurredAt.Before(events[i-1].OccurredAt) {
+			return &ValidationError{Message: "events must be in chronological order"}
+		}
+	}
+
+	return nil
+}
+
 // Helper function to validate date format YYYY-MM-DD
 func isValidDateFormat(date string) bool {
 	if len(date) != 10 {
@@ -205,6 +309,12 @@ func (api *API) dayRecordsHandler(w http.ResponseWriter, r *http.Request) {
 	// PUT /day-records/{id}/status
 	if strings.HasSuffix(path, "/status") {
 		api.putDayRecordStatusHandler(w, r)
+		return
+	}
+
+	// POST /day-records/{id}/events
+	if strings.HasSuffix(path, "/events") {
+		api.postDayEventsHandler(w, r)
 		return
 	}
 

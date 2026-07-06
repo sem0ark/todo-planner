@@ -442,8 +442,7 @@ After processing, the server updates `last_sync_at` for the device.
       "entity_type": "string",
       "entity_id": "integer",
       "operation": "string (create | update | delete)",
-      "occurred_at": "timestamp (ISO 8601)",
-      "payload": {}
+      "occurred_at": "timestamp (ISO 8601)"
     }
   ],
   "conflicts": [
@@ -983,6 +982,7 @@ Only valid for records with status `Unreviewed`.
 - `403` — day record is Reviewed or Ignored
 - `404` — day record not found or does not belong to user
 
+<!-- TBD
 ### `POST /day-records/{id}/edits`
 Appends one or more retroactive edits to a day record. Used during the Day View review session on the web app. After persisting edits, the server recomputes and replaces the `actual_blocks` for the day.
 
@@ -1041,7 +1041,7 @@ Only valid for records with status `Unreviewed`.
 **Errors:**
 - `400` — invalid edit_type, block_start not on 15-min boundary, duration below 30 min or not a 15-min multiple, unknown category_id
 - `403` — day record is Reviewed or Ignored
-- `404` — day record not found or does not belong to user
+- `404` — day record not found or does not belong to user -->
 
 <!-- Still under discussion whether we want to calculate it locally or server-side
 ## Analytics

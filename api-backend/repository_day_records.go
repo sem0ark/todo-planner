@@ -303,3 +303,156 @@ func (r *DayRecordRepository) getActualBlocks(ctx context.Context, dayRecordID i
 
 	return blocks, nil
 }
+
+// CreateEvents appends day events and recomputes actual blocks
+func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, userID int, inputs []DayEventInput) ([]DayEvent, []ActualBlock, error) {
+	// Verify record exists and belongs to user
+	var reviewStatus string
+	err := r.db.QueryRow(ctx, `
+		SELECT review_status FROM day_records WHERE id = $1 AND user_id = $2
+	`, dayRecordID, userID).Scan(&reviewStatus)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Check review status
+	if reviewStatus != "Unreviewed" {
+		return nil, nil, fmt.Errorf("cannot add events: day record is %s", reviewStatus)
+	}
+
+	// Insert events
+	createdEvents := make([]DayEvent, 0, len(inputs))
+	for _, input := range inputs {
+		var event DayEvent
+		err := r.db.QueryRow(ctx, `
+			INSERT INTO day_events (day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id, day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at
+		`, dayRecordID, input.EventType, input.OutgoingCategoryID, input.IncomingCategoryID, input.OccurredAt).Scan(
+			&event.ID, &event.DayRecordID, &event.EventType, &event.OutgoingCategoryID, &event.IncomingCategoryID, &event.OccurredAt,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		createdEvents = append(createdEvents, event)
+	}
+
+	// Recompute actual blocks
+	actualBlocks, err := r.recomputeActualBlocks(ctx, dayRecordID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return createdEvents, actualBlocks, nil
+}
+
+// recomputeActualBlocks recomputes actual blocks from day events
+func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, dayRecordID int) ([]ActualBlock, error) {
+	// Fetch all events for this day record
+	events, err := r.getDayEvents(ctx, dayRecordID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Delete existing actual blocks
+	_, err = r.db.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no events, return empty blocks
+	if len(events) == 0 {
+		return []ActualBlock{}, nil
+	}
+
+	// Compute blocks from events
+	blocks := make([]ActualBlock, 0)
+	now := time.Now()
+
+	for i := 0; i < len(events); i++ {
+		event := events[i]
+
+		// Skip confirmation events for block computation
+		if event.EventType == "confirmation" {
+			continue
+		}
+
+		// For transition events, create a block
+		if event.EventType == "transition" {
+			var startTime time.Time
+			var endTime time.Time
+			var categoryID *int
+
+			// Start time is this transition's occurred_at
+			startTime = event.OccurredAt
+
+			// Category is the incoming category
+			categoryID = event.IncomingCategoryID
+
+			// Find next transition to determine end time
+			if i+1 < len(events) {
+				// Find next transition event
+				for j := i + 1; j < len(events); j++ {
+					if events[j].EventType == "transition" {
+						endTime = events[j].OccurredAt
+						break
+					}
+				}
+				// If no next transition found, block extends to now (ongoing)
+				if endTime.IsZero() {
+					endTime = now
+				}
+			} else {
+				// Last event, block extends to now
+				endTime = now
+			}
+
+			// Calculate duration in minutes
+			duration := int(endTime.Sub(startTime).Minutes())
+			if duration <= 0 {
+				continue
+			}
+
+			// Insert actual block
+			var block ActualBlock
+			err := r.db.QueryRow(ctx, `
+				INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at)
+				VALUES ($1, $2, 'actual', $3, $4, $5)
+				RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
+			`, dayRecordID, categoryID, startTime.Format("15:04:05"), duration, now).Scan(
+				&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt,
+			)
+			if err != nil {
+				return nil, err
+			}
+			blocks = append(blocks, block)
+		}
+	}
+
+	return blocks, nil
+}
+
+// Helper: get day events for a day record
+func (r *DayRecordRepository) getDayEvents(ctx context.Context, dayRecordID int) ([]DayEvent, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at
+		FROM day_events
+		WHERE day_record_id = $1
+		ORDER BY occurred_at ASC
+	`, dayRecordID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	events := make([]DayEvent, 0)
+	for rows.Next() {
+		var event DayEvent
+		if err := rows.Scan(&event.ID, &event.DayRecordID, &event.EventType, &event.OutgoingCategoryID, &event.IncomingCategoryID, &event.OccurredAt); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+
+	return events, nil
+}
