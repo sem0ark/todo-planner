@@ -7,16 +7,32 @@ import (
 )
 
 type API struct {
-	db        *pgxpool.Pool
-	jwtSecret string
-	userRepo  *UserRepository
+	db                *pgxpool.Pool
+	jwtSecret         string
+	userRepo          *UserRepository
+	settingsRepo      *UserSettingsRepository
+	deviceRepo        *DeviceRepository
+	categoryRepo      *CategoryRepository
+	templateGroupRepo *TemplateGroupRepository
+	dayTemplateRepo   *DayTemplateRepository
+	scheduleRepo      *ScheduleRepository
+	dayRecordRepo     *DayRecordRepository
+	changeLogRepo     *ChangeLogRepository
 }
 
 func NewAPI(db *pgxpool.Pool, jwtSecret string) *API {
 	return &API{
-		db:        db,
-		jwtSecret: jwtSecret,
-		userRepo:  NewUserRepository(db),
+		db:                db,
+		jwtSecret:         jwtSecret,
+		userRepo:          NewUserRepository(db),
+		settingsRepo:      NewUserSettingsRepository(db),
+		deviceRepo:        NewDeviceRepository(db),
+		categoryRepo:      NewCategoryRepository(db),
+		templateGroupRepo: NewTemplateGroupRepository(db),
+		dayTemplateRepo:   NewDayTemplateRepository(db),
+		scheduleRepo:      NewScheduleRepository(db),
+		dayRecordRepo:     NewDayRecordRepository(db),
+		changeLogRepo:     NewChangeLogRepository(db),
 	}
 }
 

@@ -72,3 +72,39 @@ func createTestUser(t *testing.T, db *pgxpool.Pool, username, password string) *
 
 	return fullUser
 }
+
+func createTestCategory(t *testing.T, db *pgxpool.Pool, userID int, name, color string) *BlockCategory {
+	t.Helper()
+
+	repo := NewCategoryRepository(db)
+	category, err := repo.Create(context.Background(), CategoryInput{Name: name, Color: color}, userID)
+	if err != nil {
+		t.Fatalf("Failed to create test category: %v", err)
+	}
+
+	return category
+}
+
+func createTestTemplateGroup(t *testing.T, db *pgxpool.Pool, userID int, name string) *TemplateGroup {
+	t.Helper()
+
+	repo := NewTemplateGroupRepository(db)
+	group, err := repo.Create(context.Background(), TemplateGroupInput{Name: name}, userID)
+	if err != nil {
+		t.Fatalf("Failed to create test template group: %v", err)
+	}
+
+	return group
+}
+
+func createTestDayTemplate(t *testing.T, db *pgxpool.Pool, userID int, name string, groupID *int) *DayTemplate {
+	t.Helper()
+
+	repo := NewDayTemplateRepository(db)
+	template, err := repo.Create(context.Background(), DayTemplateInput{Name: name, TemplateGroupID: groupID}, userID)
+	if err != nil {
+		t.Fatalf("Failed to create test day template: %v", err)
+	}
+
+	return template
+}
