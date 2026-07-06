@@ -1,6 +1,18 @@
 version: '3.8'
 
 services:
+  test-db:
+    image: postgres:18-alpine
+    container_name: test-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/18/data
+
   postgres:
     image: postgres:18-alpine
     container_name: todo-planner-db
@@ -11,7 +23,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/18/data
 
   api:
     build:
@@ -31,3 +43,4 @@ services:
 
 volumes:
   postgres_data:
+  postgres_test_data:
