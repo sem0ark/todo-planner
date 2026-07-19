@@ -270,5 +270,34 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   3,
+			Name: "remove_retroactive_edits",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					DROP INDEX IF EXISTS idx_retroactive_edits_record_occurred;
+					DROP TABLE IF EXISTS retroactive_edits CASCADE;
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					-- Retroactive edits table
+					CREATE TABLE IF NOT EXISTS retroactive_edits (
+						id SERIAL PRIMARY KEY,
+						day_record_id INTEGER NOT NULL REFERENCES day_records(id) ON DELETE CASCADE,
+						edit_type VARCHAR(20) NOT NULL,
+						category_id INTEGER REFERENCES block_categories(id) ON DELETE CASCADE,
+						block_start TIME NOT NULL,
+						duration_minutes INTEGER,
+						occurred_at TIMESTAMPTZ NOT NULL
+					);
+
+					-- Retroactive edits indexes
+					CREATE INDEX IF NOT EXISTS idx_retroactive_edits_record_occurred ON retroactive_edits(day_record_id, occurred_at);
+				`)
+				return err
+			},
+		},
 	}
 }

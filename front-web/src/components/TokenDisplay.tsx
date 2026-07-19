@@ -55,14 +55,8 @@ export default function TokenDisplay() {
           </p>
 
           <p className="text-sm text-cloud text-center">
-            If the desktop widget didn't open, copy your token manually:
+            If the desktop widget didn't open, copy your token manually.
           </p>
-
-          <div className="bg-navy/60 border-2 border-slate-grey rounded-lg p-4 overflow-x-auto">
-            <code className="block font-mono text-xs text-snow break-all whitespace-pre-wrap leading-relaxed">
-              {token}
-            </code>
-          </div>
 
           <button
             onClick={handleCopy}
