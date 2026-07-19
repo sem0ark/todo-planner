@@ -28,6 +28,17 @@ struct Palette {
     static let breatheMinOpacity = 0.85    // Animation minimum
 }
 
+struct Typography {
+    // Font sizes (minimum 10px everywhere)
+    static let categoryNameLarge: CGFloat = 20        // Category name in main blocks
+    static let categoryNameMedium: CGFloat = 14       // Category name in secondary blocks
+    static let bodyMedium: CGFloat = 14               // Body text
+    static let labelBold: CGFloat = 10                // Small labels (ACTUAL, PLANNED)
+    static let smallMono: CGFloat = 10                // Small monospaced text (times, numbers)
+    static let tinyMono: CGFloat = 10                 // Tiny monospaced text (was 9, now 10 minimum)
+    static let categoryRowName: CGFloat = 10          // Right rail category names
+}
+
 struct StyleTokens {
     // Background colors
     static let deepVoid = Color(hex: Palette.deepVoid)
@@ -51,10 +62,23 @@ struct StyleTokens {
 struct ContentView: View {
     @StateObject private var widgetState = WidgetState()
     @State private var isAuthenticated: Bool = false
+    @State private var isCheckingAuth: Bool = true
 
     var body: some View {
         Group {
-            if isAuthenticated {
+            if isCheckingAuth {
+                // Show loading state while checking authentication
+                ZStack {
+                    StyleTokens.baseVoid
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        Text("Checking authentication...")
+                            .font(.system(size: Typography.labelBold))
+                            .foregroundColor(StyleTokens.mutedText)
+                    }
+                }
+            } else if isAuthenticated {
                 HStack(spacing: 0) {
                     // Left Panel (65%)
                     LeftPanelView(widgetState: widgetState)
@@ -67,7 +91,7 @@ struct ContentView: View {
                         )
 
                     // Right Rail (35%)
-                    RightRailView(widgetState: widgetState)
+                    RightRailView(widgetState: widgetState, isAuthenticated: $isAuthenticated)
                         .frame(width: 112)
                 }
                 .task {
@@ -94,6 +118,31 @@ struct ContentView: View {
                 .stroke(StyleTokens.structuralBorder.opacity(Palette.borderOpacity), lineWidth: 1)
         )
         .shadow(color: .black.opacity(Palette.shadowOpacity), radius: 12, x: 0, y: 4)
+        .task {
+            await checkAuthentication()
+        }
+    }
+
+    private func checkAuthentication() async {
+        print("[AUTH] Checking for saved token...")
+
+        if APIClient.shared.hasAuthToken() {
+            print("[AUTH] Token found, validating...")
+            let isValid = await APIClient.shared.validateToken()
+
+            if isValid {
+                print("[OK] Token is valid, user authenticated")
+                isAuthenticated = true
+            } else {
+                print("[AUTH] Token invalid, showing login")
+                isAuthenticated = false
+            }
+        } else {
+            print("[AUTH] No token found, showing login")
+            isAuthenticated = false
+        }
+
+        isCheckingAuth = false
     }
 
     private func handleKeyPress(_ event: NSEvent) {
@@ -153,6 +202,9 @@ struct ConfirmationPromptView: View {
     @State private var breatheOpacity: Double = 1.0
 
     var body: some View {
+        let categoryColor = widgetState.plannedCategory?.color ?? "#808080"
+        let textColor = Color.contrastingTextColor(for: categoryColor)
+
         Button(action: {
             Task {
                 await widgetState.confirmPlanned()
@@ -160,7 +212,7 @@ struct ConfirmationPromptView: View {
         }) {
             ZStack(alignment: .topLeading) {
                 // Category color background with breathe animation
-                Color(hex: widgetState.plannedCategory?.color ?? "#808080")
+                Color(hex: categoryColor)
                     .scaleEffect(breatheScale)
                     .opacity(breatheOpacity)
 
@@ -168,20 +220,20 @@ struct ConfirmationPromptView: View {
                     // Top label with alert icon
                     HStack(spacing: 4) {
                         Text("ACTUAL")
-                            .font(.system(size: 10, weight: .bold, design: .default))
-                            .foregroundColor(.white.opacity(Palette.labelOpacity))
+                            .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
+                            .foregroundColor(textColor.opacity(Palette.labelOpacity))
                             .tracking(0.5)
 
                         Spacer()
 
                         // Alert icon (bouncing)
                         Circle()
-                            .fill(.white.opacity(Palette.labelOpacity))
+                            .fill(textColor.opacity(Palette.labelOpacity))
                             .frame(width: 12, height: 12)
                             .overlay {
                                 Image(systemName: "exclamationmark.circle")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(Color(hex: widgetState.plannedCategory?.color ?? "#808080"))
+                                    .font(.system(size: Typography.labelBold))
+                                    .foregroundColor(Color(hex: categoryColor))
                             }
                     }
 
@@ -189,8 +241,8 @@ struct ConfirmationPromptView: View {
 
                     // Category name (large, bold, uppercase)
                     Text(widgetState.plannedCategory?.name.uppercased() ?? "")
-                        .font(.system(size: 20, weight: .black, design: .default))
-                        .foregroundColor(.white)
+                        .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
+                        .foregroundColor(textColor)
                         .lineLimit(2)
                 }
                 .padding(.horizontal, 12)
@@ -215,6 +267,8 @@ struct ActiveView: View {
 
     var body: some View {
         if let category = widgetState.currentCategory {
+            let textColor = Color.contrastingTextColor(for: category.color)
+
             VStack(spacing: 0) {
                 // Main category block
                 ZStack(alignment: .topLeading) {
@@ -224,8 +278,8 @@ struct ActiveView: View {
                         // Top label with checkmark
                         HStack(spacing: 4) {
                             Text("ACTUAL")
-                                .font(.system(size: 10, weight: .bold, design: .default))
-                                .foregroundColor(.white.opacity(Palette.labelOpacity))
+                                .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
+                                .foregroundColor(textColor.opacity(Palette.labelOpacity))
                                 .tracking(0.5)
 
                             Spacer()
@@ -233,7 +287,7 @@ struct ActiveView: View {
                             if widgetState.isConfirmed {
                                 Image(systemName: "checkmark.circle")
                                     .font(.system(size: 12))
-                                    .foregroundColor(.white.opacity(Palette.iconOpacity))
+                                    .foregroundColor(textColor.opacity(Palette.iconOpacity))
                             }
                         }
 
@@ -241,8 +295,8 @@ struct ActiveView: View {
 
                         // Category name (large, bold, uppercase)
                         Text(category.name.uppercased())
-                            .font(.system(size: 20, weight: .black, design: .default))
-                            .foregroundColor(.white)
+                            .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
+                            .foregroundColor(textColor)
                             .lineLimit(2)
 
                         Spacer()
@@ -254,12 +308,12 @@ struct ActiveView: View {
                                 ZStack(alignment: .leading) {
                                     // Background
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(.black.opacity(Palette.progressBgOpacity))
+                                        .fill(textColor.opacity(Palette.progressBgOpacity))
                                         .frame(height: 4)
 
                                     // Progress fill
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(.white.opacity(Palette.progressFillOpacity))
+                                        .fill(textColor.opacity(Palette.progressFillOpacity))
                                         .frame(width: geometry.size.width * widgetState.progressPercentage, height: 4)
                                 }
                             }
@@ -267,9 +321,9 @@ struct ActiveView: View {
 
                             // Elapsed time
                             Text("\(Int(widgetState.progressPercentage * Double(widgetState.plannedDurationMinutes)))m elapsed")
-                                .font(.system(size: 9, design: .monospaced))
+                                .font(.system(size: Typography.tinyMono, design: .monospaced))
                                 .monospacedDigit()
-                                .foregroundColor(.white.opacity(Palette.progressFillOpacity))
+                                .foregroundColor(textColor.opacity(Palette.progressFillOpacity))
                         }
                     }
                     .padding(.horizontal, 12)
@@ -283,11 +337,11 @@ struct ActiveView: View {
 
                 VStack(spacing: 8) {
                     Text("Select a category")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: Typography.bodyMedium, weight: .medium))
                         .foregroundColor(StyleTokens.mutedText)
 
                     Text("Press 1-9 to start")
-                        .font(.system(size: 10))
+                        .font(.system(size: Typography.labelBold))
                         .foregroundColor(StyleTokens.mutedText.opacity(Palette.labelOpacity))
                 }
             }
@@ -301,12 +355,17 @@ struct OffScheduleView: View {
     @State private var pulseOpacity: Double = 1.0
 
     var body: some View {
+        let currentCategoryColor = widgetState.currentCategory?.color ?? "#808080"
+        let plannedCategoryColor = widgetState.plannedCategory?.color ?? "#808080"
+        let currentTextColor = Color.contrastingTextColor(for: currentCategoryColor)
+        let plannedTextColor = Color.contrastingTextColor(for: plannedCategoryColor)
+
         VStack(spacing: 0) {
             // Offset bar (conditional visibility) - Top
             if widgetState.showOffsetBar {
                 HStack(spacing: 8) {
                     Text("T-\(widgetState.offsetMinutes)m")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
                         .monospacedDigit()
                         .foregroundColor(StyleTokens.offsetGreen)
 
@@ -332,19 +391,19 @@ struct OffScheduleView: View {
 
             // Current (Actual) - Top section
             ZStack(alignment: .topLeading) {
-                Color(hex: widgetState.currentCategory?.color ?? "#808080")
+                Color(hex: currentCategoryColor)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("ACTUAL")
-                        .font(.system(size: 10, weight: .bold, design: .default))
-                        .foregroundColor(.white.opacity(Palette.labelOpacity))
+                        .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
+                        .foregroundColor(currentTextColor.opacity(Palette.labelOpacity))
                         .tracking(0.5)
 
                     Spacer()
 
                     Text(widgetState.currentCategory?.name.uppercased() ?? "")
-                        .font(.system(size: 20, weight: .black, design: .default))
-                        .foregroundColor(.white)
+                        .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
+                        .foregroundColor(currentTextColor)
                         .lineLimit(2)
 
                     Spacer()
@@ -361,32 +420,33 @@ struct OffScheduleView: View {
                 }
             }) {
                 ZStack(alignment: .topLeading) {
-                    Color(hex: widgetState.plannedCategory?.color ?? "#808080")
+                    Color(hex: plannedCategoryColor)
                         .opacity(pulseOpacity)
 
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("PLANNED")
-                                .font(.system(size: 10, weight: .bold, design: .default))
-                                .foregroundColor(.white.opacity(Palette.labelOpacity))
+                                .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
+                                .foregroundColor(plannedTextColor.opacity(Palette.labelOpacity))
                                 .tracking(0.5)
 
                             Spacer()
 
                             Text("RETURN ↵")
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(.white)
+                                .font(.system(size: Typography.tinyMono, design: .monospaced))
+                                .foregroundColor(plannedTextColor)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
-                                .background(.black.opacity(Palette.progressBgOpacity))
+                                .background(plannedTextColor.opacity(Palette.progressBgOpacity))
+                                .colorInvert()
                                 .cornerRadius(2)
                         }
 
                         Spacer()
 
                         Text(widgetState.plannedCategory?.name.uppercased() ?? "")
-                            .font(.system(size: 14, weight: .bold, design: .default))
-                            .foregroundColor(.white)
+                            .font(.system(size: Typography.categoryNameMedium, weight: .bold, design: .default))
+                            .foregroundColor(plannedTextColor)
 
                         Spacer()
 
@@ -394,11 +454,11 @@ struct OffScheduleView: View {
                         GeometryReader { geometry in
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 2)
-                                    .fill(.black.opacity(Palette.progressBgOpacity))
+                                    .fill(plannedTextColor.opacity(Palette.progressBgOpacity))
                                     .frame(height: 4)
 
                                 RoundedRectangle(cornerRadius: 2)
-                                    .fill(.white)
+                                    .fill(plannedTextColor)
                                     .frame(width: geometry.size.width * (1.0 - widgetState.progressPercentage), height: 4)
                             }
                         }
@@ -437,7 +497,7 @@ struct OffsetButton: View {
             Task { await widgetState.adjustOffset(minutes: minutes) }
         }) {
             Text(label)
-                .font(.system(size: 9, design: .monospaced))
+                .font(.system(size: Typography.tinyMono, design: .monospaced))
                 .foregroundColor(.white)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -464,6 +524,7 @@ struct DashedLine: Shape {
 
 struct RightRailView: View {
     @ObservedObject var widgetState: WidgetState
+    @Binding var isAuthenticated: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -471,8 +532,38 @@ struct RightRailView: View {
                 CategoryRow(index: index + 1, category: category, widgetState: widgetState)
             }
             Spacer()
+
+            // Logout button at the bottom
+            Button(action: {
+                logout()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: Typography.labelBold))
+                    Text("Logout")
+                        .font(.system(size: Typography.labelBold))
+                }
+                .foregroundColor(StyleTokens.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .background(StyleTokens.baseVoid)
+            .overlay(
+                Rectangle()
+                    .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
+                    .frame(height: 1),
+                alignment: .top
+            )
         }
         .background(StyleTokens.baseVoid)
+    }
+
+    private func logout() {
+        print("[AUTH] Logging out...")
+        APIClient.shared.clearAuthToken()
+        widgetState.stopPeriodicRefresh()
+        isAuthenticated = false
     }
 }
 
@@ -500,7 +591,7 @@ struct CategoryRow: View {
 
                 // Category name
                 Text(category.name.uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .default))
+                    .font(.system(size: Typography.categoryRowName, weight: .bold, design: .default))
                     .foregroundColor(isActive ? .white : StyleTokens.secondaryText)
                     .tracking(1.2)
                     .lineLimit(1)
@@ -510,7 +601,7 @@ struct CategoryRow: View {
 
                 // Index number
                 Text("\(index)")
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.system(size: Typography.tinyMono, design: .monospaced))
                     .monospacedDigit()
                     .foregroundColor(StyleTokens.structuralBorder.opacity(Palette.iconOpacity))
             }
@@ -557,6 +648,50 @@ extension Color {
             blue:  Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+
+    /// Calculate the relative luminance (WCAG formula)
+    /// Returns value from 0.0 (darkest) to 1.0 (lightest)
+    private func relativeLuminance(r: Double, g: Double, b: Double) -> Double {
+        func adjust(_ channel: Double) -> Double {
+            return channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * adjust(r) + 0.7152 * adjust(g) + 0.0722 * adjust(b)
+    }
+
+    /// Returns optimal text color (black or white) for maximum contrast
+    /// Uses WCAG 2.0 relative luminance formula
+    static func contrastingTextColor(for hexColor: String) -> Color {
+        let hex = hexColor.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+
+        let r, g, b: Double
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            r = Double((int >> 8) * 17) / 255.0
+            g = Double((int >> 4 & 0xF) * 17) / 255.0
+            b = Double((int & 0xF) * 17) / 255.0
+        case 6: // RGB (24-bit)
+            r = Double(int >> 16) / 255.0
+            g = Double(int >> 8 & 0xFF) / 255.0
+            b = Double(int & 0xFF) / 255.0
+        case 8: // ARGB (32-bit)
+            r = Double(int >> 16 & 0xFF) / 255.0
+            g = Double(int >> 8 & 0xFF) / 255.0
+            b = Double(int & 0xFF) / 255.0
+        default:
+            return .white
+        }
+
+        // Calculate relative luminance
+        func adjust(_ channel: Double) -> Double {
+            return channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * adjust(r) + 0.7152 * adjust(g) + 0.0722 * adjust(b)
+
+        // Use white text for dark backgrounds (luminance < 0.5), black for light
+        return luminance < 0.5 ? .white : .black
     }
 }
 

@@ -24,3 +24,6 @@ Package.resolved
 .DS_Store
 *.swp
 *~.nib
+
+# Auto-generated build configuration
+Sources/Config.swift

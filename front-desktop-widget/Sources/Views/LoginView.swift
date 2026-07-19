@@ -8,83 +8,60 @@ struct LoginView: View {
     private let webAppURL = "http://localhost:5173/todo-planner/#/token"
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Left section - Primary action
-            VStack(spacing: 12) {
-                Spacer()
+        VStack(spacing: 12) {
+            Text("Todo Planner")
+                .font(.system(size: 24, weight: .bold, design: .default))
+                .foregroundColor(StyleTokens.primaryText)
+                .padding(.top, 8)
 
-                Text("Todo Planner")
-                    .font(.system(size: 24, weight: .bold, design: .default))
-                    .foregroundColor(StyleTokens.primaryText)
-
-                Text("Desktop Widget")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(StyleTokens.mutedText)
-
-                Spacer()
-
-                Button(action: {
-                    openWebAuth()
-                }) {
-                    Text("Open Browser to Login")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Color.blue)
-                        .cornerRadius(StyleTokens.radiusButton)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .frame(width: 208)
-            .background(StyleTokens.baseVoid)
-
-            // Right section - Alternative token input
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Or paste token")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(StyleTokens.mutedText)
-
-                TextField("JWT Token", text: $token)
-                    .textFieldStyle(.plain)
-                    .padding(8)
-                    .background(StyleTokens.secondaryText.opacity(0.3))
+            Button(action: {
+                openWebAuth()
+            }) {
+                Text("Open Browser to Login")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(Color.blue)
                     .cornerRadius(StyleTokens.radiusButton)
-                    .foregroundColor(StyleTokens.primaryText)
-                    .font(.system(size: 16, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Button(action: {
-                    setToken()
-                }) {
-                    Text("Confirm")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 40)
-                        .background(token.isEmpty ? Color.gray : Color.green)
-                        .cornerRadius(StyleTokens.radiusButton)
-                }
-                .buttonStyle(.plain)
-                .disabled(token.isEmpty)
-
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.system(size: 16))
-                        .foregroundColor(.red)
-                        .lineLimit(2)
-                }
-
-                Spacer()
             }
-            .padding(12)
-            .frame(width: 112)
-            .background(StyleTokens.baseVoid.opacity(0.8))
+            .buttonStyle(.plain)
+
+            TextField("JWT Token", text: $token)
+                .textFieldStyle(.plain)
+                .padding(8)
+                .background(StyleTokens.secondaryText.opacity(0.3))
+                .cornerRadius(StyleTokens.radiusButton)
+                .foregroundColor(StyleTokens.primaryText)
+                .font(.system(size: 14, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Button(action: {
+                setToken()
+            }) {
+                Text("Confirm")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(token.isEmpty ? Color.gray : Color.green)
+                    .cornerRadius(StyleTokens.radiusButton)
+            }
+            .buttonStyle(.plain)
+            .disabled(token.isEmpty)
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundColor(.red)
+                    .lineLimit(2)
+            }
+
+            Spacer()
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .frame(width: 320, height: 200)
         .background(StyleTokens.baseVoid)
         .onAppear {

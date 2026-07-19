@@ -1,6 +1,10 @@
 import Foundation
 import SwiftUI
 
+extension Notification.Name {
+    static let confirmationNeeded = Notification.Name("confirmationNeeded")
+}
+
 enum WidgetDisplayState {
     case confirmationPrompt // State 1: Planned block boundary reached
     case active             // State 2: On-schedule
@@ -187,14 +191,52 @@ class WidgetState: ObservableObject {
     }
 
     func adjustOffset(minutes: Int) async {
+        guard let record = currentDayRecord else {
+            print("[ERROR] No current day record")
+            return
+        }
+
+        guard let current = currentCategory else {
+            print("[ERROR] No current category")
+            return
+        }
+
         // Increase offset counter (note: minutes parameter is already positive)
         offsetMinutes += minutes
 
-        // Adjust last event timestamp backwards
-        lastEventTime = lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
+        // Calculate the retroactive timestamp (move back in time)
+        let retroactiveTime = lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
 
         print("[OFFSET] Adjusted by +\(minutes)m, total offset: \(offsetMinutes)m")
-        // TODO: Send retroactive edit to API when backend supports it
+        print("[OFFSET] Retroactive timestamp: \(retroactiveTime)")
+
+        do {
+            // Send a transition event with retroactive timestamp
+            // This creates a new actual block that started in the past
+            let event = DayEvent(
+                eventType: "transition",
+                outgoingCategoryId: current.id,
+                incomingCategoryId: current.id, // Same category, just backdated
+                occurredAt: retroactiveTime
+            )
+
+            print("[OUT] Posting retroactive transition event...")
+            let response = try await apiClient.postDayEvents(
+                dayRecordId: record.id,
+                events: [event]
+            )
+
+            print("[OK] Received \(response.actualBlocks.count) actual blocks")
+            updateDayRecordWithBlocks(response.actualBlocks)
+
+            // Update last event time to the retroactive time
+            lastEventTime = retroactiveTime
+
+            updateCurrentState()
+            print("[OK] Offset adjustment complete")
+        } catch {
+            print("[ERROR] Offset adjustment error: \(error)")
+        }
     }
 
     private func updateCurrentState() {
@@ -225,6 +267,9 @@ class WidgetState: ObservableObject {
                 if isAtBoundary {
                     print("[STATE] At block boundary - showing confirmation prompt")
                     displayState = .confirmationPrompt
+
+                    // Notify that confirmation is needed - this will trigger popover auto-open
+                    NotificationCenter.default.post(name: .confirmationNeeded, object: nil)
                 }
             }
         } else {
@@ -264,6 +309,23 @@ class WidgetState: ObservableObject {
                 print("[WARN] Cannot determine display state - missing current or planned category")
             }
         }
+
+        // Update menu bar icon when state changes
+        updateMenuBarIcon()
+    }
+
+    private func updateMenuBarIcon() {
+        let iconState: MenuBarManager.IconState
+        switch displayState {
+        case .confirmationPrompt:
+            iconState = .confirmationNeeded
+        case .active:
+            iconState = .active
+        case .offSchedule:
+            iconState = .offSchedule
+        }
+
+        MenuBarManager.shared.updateIcon(state: iconState, category: currentCategory)
     }
 
     private func isWithinConfirmationWindow(for block: PlannedBlock, at time: Date) -> Bool {
