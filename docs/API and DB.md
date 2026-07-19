@@ -47,9 +47,10 @@
   - `POST /day-records/{id}/events` - append batch of day events (confirmations / transitions); server recomputes actual blocks
   - `POST /day-records/{id}/edits` - append batch of retroactive edits; server recomputes actual blocks
 
+<!-- TODO: plan out analyztics
 - **Analytics**
   - `GET /analytics/template-health/{template_id}?days=` - per-category planned vs actual breakdown for a template
-  - `GET /analytics/overview?weeks=` - cross-template adherence ratios and weekly gap strip
+  - `GET /analytics/overview?weeks=` - cross-template adherence ratios and weekly gap strip -->
 
 
 # DB format - V1
@@ -177,16 +178,6 @@ erDiagram
         timestamp occurred_at
     }
 
-    RETROACTIVE_EDIT {
-        integer id PK
-        integer day_record_id FK
-        string edit_type
-        integer category_id FK
-        time block_start
-        integer duration_minutes
-        timestamp occurred_at
-    }
-
     ACTUAL_BLOCK {
         integer id PK
         integer day_record_id FK
@@ -225,8 +216,6 @@ erDiagram
     DAY_RECORD ||--o{ DAY_EVENT : "contains"
     DAY_EVENT }o--o| BLOCK_CATEGORY : "outgoing category"
     DAY_EVENT }o--o| BLOCK_CATEGORY : "incoming category"
-    DAY_RECORD ||--o{ RETROACTIVE_EDIT : "contains"
-    RETROACTIVE_EDIT }o--o| BLOCK_CATEGORY : "assigns category"
     DAY_RECORD ||--o{ ACTUAL_BLOCK : "has derived"
     ACTUAL_BLOCK }o--|| BLOCK_CATEGORY : "classified by"
 ```
@@ -270,9 +259,6 @@ Index Suggestions
 
 `DAY_EVENT`
 - **`(day_record_id, occurred_at)`** — events are appended and replayed in order per day record; ordering by time is required for correct block derivation
-
-`RETROACTIVE_EDIT`
-- **`(day_record_id, occurred_at)`** — same rationale as `DAY_EVENT`; edits must be replayed in order alongside events during recomputation
 
 `ACTUAL_BLOCK`
 - **`(day_record_id)`** — every day record fetch joins to its actual blocks; high frequency, same pattern as `SNAPSHOT_BLOCK`
