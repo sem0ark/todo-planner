@@ -5,7 +5,7 @@ struct LoginView: View {
     @State private var token: String = ""
     @State private var errorMessage: String?
 
-    private let webAppURL = "http://localhost:5173/todo-planner/#/token"
+    private let webAppAuthURL = BuildConfig.webAppBaseURL + "/#/token"
 
     var body: some View {
         VStack(spacing: 12) {
@@ -90,11 +90,11 @@ struct LoginView: View {
 
     private func openWebAuth() {
         print("[AUTH] Opening web browser for authentication...")
-        if let url = URL(string: webAppURL) {
+        if let url = URL(string: webAppAuthURL) {
             NSWorkspace.shared.open(url)
-            print("[AUTH] Browser opened: \(webAppURL)")
+            print("[AUTH] Browser opened: \(webAppAuthURL)")
         } else {
-            print("[ERROR] Invalid web app URL: \(webAppURL)")
+            print("[ERROR] Invalid web app URL: \(webAppAuthURL)")
         }
     }
 

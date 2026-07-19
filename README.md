@@ -19,6 +19,8 @@ The core question the app answers over time: "Is the life structure I designed f
 ## TODO
 - [x] Think on what to do with the application, speficially the requirements and main goals I want to achieve.
 - [x] Plan out the main interaction flow of the widget.
-- [ ] Plan out the API structure -> will be just a glue to DB, so that we could use it as just a sync engine, better to still not expose it to much though...
-- [ ] Plan out the web UI and dashboard flow.
-- [ ] Plan out the phone UI widget-like flow + how to later migrate web UI.
+- [x] Plan out the API structure -> will be just a glue to DB, so that we could use it as just a sync engine, better to still not expose it to much though...
+- [x] Plan out the web UI and dashboard flow.
+- [x] Plan out the phone UI widget-like flow + how to later migrate web UI.
+- [ ] UI analytics logic.
+- [ ] More reselient day event logging logic.
