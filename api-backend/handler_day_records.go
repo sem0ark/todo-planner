@@ -58,7 +58,7 @@ func (api *API) getDayRecordsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get day records
 	records, err := api.dayRecordRepo.FindByDateRange(r.Context(), userID, fromDate, toDate)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch day records", err, map[string]interface{}{"user_id": userID})
 		return
 	}
 
@@ -108,7 +108,7 @@ func (api *API) postDayRecordHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create day record", err, map[string]interface{}{"user_id": userID, "calendar_date": input.CalendarDate})
 		return
 	}
 
@@ -169,7 +169,7 @@ func (api *API) putDayRecordStatusHandler(w http.ResponseWriter, r *http.Request
 			http.Error(w, "day record not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update day record", err, map[string]interface{}{"user_id": userID, "record_id": id})
 		return
 	}
 
@@ -228,7 +228,7 @@ func (api *API) postDayEventsHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "day record not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete day record", err, map[string]interface{}{"user_id": userID, "record_id": id})
 		return
 	}
 

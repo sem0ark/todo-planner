@@ -92,19 +92,40 @@ func (api *API) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			// Log available headers for debugging (excluding sensitive data)
+			headers := make(map[string]string)
+			for k := range r.Header {
+				if k != "Authorization" && k != "Cookie" {
+					headers[k] = "(present)"
+				}
+			}
+			api.logger.Warn("Missing authorization header", map[string]interface{}{
+				"path":    r.URL.Path,
+				"method":  r.Method,
+				"headers": headers,
+			})
 			http.Error(w, "missing authorization header", http.StatusUnauthorized)
 			return
 		}
 
 		tokenParts := strings.Split(authHeader, " ")
 		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			api.logger.Warn("Invalid authorization format", map[string]interface{}{
+				"path":        r.URL.Path,
+				"method":      r.Method,
+			})
 			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
 			return
 		}
 
 		userID, username, err := verifyJWT(tokenParts[1], api.jwtSecret)
 		if err != nil {
-			http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
+			api.logger.Warn("JWT verification failed", map[string]interface{}{
+				"path":        r.URL.Path,
+				"method":      r.Method,
+				"error":       err.Error(),
+			})
+			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
 
@@ -125,7 +146,7 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, nil)
 		return
 	}
 
@@ -145,13 +166,17 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "username already exists", http.StatusConflict)
 			return
 		}
-		http.Error(w, "failed to create user", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create user", err, map[string]interface{}{
+			"username": req.Username,
+		})
 		return
 	}
 
 	token, err := createJWT(user.ID, user.Username, api.jwtSecret)
 	if err != nil {
-		http.Error(w, "failed to create token", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create token", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		return
 	}
 
@@ -168,26 +193,43 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, nil)
 		return
 	}
 
 	user, err := api.userRepo.FindByUsername(r.Context(), req.Username)
 	if err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		// Log internal error but show generic message for security
+		HTTPError(w, r, api.logger, http.StatusUnauthorized, "invalid credentials", err, map[string]interface{}{
+			"username": req.Username,
+			"reason":   "user_not_found",
+		})
 		return
 	}
 
 	if !api.userRepo.VerifyPassword(user, req.Password) {
+		// Log failed login attempt
+		api.logger.Warn("Failed login attempt - invalid password", map[string]interface{}{
+			"username":    req.Username,
+			"user_id":     user.ID,
+		})
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
 	token, err := createJWT(user.ID, user.Username, api.jwtSecret)
 	if err != nil {
-		http.Error(w, "failed to create token", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create token", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		return
 	}
+
+	// Log successful login
+	api.logger.Info("User logged in successfully", map[string]interface{}{
+		"user_id":     user.ID,
+		"username":    user.Username,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(AuthResponse{Token: token, User: *user})

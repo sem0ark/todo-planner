@@ -14,7 +14,7 @@ func TestSyncHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 	ctx := context.Background()
@@ -84,7 +84,7 @@ func TestSyncHandler_RemoteChanges(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 	ctx := context.Background()
@@ -163,7 +163,7 @@ func TestSyncHandler_LastSyncAtFilter(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 	ctx := context.Background()
@@ -246,7 +246,7 @@ func TestSyncHandler_DeviceNotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 
@@ -276,7 +276,7 @@ func TestSyncHandler_InvalidEntityType(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 	ctx := context.Background()
@@ -324,7 +324,7 @@ func TestSyncHandler_InvalidOperation(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 	ctx := context.Background()
@@ -372,7 +372,7 @@ func TestSyncHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	reqBody := SyncRequest{
 		DeviceID:   1,
@@ -399,7 +399,7 @@ func TestSyncHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 
@@ -421,7 +421,7 @@ func TestSyncHandler_MultipleChanges(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "syncuser", "password123")
 	ctx := context.Background()

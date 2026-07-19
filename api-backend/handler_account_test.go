@@ -11,7 +11,7 @@ import (
 
 func TestDeleteAccountHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DeleteAccountInput{Password: "password123"}
@@ -47,7 +47,7 @@ func TestDeleteAccountHandler_Success(t *testing.T) {
 
 func TestDeleteAccountHandler_WrongPassword(t *testing.T) {
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DeleteAccountInput{Password: "wrongpassword"}
@@ -77,7 +77,7 @@ func TestDeleteAccountHandler_WrongPassword(t *testing.T) {
 
 func TestDeleteAccountHandler_MissingPassword(t *testing.T) {
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DeleteAccountInput{Password: ""}
@@ -99,7 +99,7 @@ func TestDeleteAccountHandler_MissingPassword(t *testing.T) {
 
 func TestDeleteAccountHandler_NoAuth(t *testing.T) {
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DeleteAccountInput{Password: "password123"}
@@ -118,7 +118,7 @@ func TestDeleteAccountHandler_NoAuth(t *testing.T) {
 
 func TestDeleteAccountHandler_InvalidJSON(t *testing.T) {
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodDelete, "/account", bytes.NewReader([]byte("invalid json")))
@@ -138,7 +138,7 @@ func TestDeleteAccountHandler_InvalidJSON(t *testing.T) {
 
 func TestDeleteAccountHandler_WrongMethod(t *testing.T) {
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/account", nil)

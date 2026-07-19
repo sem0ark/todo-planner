@@ -13,7 +13,7 @@ import (
 func TestGetDayRecordsHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create test records
@@ -51,7 +51,7 @@ func TestGetDayRecordsHandler_Success(t *testing.T) {
 func TestGetDayRecordsHandler_MissingQueryParams(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/day-records?from=2026-07-01", nil)
@@ -71,7 +71,7 @@ func TestGetDayRecordsHandler_MissingQueryParams(t *testing.T) {
 func TestGetDayRecordsHandler_InvalidDateFormat(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/day-records?from=invalid&to=2026-07-05", nil)
@@ -91,7 +91,7 @@ func TestGetDayRecordsHandler_InvalidDateFormat(t *testing.T) {
 func TestGetDayRecordsHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	req := httptest.NewRequest(http.MethodGet, "/day-records?from=2026-07-01&to=2026-07-05", nil)
 	w := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestGetDayRecordsHandler_NoAuth(t *testing.T) {
 func TestGetDayRecordsHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPost, "/day-records?from=2026-07-01&to=2026-07-05", nil)
@@ -128,7 +128,7 @@ func TestGetDayRecordsHandler_WrongMethod(t *testing.T) {
 func TestPostDayRecordHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayRecordInput{
@@ -163,7 +163,7 @@ func TestPostDayRecordHandler_Success(t *testing.T) {
 func TestPostDayRecordHandler_DuplicateDate(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create first record
@@ -197,7 +197,7 @@ func TestPostDayRecordHandler_DuplicateDate(t *testing.T) {
 func TestPostDayRecordHandler_MissingDate(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayRecordInput{}
@@ -221,7 +221,7 @@ func TestPostDayRecordHandler_MissingDate(t *testing.T) {
 func TestPostDayRecordHandler_InvalidDateFormat(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayRecordInput{
@@ -247,7 +247,7 @@ func TestPostDayRecordHandler_InvalidDateFormat(t *testing.T) {
 func TestPostDayRecordHandler_InvalidJSON(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPost, "/day-records", bytes.NewReader([]byte("invalid json")))
@@ -269,7 +269,7 @@ func TestPostDayRecordHandler_InvalidJSON(t *testing.T) {
 func TestPostDayRecordHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	reqBody := DayRecordInput{
 		CalendarDate: "2026-07-07",
@@ -291,7 +291,7 @@ func TestPostDayRecordHandler_NoAuth(t *testing.T) {
 func TestPostDayRecordHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/day-records", nil)
@@ -311,7 +311,7 @@ func TestPostDayRecordHandler_WrongMethod(t *testing.T) {
 func TestPutDayRecordStatusHandler_Success_Reviewed(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create test record
@@ -351,7 +351,7 @@ func TestPutDayRecordStatusHandler_Success_Reviewed(t *testing.T) {
 func TestPutDayRecordStatusHandler_Success_Ignored(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create test record
@@ -391,7 +391,7 @@ func TestPutDayRecordStatusHandler_Success_Ignored(t *testing.T) {
 func TestPutDayRecordStatusHandler_InvalidStatus(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create test record
@@ -425,7 +425,7 @@ func TestPutDayRecordStatusHandler_InvalidStatus(t *testing.T) {
 func TestPutDayRecordStatusHandler_AlreadyReviewed(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create test record and mark as reviewed
@@ -463,7 +463,7 @@ func TestPutDayRecordStatusHandler_AlreadyReviewed(t *testing.T) {
 func TestPutDayRecordStatusHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayRecordStatusInput{
@@ -489,7 +489,7 @@ func TestPutDayRecordStatusHandler_NotFound(t *testing.T) {
 func TestPutDayRecordStatusHandler_InvalidID(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayRecordStatusInput{
@@ -515,7 +515,7 @@ func TestPutDayRecordStatusHandler_InvalidID(t *testing.T) {
 func TestPutDayRecordStatusHandler_InvalidJSON(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPut, "/day-records/1/status", bytes.NewReader([]byte("invalid json")))
@@ -537,7 +537,7 @@ func TestPutDayRecordStatusHandler_InvalidJSON(t *testing.T) {
 func TestPutDayRecordStatusHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	reqBody := DayRecordStatusInput{
 		ReviewStatus: "Reviewed",
@@ -559,7 +559,7 @@ func TestPutDayRecordStatusHandler_NoAuth(t *testing.T) {
 func TestPutDayRecordStatusHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/day-records/1/status", nil)

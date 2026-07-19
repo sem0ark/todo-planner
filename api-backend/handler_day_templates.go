@@ -56,7 +56,7 @@ func (api *API) getDayTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 
 	templates, err := api.dayTemplateRepo.FindByUser(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch day templates", err, map[string]interface{}{"user_id": userID})
 		return
 	}
 
@@ -73,7 +73,9 @@ func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request)
 
 	var input DayTemplateInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -84,7 +86,7 @@ func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request)
 
 	template, err := api.dayTemplateRepo.Create(r.Context(), input, userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create day template", err, map[string]interface{}{"user_id": userID, "name": input.Name})
 		return
 	}
 
@@ -102,7 +104,9 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 
 	var input DayTemplateInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -117,7 +121,7 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update day template", err, map[string]interface{}{"user_id": userID, "template_id": id})
 		return
 	}
 
@@ -138,7 +142,7 @@ func (api *API) deleteDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete day template", err, map[string]interface{}{"user_id": userID, "template_id": id})
 		return
 	}
 

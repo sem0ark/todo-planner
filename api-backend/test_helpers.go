@@ -40,7 +40,7 @@ func cleanupTestDB(t *testing.T, db *pgxpool.Pool) {
 
 	ctx := context.Background()
 	tables := []string{
-		"actual_blocks", "retroactive_edits", "day_events", "day_records",
+		"actual_blocks", "day_events", "day_records",
 		"schedule_overrides", "weekly_schedule", "snapshot_blocks",
 		"template_snapshots", "planned_blocks", "day_templates",
 		"template_groups", "block_categories", "change_log", "devices",

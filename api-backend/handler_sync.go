@@ -35,7 +35,9 @@ func (api *API) syncHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req SyncRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -46,7 +48,10 @@ func (api *API) syncHandler(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := api.db.Begin(r.Context())
 	if err != nil {
-		http.Error(w, "failed to start transaction", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to start transaction", err, map[string]interface{}{
+			"user_id":   userID,
+			"device_id": req.DeviceID,
+		})
 		return
 	}
 	defer tx.Rollback(r.Context())
@@ -60,27 +65,47 @@ func (api *API) syncHandler(w http.ResponseWriter, r *http.Request) {
 	`, req.DeviceID).Scan(&deviceUserID, &lastSyncAt)
 
 	if err == pgx.ErrNoRows {
+		api.logger.Warn("Sync attempted with unknown device", map[string]interface{}{
+			"user_id":   userID,
+			"device_id": req.DeviceID,
+		})
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		http.Error(w, "failed to verify device", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to verify device", err, map[string]interface{}{
+			"user_id":   userID,
+			"device_id": req.DeviceID,
+		})
 		return
 	}
 
 	if deviceUserID != userID {
+		api.logger.Warn("Sync attempted with device belonging to different user", map[string]interface{}{
+			"requesting_user_id": userID,
+			"device_user_id":     deviceUserID,
+			"device_id":          req.DeviceID,
+		})
 		http.Error(w, "device does not belong to user", http.StatusForbidden)
 		return
 	}
 
 	if err := api.changeLogRepo.RecordChanges(r.Context(), req.DeviceID, userID, req.Changes); err != nil {
-		http.Error(w, "failed to record changes", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to record changes", err, map[string]interface{}{
+			"user_id":       userID,
+			"device_id":     req.DeviceID,
+			"changes_count": len(req.Changes),
+		})
 		return
 	}
 
 	remoteChanges, err := api.changeLogRepo.FetchChangesSince(r.Context(), userID, req.DeviceID, req.LastSyncAt)
 	if err != nil {
-		http.Error(w, "failed to fetch remote changes", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch remote changes", err, map[string]interface{}{
+			"user_id":      userID,
+			"device_id":    req.DeviceID,
+			"last_sync_at": req.LastSyncAt,
+		})
 		return
 	}
 
@@ -91,14 +116,28 @@ func (api *API) syncHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE id = $2
 	`, syncedAt, req.DeviceID)
 	if err != nil {
-		http.Error(w, "failed to update sync timestamp", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update sync timestamp", err, map[string]interface{}{
+			"user_id":   userID,
+			"device_id": req.DeviceID,
+		})
 		return
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
-		http.Error(w, "failed to commit transaction", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to commit transaction", err, map[string]interface{}{
+			"user_id":   userID,
+			"device_id": req.DeviceID,
+		})
 		return
 	}
+
+	api.logger.Info("Sync completed successfully", map[string]interface{}{
+		"user_id":              userID,
+		"device_id":            req.DeviceID,
+		"changes_uploaded":     len(req.Changes),
+		"changes_downloaded":   len(remoteChanges),
+		"last_sync_at":         lastSyncAt,
+	})
 
 	response := SyncResponse{
 		SyncedAt: syncedAt,

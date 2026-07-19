@@ -12,7 +12,7 @@ import (
 func TestGetSettingsHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
@@ -46,7 +46,7 @@ func TestGetSettingsHandler_Success(t *testing.T) {
 func TestGetSettingsHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
 	w := httptest.NewRecorder()
@@ -63,7 +63,7 @@ func TestGetSettingsHandler_NoAuth(t *testing.T) {
 func TestGetSettingsHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPost, "/settings", nil)
@@ -84,7 +84,7 @@ func TestGetSettingsHandler_WrongMethod(t *testing.T) {
 func TestPutSettingsHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create initial settings
@@ -121,7 +121,7 @@ func TestPutSettingsHandler_Success(t *testing.T) {
 func TestPutSettingsHandler_InvalidTimeFormat(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	invalidTimes := []string{
@@ -161,7 +161,7 @@ func TestPutSettingsHandler_InvalidTimeFormat(t *testing.T) {
 func TestPutSettingsHandler_ValidTimeFormats(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 	api.settingsRepo.GetOrCreate(context.Background(), user.ID)
 
@@ -205,7 +205,7 @@ func TestPutSettingsHandler_ValidTimeFormats(t *testing.T) {
 func TestPutSettingsHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	reqBody := UserSettingsInput{DayBoundaryTime: "06:30:00"}
 	body, _ := json.Marshal(reqBody)
@@ -226,7 +226,7 @@ func TestPutSettingsHandler_NoAuth(t *testing.T) {
 func TestPutSettingsHandler_InvalidJSON(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader([]byte("invalid json")))
@@ -249,7 +249,7 @@ func TestPutSettingsHandler_InvalidJSON(t *testing.T) {
 func TestPutSettingsHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodDelete, "/settings", nil)

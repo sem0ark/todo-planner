@@ -13,7 +13,7 @@ import (
 func TestGetTemplateGroupsHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	api.templateGroupRepo.Create(context.Background(), TemplateGroupInput{Name: "Work"}, user.ID)
@@ -42,7 +42,7 @@ func TestGetTemplateGroupsHandler_Success(t *testing.T) {
 func TestGetTemplateGroupsHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	req := httptest.NewRequest(http.MethodGet, "/template-groups", nil)
 	w := httptest.NewRecorder()
@@ -59,7 +59,7 @@ func TestGetTemplateGroupsHandler_NoAuth(t *testing.T) {
 func TestCreateTemplateGroupHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := TemplateGroupInput{Name: "Full-Time Work"}
@@ -89,7 +89,7 @@ func TestCreateTemplateGroupHandler_Success(t *testing.T) {
 func TestCreateTemplateGroupHandler_MissingName(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := TemplateGroupInput{Name: ""}
@@ -113,7 +113,7 @@ func TestCreateTemplateGroupHandler_MissingName(t *testing.T) {
 func TestUpdateTemplateGroupHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	group, _ := api.templateGroupRepo.Create(context.Background(), TemplateGroupInput{Name: "Work"}, user.ID)
@@ -145,7 +145,7 @@ func TestUpdateTemplateGroupHandler_Success(t *testing.T) {
 func TestUpdateTemplateGroupHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := TemplateGroupInput{Name: "Work"}
@@ -169,7 +169,7 @@ func TestUpdateTemplateGroupHandler_NotFound(t *testing.T) {
 func TestDeleteTemplateGroupHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	group, _ := api.templateGroupRepo.Create(context.Background(), TemplateGroupInput{Name: "Work"}, user.ID)
@@ -201,7 +201,7 @@ func TestDeleteTemplateGroupHandler_Success(t *testing.T) {
 func TestDeleteTemplateGroupHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodDelete, "/template-groups/99999", nil)
@@ -222,7 +222,7 @@ func TestDeleteTemplateGroupHandler_NotFound(t *testing.T) {
 func TestTemplateGroupsHandler_RouteDispatch(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	group, _ := api.templateGroupRepo.Create(context.Background(), TemplateGroupInput{Name: "Work"}, user.ID)

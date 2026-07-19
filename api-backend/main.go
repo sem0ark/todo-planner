@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -12,10 +11,14 @@ import (
 )
 
 func main() {
+	// Initialize structured logger
+	logger := NewLogger("todo-planner-api")
+	logger.Info("Starting todo-planner API server")
+
 	// Initialize database connection
 	connString := os.Getenv("DATABASE_URL")
 	if connString == "" {
-		log.Fatal("DATABASE_URL not set")
+		logger.Fatal("DATABASE_URL environment variable not set", nil)
 	}
 
 	port := os.Getenv("PORT")
@@ -25,7 +28,7 @@ func main() {
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET not set")
+		logger.Fatal("JWT_SECRET environment variable not set", nil)
 	}
 
 	// Parse CORS allowed origins from environment
@@ -42,42 +45,59 @@ func main() {
 	ctx := context.Background()
 	db, err := initDatabase(ctx, connString)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logger.Fatal("Failed to initialize database connection", err, map[string]interface{}{
+			"connection_string_length": len(connString),
+		})
 	}
 	defer db.Close()
+	logger.Info("Database connection established")
 
 	// Run migrations
 	if err := ApplyMigrations(ctx, db, GetMigrations()); err != nil {
-		log.Fatalf("Failed to apply migrations: %v", err)
+		logger.Fatal("Failed to apply database migrations", err)
 	}
+	logger.Info("Database migrations applied successfully")
 
-	// Initialize API handlers with CORS middleware
+	// Initialize API handlers with middlewares
+	loggingMiddleware := LoggingMiddleware(logger)
 	corsMiddleware := NewCORSMiddleware(corsOrigins)
-	api := NewAPI(db, jwtSecret)
+	api := NewAPI(db, jwtSecret, logger)
 
-	// Register routes
-	http.HandleFunc("/health", api.HealthHandler)
-	http.HandleFunc("/auth/register", corsMiddleware(api.registerHandler))
-	http.HandleFunc("/auth/login", corsMiddleware(api.loginHandler))
-	http.HandleFunc("/account", corsMiddleware(api.authMiddleware(api.deleteAccountHandler)))
-	http.HandleFunc("/settings", corsMiddleware(api.authMiddleware(api.settingsHandler)))
-	http.HandleFunc("/devices", corsMiddleware(api.authMiddleware(api.registerDeviceHandler)))
-	http.HandleFunc("/sync", corsMiddleware(api.authMiddleware(api.syncHandler)))
-	http.HandleFunc("/categories", corsMiddleware(api.authMiddleware(api.categoriesHandler)))
-	http.HandleFunc("/categories/", corsMiddleware(api.authMiddleware(api.categoriesHandler)))
-	http.HandleFunc("/schedule", corsMiddleware(api.authMiddleware(api.scheduleHandler)))
-	http.HandleFunc("/schedule/", corsMiddleware(api.authMiddleware(api.scheduleHandler)))
-	http.HandleFunc("/template-groups", corsMiddleware(api.authMiddleware(api.templateGroupsHandler)))
-	http.HandleFunc("/template-groups/", corsMiddleware(api.authMiddleware(api.templateGroupsHandler)))
-	http.HandleFunc("/templates", corsMiddleware(api.authMiddleware(api.dayTemplatesHandler)))
-	http.HandleFunc("/templates/", corsMiddleware(api.authMiddleware(api.dayTemplatesHandler)))
-	http.HandleFunc("/day-records", corsMiddleware(api.authMiddleware(api.dayRecordsHandler)))
-	http.HandleFunc("/day-records/", corsMiddleware(api.authMiddleware(api.dayRecordsHandler)))
+	// Register routes with centralized middleware chain:
+	// loggingMiddleware -> corsMiddleware -> authMiddleware (if needed) -> handler
+
+	// Public routes (logging + CORS)
+	http.HandleFunc("/health", loggingMiddleware(corsMiddleware(api.HealthHandler)))
+	http.HandleFunc("/auth/register", loggingMiddleware(corsMiddleware(api.registerHandler)))
+	http.HandleFunc("/auth/login", loggingMiddleware(corsMiddleware(api.loginHandler)))
+
+	// Protected routes (logging + CORS + auth)
+	http.HandleFunc("/account", loggingMiddleware(corsMiddleware(api.authMiddleware(api.deleteAccountHandler))))
+	http.HandleFunc("/settings", loggingMiddleware(corsMiddleware(api.authMiddleware(api.settingsHandler))))
+	http.HandleFunc("/devices", loggingMiddleware(corsMiddleware(api.authMiddleware(api.registerDeviceHandler))))
+	http.HandleFunc("/sync", loggingMiddleware(corsMiddleware(api.authMiddleware(api.syncHandler))))
+	http.HandleFunc("/categories", loggingMiddleware(corsMiddleware(api.authMiddleware(api.categoriesHandler))))
+	http.HandleFunc("/categories/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.categoriesHandler))))
+	http.HandleFunc("/schedule", loggingMiddleware(corsMiddleware(api.authMiddleware(api.scheduleHandler))))
+	http.HandleFunc("/schedule/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.scheduleHandler))))
+	http.HandleFunc("/template-groups", loggingMiddleware(corsMiddleware(api.authMiddleware(api.templateGroupsHandler))))
+	http.HandleFunc("/template-groups/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.templateGroupsHandler))))
+	http.HandleFunc("/templates", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayTemplatesHandler))))
+	http.HandleFunc("/templates/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayTemplatesHandler))))
+	http.HandleFunc("/day-records", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayRecordsHandler))))
+	http.HandleFunc("/day-records/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayRecordsHandler))))
 
 	// Start server
-	log.Printf("Server starting on port %s", port)
+	logger.Info("Server listening for requests", map[string]interface{}{
+		"port":           port,
+		"cors_origins":   corsOrigins,
+		"max_db_conns":   5,
+	})
+
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Fatal(err)
+		logger.Fatal("Server failed to start", err, map[string]interface{}{
+			"port": port,
+		})
 	}
 }
 

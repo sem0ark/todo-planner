@@ -13,7 +13,7 @@ import (
 func TestGetDayTemplatesHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
@@ -42,7 +42,7 @@ func TestGetDayTemplatesHandler_Success(t *testing.T) {
 func TestGetDayTemplatesHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	req := httptest.NewRequest(http.MethodGet, "/templates", nil)
 	w := httptest.NewRecorder()
@@ -59,7 +59,7 @@ func TestGetDayTemplatesHandler_NoAuth(t *testing.T) {
 func TestCreateDayTemplateHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 	category, _ := api.categoryRepo.Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
 
@@ -98,7 +98,7 @@ func TestCreateDayTemplateHandler_Success(t *testing.T) {
 func TestCreateDayTemplateHandler_WithTemplateGroup(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 	group, _ := api.templateGroupRepo.Create(context.Background(), TemplateGroupInput{Name: "Work"}, user.ID)
 
@@ -133,7 +133,7 @@ func TestCreateDayTemplateHandler_WithTemplateGroup(t *testing.T) {
 func TestCreateDayTemplateHandler_MissingName(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayTemplateInput{Name: "", PlannedBlocks: []PlannedBlockInput{}}
@@ -157,7 +157,7 @@ func TestCreateDayTemplateHandler_MissingName(t *testing.T) {
 func TestUpdateDayTemplateHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 	category1, _ := api.categoryRepo.Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
 	category2, _ := api.categoryRepo.Create(context.Background(), CategoryInput{Name: "Rest", Color: "#33FF57"}, user.ID)
@@ -205,7 +205,7 @@ func TestUpdateDayTemplateHandler_Success(t *testing.T) {
 func TestUpdateDayTemplateHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayTemplateInput{Name: "Updated", PlannedBlocks: []PlannedBlockInput{}}
@@ -229,7 +229,7 @@ func TestUpdateDayTemplateHandler_NotFound(t *testing.T) {
 func TestDeleteDayTemplateHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
@@ -261,7 +261,7 @@ func TestDeleteDayTemplateHandler_Success(t *testing.T) {
 func TestDeleteDayTemplateHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodDelete, "/templates/99999", nil)
@@ -282,7 +282,7 @@ func TestDeleteDayTemplateHandler_NotFound(t *testing.T) {
 func TestDayTemplatesHandler_RouteDispatch(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)

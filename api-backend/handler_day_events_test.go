@@ -15,7 +15,7 @@ func TestPostDayEventsHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 	ctx := context.Background()
@@ -110,7 +110,7 @@ func TestPostDayEventsHandler_Reviewed(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 	ctx := context.Background()
@@ -150,7 +150,7 @@ func TestPostDayEventsHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 
@@ -178,7 +178,7 @@ func TestPostDayEventsHandler_InvalidEventType(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 	ctx := context.Background()
@@ -222,7 +222,7 @@ func TestPostDayEventsHandler_TransitionMissingCategories(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 	ctx := context.Background()
@@ -266,7 +266,7 @@ func TestPostDayEventsHandler_NotChronological(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 	ctx := context.Background()
@@ -327,7 +327,7 @@ func TestPostDayEventsHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	reqBody := DayEventsInput{
 		Events: []DayEventInput{},
@@ -352,7 +352,7 @@ func TestPostDayEventsHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 
@@ -374,7 +374,7 @@ func TestPostDayEventsHandler_ConfirmationWithCategories(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	user := createTestUser(t, db, "eventuser", "password123")
 	ctx := context.Background()

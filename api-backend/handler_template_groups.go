@@ -56,7 +56,7 @@ func (api *API) getTemplateGroupsHandler(w http.ResponseWriter, r *http.Request)
 
 	groups, err := api.templateGroupRepo.FindByUser(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch template groups", err, map[string]interface{}{"user_id": userID})
 		return
 	}
 
@@ -73,7 +73,9 @@ func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 
 	var input TemplateGroupInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -84,7 +86,7 @@ func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 
 	group, err := api.templateGroupRepo.Create(r.Context(), input, userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create template group", err, map[string]interface{}{"user_id": userID, "name": input.Name})
 		return
 	}
 
@@ -102,7 +104,9 @@ func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 
 	var input TemplateGroupInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -117,7 +121,7 @@ func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update template group", err, map[string]interface{}{"user_id": userID, "group_id": id})
 		return
 	}
 
@@ -138,7 +142,7 @@ func (api *API) deleteTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete template group", err, map[string]interface{}{"user_id": userID, "group_id": id})
 		return
 	}
 

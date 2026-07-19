@@ -12,7 +12,7 @@ import (
 func TestRegisterDeviceHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DeviceInput{Platform: "mobile"}
@@ -50,7 +50,7 @@ func TestRegisterDeviceHandler_ValidPlatforms(t *testing.T) {
 		t.Run(platform, func(t *testing.T) {
 			// Arrange
 			db := setupTestDB(t)
-			api := NewAPI(db, "test-secret")
+			api := NewAPI(db, "test-secret", NewLogger("test"))
 			user := createTestUser(t, db, "testuser_"+platform, "password123")
 
 			reqBody := DeviceInput{Platform: platform}
@@ -77,7 +77,7 @@ func TestRegisterDeviceHandler_ValidPlatforms(t *testing.T) {
 func TestRegisterDeviceHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	reqBody := DeviceInput{Platform: "mobile"}
 	body, _ := json.Marshal(reqBody)
@@ -98,7 +98,7 @@ func TestRegisterDeviceHandler_NoAuth(t *testing.T) {
 func TestRegisterDeviceHandler_InvalidPlatform(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DeviceInput{Platform: "invalid"}
@@ -123,7 +123,7 @@ func TestRegisterDeviceHandler_InvalidPlatform(t *testing.T) {
 func TestRegisterDeviceHandler_MissingPlatform(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DeviceInput{Platform: ""}
@@ -148,7 +148,7 @@ func TestRegisterDeviceHandler_MissingPlatform(t *testing.T) {
 func TestRegisterDeviceHandler_InvalidJSON(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPost, "/devices", bytes.NewReader([]byte("invalid json")))
@@ -171,7 +171,7 @@ func TestRegisterDeviceHandler_InvalidJSON(t *testing.T) {
 func TestRegisterDeviceHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/devices", nil)

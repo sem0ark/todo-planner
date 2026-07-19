@@ -21,7 +21,9 @@ func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := api.settingsRepo.GetOrCreate(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "failed to retrieve settings", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to retrieve settings", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -38,7 +40,9 @@ func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input UserSettingsInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -49,7 +53,10 @@ func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := api.settingsRepo.Update(r.Context(), userID, input.DayBoundaryTime)
 	if err != nil {
-		http.Error(w, "failed to update settings", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update settings", err, map[string]interface{}{
+			"user_id":           userID,
+			"day_boundary_time": input.DayBoundaryTime,
+		})
 		return
 	}
 

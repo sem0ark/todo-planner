@@ -12,7 +12,7 @@ import (
 func TestEmptyListSerialization_Categories(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/categories", nil)
@@ -52,7 +52,7 @@ func TestEmptyListSerialization_Categories(t *testing.T) {
 func TestEmptyListSerialization_TemplateGroups(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/template-groups", nil)
@@ -92,7 +92,7 @@ func TestEmptyListSerialization_TemplateGroups(t *testing.T) {
 func TestEmptyListSerialization_Templates(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/templates", nil)
@@ -132,7 +132,7 @@ func TestEmptyListSerialization_Templates(t *testing.T) {
 func TestEmptyListSerialization_TemplateWithEmptyPlannedBlocks(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create a template with no planned blocks
@@ -187,7 +187,7 @@ func TestEmptyListSerialization_TemplateWithEmptyPlannedBlocks(t *testing.T) {
 func TestEmptyListSerialization_DayRecordWithEmptyBlocks(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create a day record with no snapshot (no template assigned)
@@ -253,7 +253,7 @@ func TestEmptyListSerialization_DayRecordWithEmptyBlocks(t *testing.T) {
 func TestEmptyListSerialization_ScheduleWithEmptyOverrides(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/schedule", nil)
