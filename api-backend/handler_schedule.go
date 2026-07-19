@@ -7,6 +7,16 @@ import (
 	"time"
 )
 
+// Weekly schedule update request data
+type WeeklyScheduleInput struct {
+	WeeklySchedule []WeeklyScheduleEntry `json:"weekly_schedule"`
+}
+
+// Schedule override creation/update request data
+type ScheduleOverrideInput struct {
+	DayTemplateID *int `json:"day_template_id"`
+}
+
 // ScheduleResponse for GET /schedule
 type ScheduleResponse struct {
 	WeeklySchedule []WeeklySchedule   `json:"weekly_schedule"`

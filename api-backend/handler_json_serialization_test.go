@@ -159,9 +159,9 @@ func TestEmptyListSerialization_TemplateWithEmptyPlannedBlocks(t *testing.T) {
 
 	var response struct {
 		Templates []struct {
-			ID            int            `json:"id"`
-			Name          string         `json:"name"`
-			PlannedBlocks []interface{}  `json:"planned_blocks"`
+			ID            int           `json:"id"`
+			Name          string        `json:"name"`
+			PlannedBlocks []interface{} `json:"planned_blocks"`
 		} `json:"templates"`
 	}
 	json.NewDecoder(w.Body).Decode(&response)

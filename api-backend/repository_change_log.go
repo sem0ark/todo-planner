@@ -11,6 +11,13 @@ type ChangeLogRepository struct {
 	db *pgxpool.Pool
 }
 
+type ChangeLogEntry struct {
+	EntityType string    `json:"entity_type"` // category | template_group | day_template | weekly_schedule | schedule_override | day_record | settings
+	EntityID   int       `json:"entity_id"`
+	Operation  string    `json:"operation"` // create | update | delete
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
 func NewChangeLogRepository(db *pgxpool.Pool) *ChangeLogRepository {
 	return &ChangeLogRepository{db: db}
 }

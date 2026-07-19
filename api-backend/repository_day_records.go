@@ -12,6 +12,65 @@ type DayRecordRepository struct {
 	db *pgxpool.Pool
 }
 
+type TemplateSnapshot struct {
+	ID             int             `json:"id"`
+	DayTemplateID  int             `json:"day_template_id"`
+	UserID         int             `json:"user_id"`
+	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks"`
+	SnapshottedAt  time.Time       `json:"snapshotted_at"`
+}
+
+// A time block in a template snapshot
+type SnapshotBlock struct {
+	ID              int    `json:"id"`
+	SnapshotID      int    `json:"snapshot_id"`
+	CategoryID      int    `json:"category_id"`
+	StartTime       string `json:"start_time"` // HH:MM:SS
+	DurationMinutes int    `json:"duration_minutes"`
+}
+
+// A day's tracked activity
+type DayRecord struct {
+	ID             int             `json:"id"`
+	UserID         int             `json:"user_id"`
+	SnapshotID     *int            `json:"snapshot_id"`
+	CalendarDate   string          `json:"calendar_date"` // YYYY-MM-DD
+	ReviewStatus   string          `json:"review_status"` // Unreviewed | Reviewed | Ignored
+	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks"`
+	ActualBlocks   []ActualBlock   `json:"actual_blocks"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
+// A real-time activity confirmation or transition
+type DayEvent struct {
+	ID                 int       `json:"id"`
+	DayRecordID        int       `json:"day_record_id"`
+	EventType          string    `json:"event_type"` // confirmation | transition
+	OutgoingCategoryID *int      `json:"outgoing_category_id"`
+	IncomingCategoryID *int      `json:"incoming_category_id"`
+	OccurredAt         time.Time `json:"occurred_at"`
+}
+
+// A single day event input
+type DayEventInput struct {
+	EventType          string    `json:"event_type"` // confirmation | transition
+	OutgoingCategoryID *int      `json:"outgoing_category_id"`
+	IncomingCategoryID *int      `json:"incoming_category_id"`
+	OccurredAt         time.Time `json:"occurred_at"`
+}
+
+// A derived time block for a day record
+type ActualBlock struct {
+	ID              int       `json:"id"`
+	DayRecordID     int       `json:"day_record_id"`
+	CategoryID      *int      `json:"category_id"`
+	BlockType       string    `json:"block_type"` // actual | blank | untracked
+	StartTime       string    `json:"start_time"` // HH:MM:SS
+	DurationMinutes int       `json:"duration_minutes"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
 func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
 	return &DayRecordRepository{db: db}
 }

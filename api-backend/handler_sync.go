@@ -8,6 +8,19 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Sync request
+type SyncRequest struct {
+	DeviceID   int              `json:"device_id"`
+	LastSyncAt *time.Time       `json:"last_sync_at"`
+	Changes    []ChangeLogEntry `json:"changes"`
+}
+
+// Sync response
+type SyncResponse struct {
+	SyncedAt time.Time        `json:"synced_at"`
+	Changes  []ChangeLogEntry `json:"changes"`
+}
+
 func (api *API) syncHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

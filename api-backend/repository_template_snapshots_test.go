@@ -173,4 +173,3 @@ func TestDayRecordCreation_WithTemplateSnapshot(t *testing.T) {
 		t.Errorf("Expected 2 snapshot blocks, got %d", len(dayRecord.SnapshotBlocks))
 	}
 }
-

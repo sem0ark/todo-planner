@@ -28,7 +28,6 @@ type AuthResponse struct {
 	User  User   `json:"user"`
 }
 
-// Simple JWT implementation (header.payload.signature)
 func createJWT(userID int, username string, secret string) (string, error) {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 
@@ -194,12 +193,9 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(AuthResponse{Token: token, User: *user})
 }
 
-// Context helpers
-type contextKey string
-
 const (
-	userIDKey   contextKey = "user_id"
-	usernameKey contextKey = "username"
+	userIDKey   string = "user_id"
+	usernameKey string = "username"
 )
 
 func withUserID(ctx context.Context, userID int) context.Context {
@@ -213,9 +209,4 @@ func withUsername(ctx context.Context, username string) context.Context {
 func getUserID(ctx context.Context) (int, bool) {
 	userID, ok := ctx.Value(userIDKey).(int)
 	return userID, ok
-}
-
-func getUsername(ctx context.Context) (string, bool) {
-	username, ok := ctx.Value(usernameKey).(string)
-	return username, ok
 }

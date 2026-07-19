@@ -12,6 +12,21 @@ type DayRecordsResponse struct {
 	DayRecords []DayRecord `json:"day_records"`
 }
 
+// Day record creation request data
+type DayRecordInput struct {
+	CalendarDate string `json:"calendar_date"` // YYYY-MM-DD
+}
+
+// Day record status update request data
+type DayRecordStatusInput struct {
+	ReviewStatus string `json:"review_status"` // Reviewed | Ignored
+}
+
+// Batch day event submission request data
+type DayEventsInput struct {
+	Events []DayEventInput `json:"events"`
+}
+
 // getDayRecordsHandler returns all day records within a date range
 func (api *API) getDayRecordsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
