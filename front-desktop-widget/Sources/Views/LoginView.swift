@@ -1,0 +1,133 @@
+import SwiftUI
+
+struct LoginView: View {
+    @Binding var isAuthenticated: Bool
+    @State private var token: String = ""
+    @State private var errorMessage: String?
+
+    private let webAppURL = "http://localhost:5173/todo-planner/"
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Left section - Primary action
+            VStack(spacing: 12) {
+                Spacer()
+
+                Text("Todo Planner")
+                    .font(.system(size: 24, weight: .bold, design: .default))
+                    .foregroundColor(StyleTokens.primaryText)
+
+                Text("Desktop Widget")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(StyleTokens.mutedText)
+
+                Spacer()
+
+                Button(action: {
+                    openWebAuth()
+                }) {
+                    Text("Open Browser to Login")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.blue)
+                        .cornerRadius(StyleTokens.radiusButton)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .frame(width: 208)
+            .background(StyleTokens.baseVoid)
+
+            // Right section - Alternative token input
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Or paste token")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(StyleTokens.mutedText)
+
+                TextField("JWT Token", text: $token)
+                    .textFieldStyle(.plain)
+                    .padding(8)
+                    .background(StyleTokens.secondaryText.opacity(0.3))
+                    .cornerRadius(StyleTokens.radiusButton)
+                    .foregroundColor(StyleTokens.primaryText)
+                    .font(.system(size: 16, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Button(action: {
+                    setToken()
+                }) {
+                    Text("Confirm")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(token.isEmpty ? Color.gray : Color.green)
+                        .cornerRadius(StyleTokens.radiusButton)
+                }
+                .buttonStyle(.plain)
+                .disabled(token.isEmpty)
+
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 16))
+                        .foregroundColor(.red)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+            .padding(12)
+            .frame(width: 112)
+            .background(StyleTokens.baseVoid.opacity(0.8))
+        }
+        .frame(width: 320, height: 200)
+        .background(StyleTokens.baseVoid)
+        .onAppear {
+            setupDeepLinkHandler()
+        }
+    }
+
+    private func setupDeepLinkHandler() {
+        print("[LOGIN] Setting up deep link handler")
+
+        // Check if there's already a pending token (app was opened via URL before view appeared)
+        if let pendingToken = DeepLinkHandler.shared.consumePendingToken() {
+            print("[LOGIN] Found pending token from deep link, using it now")
+            self.token = pendingToken
+            self.setToken()
+            return
+        }
+
+        // Set up callback for future tokens
+        DeepLinkHandler.shared.onTokenReceived = { receivedToken in
+            print("[LOGIN] Received token via callback")
+            self.token = receivedToken
+            self.setToken()
+        }
+    }
+
+    private func openWebAuth() {
+        print("[AUTH] Opening web browser for authentication...")
+        if let url = URL(string: webAppURL) {
+            NSWorkspace.shared.open(url)
+            print("[AUTH] Browser opened: \(webAppURL)")
+        } else {
+            print("[ERROR] Invalid web app URL: \(webAppURL)")
+        }
+    }
+
+    private func setToken() {
+        guard !token.isEmpty else { return }
+
+        print("[AUTH] Setting authentication token...")
+        print("[AUTH] Token length: \(token.count) characters")
+        APIClient.shared.setAuthToken(token)
+        isAuthenticated = true
+        print("[OK] Authentication successful!")
+    }
+}
