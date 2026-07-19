@@ -41,7 +41,7 @@ func (api *API) deleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 	if err := api.userRepo.DeleteAccount(r.Context(), userID, input.Password); err != nil {
 		if err == ErrInvalidPassword {
 			api.logger.Warn("Account deletion failed - invalid password", map[string]interface{}{
-				"user_id":     userID,
+				"user_id": userID,
 			})
 			http.Error(w, "invalid password confirmation", http.StatusUnauthorized)
 			return
@@ -53,7 +53,7 @@ func (api *API) deleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.logger.Info("User account deleted", map[string]interface{}{
-		"user_id":     userID,
+		"user_id": userID,
 	})
 
 	w.Header().Set("Content-Type", "application/json")

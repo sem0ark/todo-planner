@@ -132,11 +132,11 @@ func (api *API) syncHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.logger.Info("Sync completed successfully", map[string]interface{}{
-		"user_id":              userID,
-		"device_id":            req.DeviceID,
-		"changes_uploaded":     len(req.Changes),
-		"changes_downloaded":   len(remoteChanges),
-		"last_sync_at":         lastSyncAt,
+		"user_id":            userID,
+		"device_id":          req.DeviceID,
+		"changes_uploaded":   len(req.Changes),
+		"changes_downloaded": len(remoteChanges),
+		"last_sync_at":       lastSyncAt,
 	})
 
 	response := SyncResponse{

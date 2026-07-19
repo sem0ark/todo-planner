@@ -111,8 +111,8 @@ func (api *API) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		tokenParts := strings.Split(authHeader, " ")
 		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
 			api.logger.Warn("Invalid authorization format", map[string]interface{}{
-				"path":        r.URL.Path,
-				"method":      r.Method,
+				"path":   r.URL.Path,
+				"method": r.Method,
 			})
 			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
 			return
@@ -121,9 +121,9 @@ func (api *API) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		userID, username, err := verifyJWT(tokenParts[1], api.jwtSecret)
 		if err != nil {
 			api.logger.Warn("JWT verification failed", map[string]interface{}{
-				"path":        r.URL.Path,
-				"method":      r.Method,
-				"error":       err.Error(),
+				"path":   r.URL.Path,
+				"method": r.Method,
+				"error":  err.Error(),
 			})
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
@@ -210,8 +210,8 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 	if !api.userRepo.VerifyPassword(user, req.Password) {
 		// Log failed login attempt
 		api.logger.Warn("Failed login attempt - invalid password", map[string]interface{}{
-			"username":    req.Username,
-			"user_id":     user.ID,
+			"username": req.Username,
+			"user_id":  user.ID,
 		})
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
@@ -227,8 +227,8 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Log successful login
 	api.logger.Info("User logged in successfully", map[string]interface{}{
-		"user_id":     user.ID,
-		"username":    user.Username,
+		"user_id":  user.ID,
+		"username": user.Username,
 	})
 
 	w.Header().Set("Content-Type", "application/json")

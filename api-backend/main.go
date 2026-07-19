@@ -89,9 +89,9 @@ func main() {
 
 	// Start server
 	logger.Info("Server listening for requests", map[string]interface{}{
-		"port":           port,
-		"cors_origins":   corsOrigins,
-		"max_db_conns":   5,
+		"port":         port,
+		"cors_origins": corsOrigins,
+		"max_db_conns": 5,
 	})
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {

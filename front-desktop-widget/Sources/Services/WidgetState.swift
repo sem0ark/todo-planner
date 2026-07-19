@@ -246,45 +246,56 @@ class WidgetState: ObservableObject {
         let currentPlanned = getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
         let currentActual = getCurrentActualBlock(at: now, from: record.actualBlocks)
 
-        // Always set planned category and progress if there's a current planned block
-        if let planned = currentPlanned {
+        // Always set planned category and progress - use current or next planned block
+        let plannedBlock = currentPlanned ?? getNextPlannedBlock(at: now, from: record.snapshotBlocks)
+
+        if let planned = plannedBlock {
             currentPlannedBlock = planned
             plannedDurationMinutes = planned.durationMinutes
             plannedCategory = categories.first { $0.id == planned.categoryId }
-            progressPercentage = calculateProgress(for: planned, at: now)
 
-            print("[STATE] Current planned block: \(plannedCategory?.name ?? "unknown")")
+            // Only calculate progress for current block, not future blocks
+            if currentPlanned != nil {
+                progressPercentage = calculateProgress(for: planned, at: now)
+            } else {
+                progressPercentage = 0.0
+                print("[STATE] Showing next planned block (not started yet)")
+            }
+
+            print("[STATE] Planned block: \(plannedCategory?.name ?? "unknown")")
             print("[STATE] Progress: \(Int(progressPercentage * 100))%")
 
-            // Check if we're within 1 minute of block start (confirmation window)
-            let isAtBoundary = isWithinConfirmationWindow(for: planned, at: now)
+            // Only check boundary for current blocks, not future ones
+            if let current = currentPlanned {
+                let isAtBoundary = isWithinConfirmationWindow(for: current, at: now)
 
-            if lastCheckedBlockId != planned.id {
-                // New block boundary detected
-                lastCheckedBlockId = planned.id
-                isConfirmed = false
+                if lastCheckedBlockId != current.id {
+                    // New block boundary detected
+                    lastCheckedBlockId = current.id
+                    isConfirmed = false
 
-                if isAtBoundary {
-                    print("[STATE] At block boundary - showing confirmation prompt")
-                    displayState = .confirmationPrompt
+                    if isAtBoundary {
+                        print("[STATE] At block boundary - showing confirmation prompt")
+                        displayState = .confirmationPrompt
 
-                    // Notify that confirmation is needed - this will trigger popover auto-open
-                    NotificationCenter.default.post(name: .confirmationNeeded, object: nil)
+                        // Notify that confirmation is needed - this will trigger popover auto-open
+                        NotificationCenter.default.post(name: .confirmationNeeded, object: nil)
+                    }
                 }
             }
         } else {
-            print("[WARN] No current planned block found")
+            print("[WARN] No planned blocks found in snapshot")
         }
 
-        // Set current category from actual block, or default to planned on startup
+        // Set current category from actual block, or default to planned
         if let actual = currentActual, let catId = actual.categoryId {
             currentCategory = categories.first { $0.id == catId }
             print("[STATE] Current category from actual block: \(currentCategory?.name ?? "unknown")")
-        } else if currentCategory == nil, let planned = plannedCategory {
-            // On startup with no actual blocks yet, show planned category
-            // This will be overridden once user makes their first manual selection
+        } else if let planned = plannedCategory {
+            // No actual block - always show planned category
+            // This ensures widget shows the plan even when no actual blocks exist yet
             currentCategory = planned
-            print("[STATE] No actual block yet, showing planned category: \(planned.name)")
+            print("[STATE] No actual block, showing planned category: \(planned.name)")
         }
 
         // Determine display state (only if not in confirmation mode)
@@ -395,6 +406,33 @@ class WidgetState: ObservableObject {
         }
 
         return nil
+    }
+
+    private func getNextPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
+        let calendar = Calendar.current
+        let currentComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
+        let currentSeconds = (currentComponents.hour ?? 0) * 3600 + (currentComponents.minute ?? 0) * 60 + (currentComponents.second ?? 0)
+
+        // Find the next block that starts after current time
+        var nextBlock: PlannedBlock?
+        var minStartSeconds = Int.max
+
+        for block in blocks {
+            let timeString = block.startTime.components(separatedBy: ".").first ?? block.startTime
+            let timeParts = timeString.split(separator: ":").compactMap { Int($0) }
+            guard timeParts.count == 3 else { continue }
+
+            let blockStartSeconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+
+            // If block starts after current time and is earlier than what we found so far
+            if blockStartSeconds > currentSeconds && blockStartSeconds < minStartSeconds {
+                nextBlock = block
+                minStartSeconds = blockStartSeconds
+            }
+        }
+
+        // If no next block found (past all blocks), return the first block of tomorrow
+        return nextBlock ?? blocks.first
     }
 
     private func getCurrentActualBlock(at time: Date, from blocks: [ActualBlock]) -> ActualBlock? {
