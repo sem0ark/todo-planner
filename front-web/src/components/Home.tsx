@@ -46,14 +46,7 @@ export default function Home() {
           </div>
         </Link>
 
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            window.open('todoapp://open', '_blank');
-          }}
-          className="block"
-        >
+        <Link href="/token">
           <div className="p-8 bg-slate-blue/10 border border-slate-grey rounded-lg hover:bg-slate-blue/20 transition-colors cursor-pointer">
             <div className="text-4xl mb-4">🖥️</div>
             <h3 className="text-xl font-semibold text-snow mb-2">Desktop Widget</h3>
@@ -61,7 +54,7 @@ export default function Home() {
               Open the macOS desktop widget application
             </p>
           </div>
-        </a>
+        </Link>
       </div>
 
       <div className="text-center">

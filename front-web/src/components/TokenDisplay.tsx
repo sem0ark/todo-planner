@@ -1,9 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 
 export default function TokenDisplay() {
   const { token, user } = useAuthStore();
   const [copied, setCopied] = useState(false);
+
+  // Automatically trigger widget opening when component mounts
+  useEffect(() => {
+    if (token) {
+      const widgetUrl = `todoplanner://auth?token=${token}`;
+      console.log('[TOKEN] Attempting to open desktop widget:', widgetUrl);
+
+      // Create a hidden iframe to trigger the URL scheme
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = widgetUrl;
+      document.body.appendChild(iframe);
+
+      // Clean up after a short delay
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }
+  }, [token]);
 
   if (!token || !user) return null;
 
