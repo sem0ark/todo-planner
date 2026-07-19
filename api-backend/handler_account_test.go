@@ -10,7 +10,6 @@ import (
 )
 
 func TestDeleteAccountHandler_Success(t *testing.T) {
-	// Arrange
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret")
 	user := createTestUser(t, db, "testuser", "password123")
@@ -25,10 +24,8 @@ func TestDeleteAccountHandler_Success(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	// Act
 	api.deleteAccountHandler(w, req)
 
-	// Assert
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
@@ -42,7 +39,6 @@ func TestDeleteAccountHandler_Success(t *testing.T) {
 		t.Error("Expected deleted=true in response")
 	}
 
-	// Verify user is actually deleted
 	_, err := api.userRepo.FindByUsername(context.Background(), "testuser")
 	if err == nil {
 		t.Error("User should be deleted from database")
@@ -50,7 +46,6 @@ func TestDeleteAccountHandler_Success(t *testing.T) {
 }
 
 func TestDeleteAccountHandler_WrongPassword(t *testing.T) {
-	// Arrange
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret")
 	user := createTestUser(t, db, "testuser", "password123")
@@ -65,15 +60,12 @@ func TestDeleteAccountHandler_WrongPassword(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	// Act
 	api.deleteAccountHandler(w, req)
 
-	// Assert
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("Expected status 401, got %d", w.Code)
 	}
 
-	// Verify user still exists
 	foundUser, err := api.userRepo.FindByUsername(context.Background(), "testuser")
 	if err != nil {
 		t.Errorf("User should still exist: %v", err)
@@ -84,7 +76,6 @@ func TestDeleteAccountHandler_WrongPassword(t *testing.T) {
 }
 
 func TestDeleteAccountHandler_MissingPassword(t *testing.T) {
-	// Arrange
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret")
 	user := createTestUser(t, db, "testuser", "password123")
@@ -99,17 +90,14 @@ func TestDeleteAccountHandler_MissingPassword(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	// Act
 	api.deleteAccountHandler(w, req)
 
-	// Assert
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 }
 
 func TestDeleteAccountHandler_NoAuth(t *testing.T) {
-	// Arrange
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret")
 	createTestUser(t, db, "testuser", "password123")
@@ -121,17 +109,14 @@ func TestDeleteAccountHandler_NoAuth(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	// Act
 	api.deleteAccountHandler(w, req)
 
-	// Assert
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("Expected status 401, got %d", w.Code)
 	}
 }
 
 func TestDeleteAccountHandler_InvalidJSON(t *testing.T) {
-	// Arrange
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret")
 	user := createTestUser(t, db, "testuser", "password123")
@@ -144,17 +129,14 @@ func TestDeleteAccountHandler_InvalidJSON(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	// Act
 	api.deleteAccountHandler(w, req)
 
-	// Assert
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 }
 
 func TestDeleteAccountHandler_WrongMethod(t *testing.T) {
-	// Arrange
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret")
 	user := createTestUser(t, db, "testuser", "password123")
@@ -165,10 +147,8 @@ func TestDeleteAccountHandler_WrongMethod(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	// Act
 	api.deleteAccountHandler(w, req)
 
-	// Assert
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("Expected status 405, got %d", w.Code)
 	}
