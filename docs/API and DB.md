@@ -47,9 +47,10 @@
   - `POST /day-records/{id}/events` - append batch of day events (confirmations / transitions); server recomputes actual blocks
   - `POST /day-records/{id}/edits` - append batch of retroactive edits; server recomputes actual blocks
 
+<!-- TODO: plan out analyztics
 - **Analytics**
   - `GET /analytics/template-health/{template_id}?days=` - per-category planned vs actual breakdown for a template
-  - `GET /analytics/overview?weeks=` - cross-template adherence ratios and weekly gap strip
+  - `GET /analytics/overview?weeks=` - cross-template adherence ratios and weekly gap strip -->
 
 
 # DB format - V1
@@ -59,7 +60,7 @@ erDiagram
 
     USER {
         integer id PK
-        string email
+        string username
         string password_hash
         timestamp created_at
     }
@@ -177,16 +178,6 @@ erDiagram
         timestamp occurred_at
     }
 
-    RETROACTIVE_EDIT {
-        integer id PK
-        integer day_record_id FK
-        string edit_type
-        integer category_id FK
-        time block_start
-        integer duration_minutes
-        timestamp occurred_at
-    }
-
     ACTUAL_BLOCK {
         integer id PK
         integer day_record_id FK
@@ -225,8 +216,6 @@ erDiagram
     DAY_RECORD ||--o{ DAY_EVENT : "contains"
     DAY_EVENT }o--o| BLOCK_CATEGORY : "outgoing category"
     DAY_EVENT }o--o| BLOCK_CATEGORY : "incoming category"
-    DAY_RECORD ||--o{ RETROACTIVE_EDIT : "contains"
-    RETROACTIVE_EDIT }o--o| BLOCK_CATEGORY : "assigns category"
     DAY_RECORD ||--o{ ACTUAL_BLOCK : "has derived"
     ACTUAL_BLOCK }o--|| BLOCK_CATEGORY : "classified by"
 ```
@@ -271,9 +260,6 @@ Index Suggestions
 `DAY_EVENT`
 - **`(day_record_id, occurred_at)`** — events are appended and replayed in order per day record; ordering by time is required for correct block derivation
 
-`RETROACTIVE_EDIT`
-- **`(day_record_id, occurred_at)`** — same rationale as `DAY_EVENT`; edits must be replayed in order alongside events during recomputation
-
 `ACTUAL_BLOCK`
 - **`(day_record_id)`** — every day record fetch joins to its actual blocks; high frequency, same pattern as `SNAPSHOT_BLOCK`
 - **`(day_record_id, start_time)`** — analytics and health view need blocks in time order within a day; also used when recomputing blocks after new events or edits
@@ -288,7 +274,7 @@ Creates a new user account and returns a JWT token.
 **Input:**
 ```json
 {
-  "email": "string",
+  "username": "string",
   "password": "string"
 }
 ```
@@ -303,7 +289,7 @@ Creates a new user account and returns a JWT token.
 
 **Errors:**
 - `400` — missing or malformed fields
-- `409` — email already registered
+- `409` — username already registered
 
 ### `POST /auth/login`
 Authenticates an existing user and returns a JWT token.
@@ -311,7 +297,7 @@ Authenticates an existing user and returns a JWT token.
 **Input:**
 ```json
 {
-  "email": "string",
+  "username": "string",
   "password": "string"
 }
 ```
@@ -442,8 +428,7 @@ After processing, the server updates `last_sync_at` for the device.
       "entity_type": "string",
       "entity_id": "integer",
       "operation": "string (create | update | delete)",
-      "occurred_at": "timestamp (ISO 8601)",
-      "payload": {}
+      "occurred_at": "timestamp (ISO 8601)"
     }
   ],
   "conflicts": [
@@ -983,6 +968,7 @@ Only valid for records with status `Unreviewed`.
 - `403` — day record is Reviewed or Ignored
 - `404` — day record not found or does not belong to user
 
+<!-- TBD
 ### `POST /day-records/{id}/edits`
 Appends one or more retroactive edits to a day record. Used during the Day View review session on the web app. After persisting edits, the server recomputes and replaces the `actual_blocks` for the day.
 
@@ -1041,7 +1027,7 @@ Only valid for records with status `Unreviewed`.
 **Errors:**
 - `400` — invalid edit_type, block_start not on 15-min boundary, duration below 30 min or not a 15-min multiple, unknown category_id
 - `403` — day record is Reviewed or Ignored
-- `404` — day record not found or does not belong to user
+- `404` — day record not found or does not belong to user -->
 
 <!-- Still under discussion whether we want to calculate it locally or server-side
 ## Analytics

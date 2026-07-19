@@ -1,25 +1,38 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type API struct {
-	db         *pgxpool.Pool
-	jwtSecret  string
-	userRepo   *UserRepository
+	db                *pgxpool.Pool
+	jwtSecret         string
+	userRepo          *UserRepository
+	settingsRepo      *UserSettingsRepository
+	deviceRepo        *DeviceRepository
+	categoryRepo      *CategoryRepository
+	templateGroupRepo *TemplateGroupRepository
+	dayTemplateRepo   *DayTemplateRepository
+	scheduleRepo      *ScheduleRepository
+	dayRecordRepo     *DayRecordRepository
+	changeLogRepo     *ChangeLogRepository
 }
 
 func NewAPI(db *pgxpool.Pool, jwtSecret string) *API {
 	return &API{
-		db:        db,
-		jwtSecret: jwtSecret,
-		userRepo:  NewUserRepository(db),
+		db:                db,
+		jwtSecret:         jwtSecret,
+		userRepo:          NewUserRepository(db),
+		settingsRepo:      NewUserSettingsRepository(db),
+		deviceRepo:        NewDeviceRepository(db),
+		categoryRepo:      NewCategoryRepository(db),
+		templateGroupRepo: NewTemplateGroupRepository(db),
+		dayTemplateRepo:   NewDayTemplateRepository(db),
+		scheduleRepo:      NewScheduleRepository(db),
+		dayRecordRepo:     NewDayRecordRepository(db),
+		changeLogRepo:     NewChangeLogRepository(db),
 	}
 }
 
@@ -57,18 +70,3 @@ func NewCORSMiddleware(allowedOrigins []string) func(http.HandlerFunc) http.Hand
 		}
 	}
 }
-
-func (api *API) HealthHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-
-	if err := api.db.Ping(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"status": "unhealthy", "error": err.Error()})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
-}
-

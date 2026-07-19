@@ -19,5 +19,14 @@ format:
 	cd web-front && pnpm exec prettier --write . --ignore-unknown || true
 	@echo "Code formatted"
 
+test-prepare:
+	-colima start
+	docker-compose up -d test-db
+	@echo "Waiting for test-db to be ready..."
+	@until docker exec test-db pg_isready -U postgres; do sleep 1; done
+
 railway:
 	railway up ./api-backend/ --path-as-root
+
+test: test-prepare
+	export TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db?sslmode=disable" && cd api-backend && go test ./... -v

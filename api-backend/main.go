@@ -57,8 +57,22 @@ func main() {
 
 	// Register routes
 	http.HandleFunc("/health", api.HealthHandler)
-	http.HandleFunc("/register", corsMiddleware(api.registerHandler))
-	http.HandleFunc("/login", corsMiddleware(api.loginHandler))
+	http.HandleFunc("/auth/register", corsMiddleware(api.registerHandler))
+	http.HandleFunc("/auth/login", corsMiddleware(api.loginHandler))
+	http.HandleFunc("/account", corsMiddleware(api.authMiddleware(api.deleteAccountHandler)))
+	http.HandleFunc("/settings", corsMiddleware(api.authMiddleware(api.settingsHandler)))
+	http.HandleFunc("/devices", corsMiddleware(api.authMiddleware(api.registerDeviceHandler)))
+	http.HandleFunc("/sync", corsMiddleware(api.authMiddleware(api.syncHandler)))
+	http.HandleFunc("/categories", corsMiddleware(api.authMiddleware(api.categoriesHandler)))
+	http.HandleFunc("/categories/", corsMiddleware(api.authMiddleware(api.categoriesHandler)))
+	http.HandleFunc("/schedule", corsMiddleware(api.authMiddleware(api.scheduleHandler)))
+	http.HandleFunc("/schedule/", corsMiddleware(api.authMiddleware(api.scheduleHandler)))
+	http.HandleFunc("/template-groups", corsMiddleware(api.authMiddleware(api.templateGroupsHandler)))
+	http.HandleFunc("/template-groups/", corsMiddleware(api.authMiddleware(api.templateGroupsHandler)))
+	http.HandleFunc("/templates", corsMiddleware(api.authMiddleware(api.dayTemplatesHandler)))
+	http.HandleFunc("/templates/", corsMiddleware(api.authMiddleware(api.dayTemplatesHandler)))
+	http.HandleFunc("/day-records", corsMiddleware(api.authMiddleware(api.dayRecordsHandler)))
+	http.HandleFunc("/day-records/", corsMiddleware(api.authMiddleware(api.dayRecordsHandler)))
 
 	// Start server
 	log.Printf("Server starting on port %s", port)
