@@ -2,6 +2,7 @@ import { useAuthStore } from './store/authStore';
 import { Route, Switch, Link, Router } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import LoginForm from './components/LoginForm';
+import Home from './components/Home';
 import TokenDisplay from './components/TokenDisplay';
 import CategoryList from './components/CategoryList';
 import TemplateList from './components/TemplateList';
@@ -41,33 +42,37 @@ function App() {
             <div className="flex items-center gap-6">
               <h1 className="text-xl font-semibold text-snow">Todo Planner</h1>
               <div className="flex gap-4">
-                <Link href="/">
-                  <a className={`px-3 py-1 text-sm transition-colors duration-micro ${
+                <Link
+                  href="/"
+                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
                     location === '/' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
-                  }`}>
-                    Home
-                  </a>
+                  }`}
+                >
+                  Home
                 </Link>
-                <Link href="/categories">
-                  <a className={`px-3 py-1 text-sm transition-colors duration-micro ${
+                <Link
+                  href="/categories"
+                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
                     location === '/categories' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
-                  }`}>
-                    Categories
-                  </a>
+                  }`}
+                >
+                  Categories
                 </Link>
-                <Link href="/templates">
-                  <a className={`px-3 py-1 text-sm transition-colors duration-micro ${
+                <Link
+                  href="/templates"
+                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
                     location.startsWith('/templates') ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
-                  }`}>
-                    Templates
-                  </a>
+                  }`}
+                >
+                  Templates
                 </Link>
-                <Link href="/schedule">
-                  <a className={`px-3 py-1 text-sm transition-colors duration-micro ${
+                <Link
+                  href="/schedule"
+                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
                     location === '/schedule' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
-                  }`}>
-                    Schedule
-                  </a>
+                  }`}
+                >
+                  Schedule
                 </Link>
               </div>
               <button
@@ -82,7 +87,8 @@ function App() {
 
         <main className="max-w-6xl mx-auto px-6 py-8">
           <Switch>
-            <Route path="/" component={TokenDisplay} />
+            <Route path="/" component={Home} />
+            <Route path="/token" component={TokenDisplay} />
             <Route path="/categories" component={CategoryList} />
             <Route path="/templates">
               <TemplateList onEdit={handleEditTemplate} onCreate={handleCreateTemplate} />
@@ -92,9 +98,9 @@ function App() {
             </Route>
             <Route path="/templates/edit/:id">
               {(params) => (
-                <TemplateEditor 
-                  templateId={params.id ? parseInt(params.id) : null} 
-                  onClose={handleCloseEditor} 
+                <TemplateEditor
+                  templateId={params.id ? parseInt(params.id) : null}
+                  onClose={handleCloseEditor}
                 />
               )}
             </Route>

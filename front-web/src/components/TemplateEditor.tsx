@@ -88,56 +88,54 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
   };
 
   return (
-    <div className="w-full max-w-3xl">
-      <div className="bg-slate-blue/10 border border-slate-grey rounded-outer p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold text-snow">
-            {templateId ? 'Edit Template' : 'New Template'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="px-3 py-1 text-sm text-cloud hover:text-snow transition-colors duration-micro"
-          >
-            Close
-          </button>
+    <div className="w-full">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-semibold text-snow">
+          {templateId ? 'Edit Template' : 'New Template'}
+        </h2>
+        <button
+          onClick={onClose}
+          className="px-3 py-1 text-sm text-cloud hover:text-snow transition-colors duration-micro"
+        >
+          Close
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-error/10 border border-error rounded-lg text-error text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-cloud mb-2">Template Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-4 py-2 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro focus:border-cloud"
+            placeholder="e.g., Weekday Work Schedule"
+            autoFocus
+          />
         </div>
 
-        {error && (
-          <div className="mb-4 px-4 py-3 bg-error/10 border border-error rounded-lg text-error text-sm">
-            {error}
-          </div>
-        )}
+        <TimelineEditor blocks={blocks} categories={categories} onChange={setBlocks} />
 
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-cloud mb-2">Template Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro focus:border-cloud"
-              placeholder="e.g., Weekday Work Schedule"
-              autoFocus
-            />
-          </div>
-
-          <TimelineEditor blocks={blocks} categories={categories} onChange={setBlocks} />
-
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={handleSave}
-              disabled={isSaving || !name.trim()}
-              className="px-6 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
-            >
-              {isSaving ? 'Saving...' : templateId ? 'Update' : 'Create'}
-            </button>
-            <button
-              onClick={onClose}
-              className="px-6 py-2 text-sm font-semibold text-snow bg-navy/60 border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/20"
-            >
-              Cancel
-            </button>
-          </div>
+        <div className="flex gap-3 pt-4">
+          <button
+            onClick={handleSave}
+            disabled={isSaving || !name.trim()}
+            className="px-6 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
+          >
+            {isSaving ? 'Saving...' : templateId ? 'Update' : 'Create'}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 text-sm font-semibold text-snow bg-navy/60 border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/20"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>

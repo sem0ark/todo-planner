@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '../services/categories';
+import { DEFAULT_PASTEL_COLORS } from '../utils/colors';
 
 export default function CategoryList() {
   const { token } = useAuthStore();
@@ -9,7 +10,7 @@ export default function CategoryList() {
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
-  const [color, setColor] = useState('#003448');
+  const [color, setColor] = useState(DEFAULT_PASTEL_COLORS[0]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,7 +35,7 @@ export default function CategoryList() {
       const category = await createCategory(token, { name: name.trim(), color });
       addCategory(category);
       setName('');
-      setColor('#003448');
+      setColor(DEFAULT_PASTEL_COLORS[0]);
       setIsCreating(false);
       setError(null);
     } catch (err) {
@@ -49,7 +50,7 @@ export default function CategoryList() {
       updateCategoryStore(id, category);
       setEditingId(null);
       setName('');
-      setColor('#003448');
+      setColor(DEFAULT_PASTEL_COLORS[0]);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update category');
@@ -79,7 +80,7 @@ export default function CategoryList() {
     setEditingId(null);
     setIsCreating(false);
     setName('');
-    setColor('#003448');
+    setColor(DEFAULT_PASTEL_COLORS[0]);
     setError(null);
   };
 
@@ -118,11 +119,26 @@ export default function CategoryList() {
             </div>
             <div>
               <label className="block text-sm font-medium text-cloud mb-2">Color</label>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {DEFAULT_PASTEL_COLORS.map((pastellColor) => (
+                  <button
+                    key={pastellColor}
+                    type="button"
+                    onClick={() => setColor(pastellColor)}
+                    className={`w-10 h-10 rounded-lg border-2 transition-all duration-micro ${
+                      color === pastellColor ? 'border-cloud scale-110' : 'border-slate-grey hover:border-cloud/50'
+                    }`}
+                    style={{ backgroundColor: pastellColor }}
+                    title={pastellColor}
+                  />
+                ))}
+              </div>
               <input
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
                 className="w-20 h-10 bg-navy/60 border-2 border-slate-grey rounded-lg cursor-pointer"
+                title="Custom color"
               />
             </div>
             <div className="flex gap-2">
