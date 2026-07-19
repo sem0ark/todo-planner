@@ -77,7 +77,11 @@ struct ContentView: View {
                 .onDisappear {
                     widgetState.stopPeriodicRefresh()
                 }
-                .keyboardShortcuts(widgetState: widgetState)
+                .onReceive(NotificationCenter.default.publisher(for: .keyPressed)) { notification in
+                    if let event = notification.object as? NSEvent {
+                        handleKeyPress(event)
+                    }
+                }
             } else {
                 LoginView(isAuthenticated: $isAuthenticated)
             }
@@ -90,6 +94,38 @@ struct ContentView: View {
                 .stroke(StyleTokens.structuralBorder.opacity(Palette.borderOpacity), lineWidth: 1)
         )
         .shadow(color: .black.opacity(Palette.shadowOpacity), radius: 12, x: 0, y: 4)
+    }
+
+    private func handleKeyPress(_ event: NSEvent) {
+        let key = event.charactersIgnoringModifiers ?? ""
+
+        print("[KEY] Key pressed: '\(key)' (keyCode: \(event.keyCode))")
+
+        Task {
+            switch key {
+            case " ":
+                print("[KEY] Space - confirming planned")
+                await widgetState.confirmPlanned()
+            case "\r": // Return key
+                print("[KEY] Return - syncing to plan")
+                await widgetState.syncToPlan()
+            case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+                if let number = Int(key) {
+                    let index = number - 1
+                    guard index < widgetState.categories.count else { return }
+                    print("[KEY] Number \(number) - transitioning to category")
+                    await widgetState.transitionToCategory(widgetState.categories[index])
+                }
+            case "[":
+                print("[KEY] [ - adjusting offset -5m")
+                await widgetState.adjustOffset(minutes: -5)
+            case "]":
+                print("[KEY] ] - adjusting offset +5m")
+                await widgetState.adjustOffset(minutes: 5)
+            default:
+                break
+            }
+        }
     }
 }
 
@@ -527,54 +563,5 @@ extension Color {
 extension View {
     func fontVariantMonospacedDigit() -> some View {
         self.monospacedDigit()
-    }
-}
-
-extension View {
-    func keyboardShortcuts(widgetState: WidgetState) -> some View {
-        self
-            .onKeyPress(.space) {
-                Task {
-                    await widgetState.confirmPlanned()
-                }
-                return .handled
-            }
-            .onKeyPress(.return) {
-                Task {
-                    await widgetState.syncToPlan()
-                }
-                return .handled
-            }
-            .onKeyPress("1") { handleNumberKey(1, widgetState: widgetState) }
-            .onKeyPress("2") { handleNumberKey(2, widgetState: widgetState) }
-            .onKeyPress("3") { handleNumberKey(3, widgetState: widgetState) }
-            .onKeyPress("4") { handleNumberKey(4, widgetState: widgetState) }
-            .onKeyPress("5") { handleNumberKey(5, widgetState: widgetState) }
-            .onKeyPress("6") { handleNumberKey(6, widgetState: widgetState) }
-            .onKeyPress("7") { handleNumberKey(7, widgetState: widgetState) }
-            .onKeyPress("8") { handleNumberKey(8, widgetState: widgetState) }
-            .onKeyPress("9") { handleNumberKey(9, widgetState: widgetState) }
-            .onKeyPress("[") {
-                Task {
-                    await widgetState.adjustOffset(minutes: -5)
-                }
-                return .handled
-            }
-            .onKeyPress("]") {
-                Task {
-                    await widgetState.adjustOffset(minutes: 5)
-                }
-                return .handled
-            }
-    }
-
-    private func handleNumberKey(_ number: Int, widgetState: WidgetState) -> KeyPress.Result {
-        let index = number - 1
-        guard index < widgetState.categories.count else { return .ignored }
-
-        Task {
-            await widgetState.transitionToCategory(widgetState.categories[index])
-        }
-        return .handled
     }
 }

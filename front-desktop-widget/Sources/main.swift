@@ -15,6 +15,8 @@ struct TodoPlannerWidgetApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    var keyMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Configure window to be always on top
         if let window = NSApplication.shared.windows.first {
@@ -30,10 +32,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL)
         )
+
+        // Install global keyboard event monitor
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            return self?.handleKeyEvent(event) ?? event
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    @objc private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+        // Post notification with key event for ContentView to handle
+        NotificationCenter.default.post(name: .keyPressed, object: event)
+        return event
     }
 
     @objc func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
@@ -50,4 +69,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DeepLinkHandler.shared.handleURL(url)
         }
     }
+}
+
+extension Notification.Name {
+    static let keyPressed = Notification.Name("keyPressed")
 }

@@ -21,13 +21,15 @@ ifndef SWIFTC
 $(error Swift compiler not found. Install via Swiftly: curl -L https://swift-server.github.io/swiftly/swiftly-install.sh | bash)
 endif
 
-.PHONY: all clean run dev help test install
+.PHONY: all clean run dev help test install build
 
 help: ## Show this help message
 	@echo "Todo Planner Desktop Widget - macOS Swift App"
 	@echo ""
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+build: $(APP_EXECUTABLE) ## Build the application
 
 all: $(APP_EXECUTABLE) ## Build the application
 
@@ -79,6 +81,40 @@ clean: ## Clean build artifacts
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DIR)
 	@echo "✓ Clean complete"
+
+test-prepare: ## Check if test API is available
+	@echo "Checking test API availability..."
+	@curl -sf http://localhost:8080/health >/dev/null 2>&1 || { \
+		echo "Error: Test API not available at http://localhost:8080"; \
+		echo "Start the API with: docker-compose up postgres api"; \
+		exit 1; \
+	}
+	@echo "✓ Test API is running"
+
+test-unit: ## Run all unit tests (no API required)
+	@echo "Running all unit tests..."
+	@mkdir -p build
+	@$(SWIFTC) \
+		-o build/all-tests \
+		-sdk $$(xcrun --show-sdk-path) \
+		-target $(ARCH)-apple-macosx14.0 \
+		Tests/AllTests.swift \
+		Sources/Models/*.swift \
+		Sources/Services/APIClient.swift && \
+	build/all-tests
+
+test-integration: test-prepare ## Run integration tests against local API
+	@echo "Running integration tests..."
+	@mkdir -p build
+	@export API_BASE_URL="http://localhost:8080" && \
+		$(SWIFTC) \
+			-o build/integration-tests \
+			-sdk $$(xcrun --show-sdk-path) \
+			-target $(ARCH)-apple-macosx14.0 \
+			Tests/*.swift Sources/Models/*.swift Sources/Services/APIClient.swift && \
+		build/integration-tests
+
+test: test-unit ## Run all tests (models + state logic + transitions + mock API)
 
 install: all ## Install the app to /Applications
 	@echo "Installing to /Applications..."

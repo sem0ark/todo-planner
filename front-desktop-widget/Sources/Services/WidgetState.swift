@@ -71,6 +71,11 @@ class WidgetState: ObservableObject {
             }
 
             print("[DONE] Initialization complete!")
+            print("[DEBUG] Final state:")
+            print("   - currentCategory: \(currentCategory?.name ?? "nil")")
+            print("   - plannedCategory: \(plannedCategory?.name ?? "nil")")
+            print("   - displayState: \(displayState)")
+            print("   - progressPercentage: \(progressPercentage)")
         } catch {
             print("[ERROR] Initialization error: \(error)")
             if let apiError = error as? APIError {
@@ -199,10 +204,15 @@ class WidgetState: ObservableObject {
         let currentPlanned = getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
         let currentActual = getCurrentActualBlock(at: now, from: record.actualBlocks)
 
-        // Check for new planned block boundary
+        // Always set planned category and progress if there's a current planned block
         if let planned = currentPlanned {
             currentPlannedBlock = planned
             plannedDurationMinutes = planned.durationMinutes
+            plannedCategory = categories.first { $0.id == planned.categoryId }
+            progressPercentage = calculateProgress(for: planned, at: now)
+
+            print("[STATE] Current planned block: \(plannedCategory?.name ?? "unknown")")
+            print("[STATE] Progress: \(Int(progressPercentage * 100))%")
 
             // Check if we're within 1 minute of block start (confirmation window)
             let isAtBoundary = isWithinConfirmationWindow(for: planned, at: now)
@@ -213,16 +223,23 @@ class WidgetState: ObservableObject {
                 isConfirmed = false
 
                 if isAtBoundary {
+                    print("[STATE] At block boundary - showing confirmation prompt")
                     displayState = .confirmationPrompt
                 }
             }
-
-            plannedCategory = categories.first { $0.id == planned.categoryId }
-            progressPercentage = calculateProgress(for: planned, at: now)
+        } else {
+            print("[WARN] No current planned block found")
         }
 
+        // Set current category from actual block, or default to planned on startup
         if let actual = currentActual, let catId = actual.categoryId {
             currentCategory = categories.first { $0.id == catId }
+            print("[STATE] Current category from actual block: \(currentCategory?.name ?? "unknown")")
+        } else if currentCategory == nil, let planned = plannedCategory {
+            // On startup with no actual blocks yet, show planned category
+            // This will be overridden once user makes their first manual selection
+            currentCategory = planned
+            print("[STATE] No actual block yet, showing planned category: \(planned.name)")
         }
 
         // Determine display state (only if not in confirmation mode)
@@ -231,9 +248,11 @@ class WidgetState: ObservableObject {
                 if current.id == planned.id {
                     displayState = .active
                     showOffsetBar = false
+                    print("[STATE] Display state: .active (on schedule)")
                 } else {
                     let wasOffSchedule = displayState == .offSchedule
                     displayState = .offSchedule
+                    print("[STATE] Display state: .offSchedule")
 
                     // Start offset bar timer on new off-schedule transition
                     if !wasOffSchedule {
@@ -241,22 +260,24 @@ class WidgetState: ObservableObject {
                         startOffsetBarTimer()
                     }
                 }
+            } else {
+                print("[WARN] Cannot determine display state - missing current or planned category")
             }
         }
     }
 
     private func isWithinConfirmationWindow(for block: PlannedBlock, at time: Date) -> Bool {
         let calendar = Calendar.current
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm:ss"
 
-        guard let blockStart = timeFormatter.date(from: block.startTime) else { return false }
+        // Parse time - handle both "HH:mm:ss" and "HH:mm:ss.SSSSSS" formats
+        let timeString = block.startTime.components(separatedBy: ".").first ?? block.startTime
+        let timeParts = timeString.split(separator: ":").compactMap { Int($0) }
+        guard timeParts.count == 3 else { return false }
 
-        let startComponents = calendar.dateComponents([.hour, .minute, .second], from: blockStart)
+        let blockStartSeconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+
         let currentComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
-
         let currentSeconds = (currentComponents.hour ?? 0) * 3600 + (currentComponents.minute ?? 0) * 60 + (currentComponents.second ?? 0)
-        let blockStartSeconds = (startComponents.hour ?? 0) * 3600 + (startComponents.minute ?? 0) * 60 + (startComponents.second ?? 0)
 
         let elapsed = currentSeconds - blockStartSeconds
 
@@ -275,16 +296,16 @@ class WidgetState: ObservableObject {
 
     private func calculateProgress(for block: PlannedBlock, at time: Date) -> Double {
         let calendar = Calendar.current
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm:ss"
 
-        guard let blockStart = timeFormatter.date(from: block.startTime) else { return 0 }
+        // Parse time - handle both "HH:mm:ss" and "HH:mm:ss.SSSSSS" formats
+        let timeString = block.startTime.components(separatedBy: ".").first ?? block.startTime
+        let timeParts = timeString.split(separator: ":").compactMap { Int($0) }
+        guard timeParts.count == 3 else { return 0 }
 
-        let startComponents = calendar.dateComponents([.hour, .minute, .second], from: blockStart)
+        let blockStartSeconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+
         let currentComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
-
         let currentSeconds = (currentComponents.hour ?? 0) * 3600 + (currentComponents.minute ?? 0) * 60 + (currentComponents.second ?? 0)
-        let blockStartSeconds = (startComponents.hour ?? 0) * 3600 + (startComponents.minute ?? 0) * 60 + (startComponents.second ?? 0)
         let blockDurationSeconds = block.durationMinutes * 60
 
         let elapsed = max(0, currentSeconds - blockStartSeconds)
@@ -293,17 +314,17 @@ class WidgetState: ObservableObject {
 
     private func getCurrentPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
         let calendar = Calendar.current
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm:ss"
 
         for block in blocks {
-            guard let blockStart = timeFormatter.date(from: block.startTime) else { continue }
+            // Parse time - handle both "HH:mm:ss" and "HH:mm:ss.SSSSSS" formats
+            let timeString = block.startTime.components(separatedBy: ".").first ?? block.startTime
+            let timeParts = timeString.split(separator: ":").compactMap { Int($0) }
+            guard timeParts.count == 3 else { continue }
 
-            let startComponents = calendar.dateComponents([.hour, .minute, .second], from: blockStart)
+            let blockStartSeconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+
             let currentComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
-
             let currentSeconds = (currentComponents.hour ?? 0) * 3600 + (currentComponents.minute ?? 0) * 60 + (currentComponents.second ?? 0)
-            let blockStartSeconds = (startComponents.hour ?? 0) * 3600 + (startComponents.minute ?? 0) * 60 + (startComponents.second ?? 0)
             let blockEndSeconds = blockStartSeconds + (block.durationMinutes * 60)
 
             if currentSeconds >= blockStartSeconds && currentSeconds < blockEndSeconds {
@@ -316,17 +337,17 @@ class WidgetState: ObservableObject {
 
     private func getCurrentActualBlock(at time: Date, from blocks: [ActualBlock]) -> ActualBlock? {
         let calendar = Calendar.current
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm:ss"
 
         for block in blocks {
-            guard let blockStart = timeFormatter.date(from: block.startTime) else { continue }
+            // Parse time - handle both "HH:mm:ss" and "HH:mm:ss.SSSSSS" formats
+            let timeString = block.startTime.components(separatedBy: ".").first ?? block.startTime
+            let timeParts = timeString.split(separator: ":").compactMap { Int($0) }
+            guard timeParts.count == 3 else { continue }
 
-            let startComponents = calendar.dateComponents([.hour, .minute, .second], from: blockStart)
+            let blockStartSeconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+
             let currentComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
-
             let currentSeconds = (currentComponents.hour ?? 0) * 3600 + (currentComponents.minute ?? 0) * 60 + (currentComponents.second ?? 0)
-            let blockStartSeconds = (startComponents.hour ?? 0) * 3600 + (startComponents.minute ?? 0) * 60 + (startComponents.second ?? 0)
             let blockEndSeconds = blockStartSeconds + (block.durationMinutes * 60)
 
             if currentSeconds >= blockStartSeconds && currentSeconds < blockEndSeconds {

@@ -5,7 +5,7 @@ struct LoginView: View {
     @State private var token: String = ""
     @State private var errorMessage: String?
 
-    private let webAppURL = "http://localhost:5173/todo-planner/"
+    private let webAppURL = "http://localhost:5173/todo-planner/#/token"
 
     var body: some View {
         HStack(spacing: 0) {
