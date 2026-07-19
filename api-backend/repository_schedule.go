@@ -19,20 +19,20 @@ func NewScheduleRepository(db *pgxpool.Pool) *ScheduleRepository {
 
 // WeeklySchedule struct already defined in models.go
 type WeeklySchedule struct {
-	ID            int        `json:"id,omitempty"`
+	ID            int        `json:"id"`
 	UserID        int        `json:"user_id"`
 	DayOfWeek     int        `json:"day_of_week"`
-	DayTemplateID *int       `json:"day_template_id,omitempty"`
-	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+	DayTemplateID *int       `json:"day_template_id"`
+	UpdatedAt     *time.Time `json:"updated_at"`
 }
 
 // ScheduleOverride struct already defined in models.go
 type ScheduleOverride struct {
-	ID            int        `json:"id,omitempty"`
+	ID            int        `json:"id"`
 	UserID        int        `json:"user_id"`
 	CalendarDate  string     `json:"calendar_date"`
-	DayTemplateID *int       `json:"day_template_id,omitempty"`
-	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	DayTemplateID *int       `json:"day_template_id"`
+	CreatedAt     *time.Time `json:"created_at"`
 }
 
 // GetWeeklySchedule returns all 7 days of the week (0-6), inserting missing entries

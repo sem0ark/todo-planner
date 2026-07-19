@@ -6,14 +6,14 @@ type TemplateSnapshot struct {
 	ID             int             `json:"id"`
 	DayTemplateID  int             `json:"day_template_id"`
 	UserID         int             `json:"user_id"`
-	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks,omitempty"`
+	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks"`
 	SnapshottedAt  time.Time       `json:"snapshotted_at"`
 }
 
 // A time block in a template snapshot
 type SnapshotBlock struct {
 	ID              int    `json:"id"`
-	SnapshotID      int    `json:"snapshot_id,omitempty"`
+	SnapshotID      int    `json:"snapshot_id"`
 	CategoryID      int    `json:"category_id"`
 	StartTime       string `json:"start_time"` // HH:MM:SS
 	DurationMinutes int    `json:"duration_minutes"`
@@ -23,11 +23,11 @@ type SnapshotBlock struct {
 type DayRecord struct {
 	ID             int             `json:"id"`
 	UserID         int             `json:"user_id"`
-	SnapshotID     *int            `json:"snapshot_id,omitempty"`
+	SnapshotID     *int            `json:"snapshot_id"`
 	CalendarDate   string          `json:"calendar_date"` // YYYY-MM-DD
 	ReviewStatus   string          `json:"review_status"` // Unreviewed | Reviewed | Ignored
-	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks,omitempty"`
-	ActualBlocks   []ActualBlock   `json:"actual_blocks,omitempty"`
+	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks"`
+	ActualBlocks   []ActualBlock   `json:"actual_blocks"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 }
@@ -35,29 +35,30 @@ type DayRecord struct {
 // A real-time activity confirmation or transition
 type DayEvent struct {
 	ID                 int       `json:"id"`
-	DayRecordID        int       `json:"day_record_id,omitempty"`
+	DayRecordID        int       `json:"day_record_id"`
 	EventType          string    `json:"event_type"` // confirmation | transition
-	OutgoingCategoryID *int      `json:"outgoing_category_id,omitempty"`
-	IncomingCategoryID *int      `json:"incoming_category_id,omitempty"`
+	OutgoingCategoryID *int      `json:"outgoing_category_id"`
+	IncomingCategoryID *int      `json:"incoming_category_id"`
 	OccurredAt         time.Time `json:"occurred_at"`
 }
 
 // A manual edit to a day's record
-type RetroactiveEdit struct {
-	ID              int       `json:"id"`
-	DayRecordID     int       `json:"day_record_id,omitempty"`
-	EditType        string    `json:"edit_type"` // resize | move | relabel | split | mark_blank
-	CategoryID      *int      `json:"category_id,omitempty"`
-	BlockStart      string    `json:"block_start"` // HH:MM:SS
-	DurationMinutes *int      `json:"duration_minutes,omitempty"`
-	OccurredAt      time.Time `json:"occurred_at"`
-}
+// Instead of storing the edit, store apply result.
+// type RetroactiveEdit struct {
+// 	ID              int       `json:"id"`
+// 	DayRecordID     int       `json:"day_record_id"`
+// 	EditType        string    `json:"edit_type"` // resize | move | relabel | split | mark_blank
+// 	CategoryID      *int      `json:"category_id"`
+// 	BlockStart      string    `json:"block_start"` // HH:MM:SS
+// 	DurationMinutes *int      `json:"duration_minutes"`
+// 	OccurredAt      time.Time `json:"occurred_at"`
+// }
 
 // A derived time block for a day record
 type ActualBlock struct {
 	ID              int       `json:"id"`
-	DayRecordID     int       `json:"day_record_id,omitempty"`
-	CategoryID      *int      `json:"category_id,omitempty"`
+	DayRecordID     int       `json:"day_record_id"`
+	CategoryID      *int      `json:"category_id"`
 	BlockType       string    `json:"block_type"` // actual | blank | untracked
 	StartTime       string    `json:"start_time"` // HH:MM:SS
 	DurationMinutes int       `json:"duration_minutes"`
@@ -72,12 +73,12 @@ type WeeklyScheduleInput struct {
 // A single day's template assignment
 type WeeklyScheduleEntry struct {
 	DayOfWeek     int  `json:"day_of_week"`
-	DayTemplateID *int `json:"day_template_id,omitempty"`
+	DayTemplateID *int `json:"day_template_id"`
 }
 
 // Schedule override creation/update request data
 type ScheduleOverrideInput struct {
-	DayTemplateID *int `json:"day_template_id,omitempty"`
+	DayTemplateID *int `json:"day_template_id"`
 }
 
 // Day record creation request data
@@ -98,8 +99,8 @@ type DayEventsInput struct {
 // A single day event input
 type DayEventInput struct {
 	EventType          string    `json:"event_type"` // confirmation | transition
-	OutgoingCategoryID *int      `json:"outgoing_category_id,omitempty"`
-	IncomingCategoryID *int      `json:"incoming_category_id,omitempty"`
+	OutgoingCategoryID *int      `json:"outgoing_category_id"`
+	IncomingCategoryID *int      `json:"incoming_category_id"`
 	OccurredAt         time.Time `json:"occurred_at"`
 }
 
@@ -111,9 +112,9 @@ type RetroactiveEditsInput struct {
 // A single retroactive edit input
 type RetroactiveEditInput struct {
 	EditType        string    `json:"edit_type"` // resize | move | relabel | split | mark_blank
-	CategoryID      *int      `json:"category_id,omitempty"`
+	CategoryID      *int      `json:"category_id"`
 	BlockStart      string    `json:"block_start"` // ISO 8601 time string
-	DurationMinutes *int      `json:"duration_minutes,omitempty"`
+	DurationMinutes *int      `json:"duration_minutes"`
 	OccurredAt      time.Time `json:"occurred_at"`
 }
 

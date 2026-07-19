@@ -17,7 +17,7 @@ type Device struct {
 	Platform     string     `json:"platform"` // desktop | mobile | web
 	TokenHash    string     `json:"-"`
 	RegisteredAt time.Time  `json:"registered_at"`
-	LastSyncAt   *time.Time `json:"last_sync_at,omitempty"`
+	LastSyncAt   *time.Time `json:"last_sync_at"`
 }
 
 type DeviceRepository struct {

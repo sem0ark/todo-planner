@@ -15,9 +15,9 @@ var ErrDayTemplateNotFound = errors.New("day template not found")
 type DayTemplate struct {
 	ID              int            `json:"id"`
 	UserID          int            `json:"user_id"`
-	TemplateGroupID *int           `json:"template_group_id,omitempty"`
+	TemplateGroupID *int           `json:"template_group_id"`
 	Name            string         `json:"name"`
-	PlannedBlocks   []PlannedBlock `json:"planned_blocks,omitempty"`
+	PlannedBlocks   []PlannedBlock `json:"planned_blocks"`
 	IsDeleted       bool           `json:"-"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -26,7 +26,7 @@ type DayTemplate struct {
 // A time block in a day template
 type PlannedBlock struct {
 	ID              int    `json:"id"`
-	DayTemplateID   int    `json:"day_template_id,omitempty"`
+	DayTemplateID   int    `json:"day_template_id"`
 	CategoryID      int    `json:"category_id"`
 	StartTime       string `json:"start_time"` // HH:MM:SS
 	DurationMinutes int    `json:"duration_minutes"`
@@ -35,7 +35,7 @@ type PlannedBlock struct {
 // Day template creation/update request data
 type DayTemplateInput struct {
 	Name            string              `json:"name"`
-	TemplateGroupID *int                `json:"template_group_id,omitempty"`
+	TemplateGroupID *int                `json:"template_group_id"`
 	PlannedBlocks   []PlannedBlockInput `json:"planned_blocks"`
 }
 
@@ -165,6 +165,11 @@ func (r *DayTemplateRepository) Create(ctx context.Context, input DayTemplateInp
 	}
 	template.PlannedBlocks = blocks
 
+	// Create snapshot of the template
+	if err := r.createSnapshot(ctx, tx, template.ID, userID, blocks); err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -216,11 +221,43 @@ func (r *DayTemplateRepository) Update(ctx context.Context, id int, input DayTem
 	}
 	template.PlannedBlocks = blocks
 
+	// Create new snapshot of the updated template
+	if err := r.createSnapshot(ctx, tx, template.ID, userID, blocks); err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
 	return &template, nil
+}
+
+// createSnapshot creates a snapshot of a template's planned blocks
+func (r *DayTemplateRepository) createSnapshot(ctx context.Context, tx pgx.Tx, templateID, userID int, blocks []PlannedBlock) error {
+	// Create snapshot entry
+	var snapshotID int
+	err := tx.QueryRow(ctx, `
+		INSERT INTO template_snapshots (day_template_id, user_id, snapshotted_at)
+		VALUES ($1, $2, NOW())
+		RETURNING id
+	`, templateID, userID).Scan(&snapshotID)
+	if err != nil {
+		return err
+	}
+
+	// Copy all planned blocks to snapshot_blocks
+	for _, block := range blocks {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO snapshot_blocks (snapshot_id, category_id, start_time, duration_minutes)
+			VALUES ($1, $2, $3, $4)
+		`, snapshotID, block.CategoryID, block.StartTime, block.DurationMinutes)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *DayTemplateRepository) Delete(ctx context.Context, id, userID int) error {

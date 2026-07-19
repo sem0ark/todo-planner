@@ -43,6 +43,9 @@ func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, f
 				return nil, err
 			}
 			rec.SnapshotBlocks = snapshotBlocks
+		} else {
+			// Initialize empty slice when no snapshot exists
+			rec.SnapshotBlocks = make([]SnapshotBlock, 0)
 		}
 
 		// Load actual blocks
@@ -77,6 +80,9 @@ func (r *DayRecordRepository) FindByID(ctx context.Context, id, userID int) (*Da
 			return nil, err
 		}
 		rec.SnapshotBlocks = snapshotBlocks
+	} else {
+		// Initialize empty slice when no snapshot exists
+		rec.SnapshotBlocks = make([]SnapshotBlock, 0)
 	}
 
 	// Load actual blocks
