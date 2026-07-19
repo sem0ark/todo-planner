@@ -533,6 +533,29 @@ struct RightRailView: View {
             }
             Spacer()
 
+            // Open Web App button
+            Button(action: {
+                openWebApp()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "safari")
+                        .font(.system(size: Typography.labelBold))
+                    Text("Open Web")
+                        .font(.system(size: Typography.labelBold))
+                }
+                .foregroundColor(StyleTokens.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .background(StyleTokens.baseVoid)
+            .overlay(
+                Rectangle()
+                    .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
+                    .frame(height: 1),
+                alignment: .top
+            )
+
             // Logout button at the bottom
             Button(action: {
                 logout()
@@ -557,6 +580,16 @@ struct RightRailView: View {
             )
         }
         .background(StyleTokens.baseVoid)
+    }
+
+    private func openWebApp() {
+        print("[WEB] Opening web app in browser...")
+        if let url = URL(string: BuildConfig.webAppBaseURL) {
+            NSWorkspace.shared.open(url)
+            print("[WEB] Browser opened: \(BuildConfig.webAppBaseURL)")
+        } else {
+            print("[ERROR] Invalid web app URL: \(BuildConfig.webAppBaseURL)")
+        }
     }
 
     private func logout() {
