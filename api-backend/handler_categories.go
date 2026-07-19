@@ -33,7 +33,9 @@ func (api *API) getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	categories, err := api.categoryRepo.FindByUser(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch categories", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -51,7 +53,9 @@ func (api *API) createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input CategoryInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -67,7 +71,10 @@ func (api *API) createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	category, err := api.categoryRepo.Create(r.Context(), input, userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create category", err, map[string]interface{}{
+			"user_id": userID,
+			"name":    input.Name,
+		})
 		return
 	}
 
@@ -85,7 +92,9 @@ func (api *API) updateCategoryHandler(w http.ResponseWriter, r *http.Request, id
 
 	var input CategoryInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -105,7 +114,11 @@ func (api *API) updateCategoryHandler(w http.ResponseWriter, r *http.Request, id
 			http.Error(w, "category not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update category", err, map[string]interface{}{
+			"user_id":     userID,
+			"category_id": id,
+			"name":        input.Name,
+		})
 		return
 	}
 
@@ -126,7 +139,10 @@ func (api *API) deleteCategoryHandler(w http.ResponseWriter, r *http.Request, id
 			http.Error(w, "category not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete category", err, map[string]interface{}{
+			"user_id":     userID,
+			"category_id": id,
+		})
 		return
 	}
 

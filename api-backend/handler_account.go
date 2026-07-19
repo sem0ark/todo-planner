@@ -27,7 +27,9 @@ func (api *API) deleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input DeleteAccountInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -38,12 +40,21 @@ func (api *API) deleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := api.userRepo.DeleteAccount(r.Context(), userID, input.Password); err != nil {
 		if err == ErrInvalidPassword {
+			api.logger.Warn("Account deletion failed - invalid password", map[string]interface{}{
+				"user_id": userID,
+			})
 			http.Error(w, "invalid password confirmation", http.StatusUnauthorized)
 			return
 		}
-		http.Error(w, "failed to delete account", http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete account", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
+
+	api.logger.Info("User account deleted", map[string]interface{}{
+		"user_id": userID,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(DeleteAccountResponse{Deleted: true})

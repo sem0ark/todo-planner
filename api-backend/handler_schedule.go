@@ -44,14 +44,14 @@ func (api *API) getScheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Get weekly schedule
 	weeklySchedule, err := api.scheduleRepo.GetWeeklySchedule(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch weekly schedules", err, map[string]interface{}{"user_id": userID})
 		return
 	}
 
 	// Get future overrides
 	overrides, err := api.scheduleRepo.GetFutureOverrides(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch schedule overrides", err, map[string]interface{}{"user_id": userID})
 		return
 	}
 
@@ -97,7 +97,7 @@ func (api *API) putWeeklyScheduleHandler(w http.ResponseWriter, r *http.Request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to save schedule", err, map[string]interface{}{"user_id": userID})
 		return
 	}
 
@@ -145,7 +145,7 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	// Set or remove override
 	override, err := api.scheduleRepo.SetOverride(r.Context(), userID, dateStr, input.DayTemplateID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete schedule override", err, map[string]interface{}{"user_id": userID, "date": dateStr})
 		return
 	}
 

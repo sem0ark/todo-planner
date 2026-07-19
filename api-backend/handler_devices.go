@@ -29,7 +29,9 @@ func (api *API) registerDeviceHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input DeviceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
 
@@ -45,9 +47,18 @@ func (api *API) registerDeviceHandler(w http.ResponseWriter, r *http.Request) {
 
 	device, err := api.deviceRepo.Create(r.Context(), userID, input.Platform)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to register device", err, map[string]interface{}{
+			"user_id":  userID,
+			"platform": input.Platform,
+		})
 		return
 	}
+
+	api.logger.Info("Device registered", map[string]interface{}{
+		"user_id":   userID,
+		"device_id": device.ID,
+		"platform":  input.Platform,
+	})
 
 	response := DeviceResponse{
 		DeviceID:     device.ID,

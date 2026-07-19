@@ -9,6 +9,7 @@ import (
 type API struct {
 	db                *pgxpool.Pool
 	jwtSecret         string
+	logger            *Logger
 	userRepo          *UserRepository
 	settingsRepo      *UserSettingsRepository
 	deviceRepo        *DeviceRepository
@@ -20,10 +21,11 @@ type API struct {
 	changeLogRepo     *ChangeLogRepository
 }
 
-func NewAPI(db *pgxpool.Pool, jwtSecret string) *API {
+func NewAPI(db *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
 	return &API{
 		db:                db,
 		jwtSecret:         jwtSecret,
+		logger:            logger,
 		userRepo:          NewUserRepository(db),
 		settingsRepo:      NewUserSettingsRepository(db),
 		deviceRepo:        NewDeviceRepository(db),
@@ -60,9 +62,10 @@ func NewCORSMiddleware(allowedOrigins []string) func(http.HandlerFunc) http.Hand
 
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Max-Age", "86400") // Cache preflight for 24 hours
 
 			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
+				w.WriteHeader(http.StatusOK)
 				return
 			}
 

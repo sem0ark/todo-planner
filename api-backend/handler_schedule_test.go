@@ -13,7 +13,7 @@ import (
 func TestGetScheduleHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodGet, "/schedule", nil)
@@ -42,7 +42,7 @@ func TestGetScheduleHandler_Success(t *testing.T) {
 func TestGetScheduleHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	req := httptest.NewRequest(http.MethodGet, "/schedule", nil)
 	w := httptest.NewRecorder()
@@ -59,7 +59,7 @@ func TestGetScheduleHandler_NoAuth(t *testing.T) {
 func TestGetScheduleHandler_WrongMethod(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPost, "/schedule", nil)
@@ -79,7 +79,7 @@ func TestGetScheduleHandler_WrongMethod(t *testing.T) {
 func TestPutWeeklyScheduleHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 	template1 := createTestDayTemplate(t, db, user.ID, "Workday", nil)
 	template2 := createTestDayTemplate(t, db, user.ID, "Weekend", nil)
@@ -124,7 +124,7 @@ func TestPutWeeklyScheduleHandler_Success(t *testing.T) {
 func TestPutWeeklyScheduleHandler_NotEnoughDays(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := WeeklyScheduleInput{
@@ -153,7 +153,7 @@ func TestPutWeeklyScheduleHandler_NotEnoughDays(t *testing.T) {
 func TestPutWeeklyScheduleHandler_DuplicateDays(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := WeeklyScheduleInput{
@@ -187,7 +187,7 @@ func TestPutWeeklyScheduleHandler_DuplicateDays(t *testing.T) {
 func TestPutWeeklyScheduleHandler_InvalidJSON(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodPut, "/schedule/weekly", bytes.NewReader([]byte("invalid json")))
@@ -209,7 +209,7 @@ func TestPutWeeklyScheduleHandler_InvalidJSON(t *testing.T) {
 func TestPutWeeklyScheduleHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	reqBody := WeeklyScheduleInput{
 		WeeklySchedule: []WeeklyScheduleEntry{
@@ -240,7 +240,7 @@ func TestPutWeeklyScheduleHandler_NoAuth(t *testing.T) {
 func TestPutScheduleOverrideHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 
@@ -278,7 +278,7 @@ func TestPutScheduleOverrideHandler_Success(t *testing.T) {
 func TestPutScheduleOverrideHandler_Delete(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
@@ -312,7 +312,7 @@ func TestPutScheduleOverrideHandler_Delete(t *testing.T) {
 func TestPutScheduleOverrideHandler_InvalidDateFormat(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	invalidDate := "2024-13-01" // Invalid month
@@ -340,7 +340,7 @@ func TestPutScheduleOverrideHandler_InvalidDateFormat(t *testing.T) {
 func TestPutScheduleOverrideHandler_PastDate(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
@@ -368,7 +368,7 @@ func TestPutScheduleOverrideHandler_PastDate(t *testing.T) {
 func TestPutScheduleOverrideHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 
@@ -393,7 +393,7 @@ func TestPutScheduleOverrideHandler_NoAuth(t *testing.T) {
 func TestScheduleHandler_RouteDispatch(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")

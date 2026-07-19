@@ -13,7 +13,7 @@ import (
 func TestGetCategoriesHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	api.categoryRepo.Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
@@ -42,7 +42,7 @@ func TestGetCategoriesHandler_Success(t *testing.T) {
 func TestGetCategoriesHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 
 	req := httptest.NewRequest(http.MethodGet, "/categories", nil)
 	w := httptest.NewRecorder()
@@ -59,7 +59,7 @@ func TestGetCategoriesHandler_NoAuth(t *testing.T) {
 func TestCreateCategoryHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := CategoryInput{Name: "Work", Color: "#FF5733"}
@@ -92,7 +92,7 @@ func TestCreateCategoryHandler_Success(t *testing.T) {
 func TestCreateCategoryHandler_MissingName(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := CategoryInput{Name: "", Color: "#FF5733"}
@@ -130,7 +130,7 @@ func TestCreateCategoryHandler_InvalidColor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			db := setupTestDB(t)
-			api := NewAPI(db, "test-secret")
+			api := NewAPI(db, "test-secret", NewLogger("test"))
 			user := createTestUser(t, db, "testuser_"+tc.name, "password123")
 
 			reqBody := CategoryInput{Name: "Work", Color: tc.color}
@@ -160,7 +160,7 @@ func TestCreateCategoryHandler_ValidColors(t *testing.T) {
 		t.Run(color, func(t *testing.T) {
 			// Arrange
 			db := setupTestDB(t)
-			api := NewAPI(db, "test-secret")
+			api := NewAPI(db, "test-secret", NewLogger("test"))
 			user := createTestUser(t, db, "testuser_"+color, "password123")
 
 			reqBody := CategoryInput{Name: "Work", Color: color}
@@ -186,7 +186,7 @@ func TestCreateCategoryHandler_ValidColors(t *testing.T) {
 func TestUpdateCategoryHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	category, _ := api.categoryRepo.Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
@@ -221,7 +221,7 @@ func TestUpdateCategoryHandler_Success(t *testing.T) {
 func TestUpdateCategoryHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := CategoryInput{Name: "Work", Color: "#FF5733"}
@@ -245,7 +245,7 @@ func TestUpdateCategoryHandler_NotFound(t *testing.T) {
 func TestDeleteCategoryHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	category, _ := api.categoryRepo.Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
@@ -277,7 +277,7 @@ func TestDeleteCategoryHandler_Success(t *testing.T) {
 func TestDeleteCategoryHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	req := httptest.NewRequest(http.MethodDelete, "/categories/99999", nil)
@@ -298,7 +298,7 @@ func TestDeleteCategoryHandler_NotFound(t *testing.T) {
 func TestCategoriesHandler_RouteDispatch(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret")
+	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create a category to update/delete

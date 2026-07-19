@@ -25,6 +25,7 @@ The backend uses a clean, lightweight repository pattern (service-per-table) to 
 - **`handlers.go`** - Main API structure, shared middleware, and request/response utilities.
 - **`handler_....go`** - Feature-specific HTTP handlers (e.g., `handler_health.go`). Define routes, validation, and JSON conversion; delegate business logic to repositories.
 - **`repository_....go`** - Data access layer (e.g., `repository_users.go`). Wraps SQL and entity-related operations.
+- **`logger.go`** - Structured JSON logging system with request/error tracking. See [LOGGING.md](LOGGING.md) for details.
 - **`models.go`** - Shared data structures and entities.
 - **`main.go`** - Entry point, environment configuration, and server initialization.
 
@@ -55,12 +56,42 @@ config.MaxConnIdleTime = 2 * time.Minute
 ```
 **Benefit**: Efficient connection reuse, low memory footprint,
 
+## Middleware Chain
+
+All HTTP requests flow through a centralized middleware stack:
+
+```
+Request → LoggingMiddleware → CORSMiddleware → AuthMiddleware → Handler
+```
+
+1. **LoggingMiddleware** - Logs all requests/responses with timing, captures panics, adds stack traces for errors
+2. **CORSMiddleware** - Handles CORS headers and preflight requests based on `CORS_ALLOWED_ORIGINS`
+3. **AuthMiddleware** - Validates JWT tokens, extracts user context (only on protected routes)
+4. **Handler** - Business logic and response generation
+
+### Error Handling
+
+Use `HTTPError()` to log detailed internal errors while returning generic messages to users:
+
+```go
+HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create user", err, map[string]interface{}{
+    "username": req.Username,
+})
+```
+
+This logs the full error with stack trace internally but returns just "failed to create user" to the client.
+
 ## Security Model
 
 ### Authentication
 - **JWT**: Stateless tokens with HMAC-SHA256 signature
 - **Password**: bcrypt hashing (cost 10)
 - **User Isolation**: All queries filtered by authenticated user ID
+
+### Logging Security
+- **No PII in logs**: Tokens, passwords, and authorization headers are never logged
+- **Failed auth attempts**: Logged at WARN level with username and IP (for monitoring)
+- **Successful logins**: Logged at INFO level with user ID and IP
 
 ## Repository Pattern Example
 

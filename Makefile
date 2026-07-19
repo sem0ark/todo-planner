@@ -12,7 +12,7 @@ lint-backend:
 	cd api-backend && go vet ./...
 
 lint-frontend:
-	cd web-front && pnpm lint
+	cd front-web && pnpm lint
 
 format:
 	cd api-backend && gofmt -w .
