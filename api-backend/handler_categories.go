@@ -10,10 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Category creation/update request data
 type CategoryInput struct {
 	Name  string `json:"name"`
-	Color string `json:"color"` // hex color
+	Color string `json:"color"`
 }
 
 type CategoriesResponse struct {

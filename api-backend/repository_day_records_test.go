@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestDayRecordRepository_Create(t *testing.T) {
@@ -458,4 +459,255 @@ func TestDayRecordRepository_MultipleUsers(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when user1 tries to access user2's record")
 	}
+}
+
+func TestComputeActualBlocks_Empty(t *testing.T) {
+	// Arrange
+	events := []DayEvent{}
+	referenceTime := parseTime("2026-07-20T17:00:00Z")
+
+	// Act
+	blocks := computeActualBlocks(events, referenceTime)
+
+	// Assert
+	if len(blocks) != 0 {
+		t.Errorf("Expected 0 blocks, got %d", len(blocks))
+	}
+}
+
+func TestComputeActualBlocks_OnlyConfirmations(t *testing.T) {
+	// Arrange
+	events := []DayEvent{
+		{
+			ID:         1,
+			EventType:  "confirmation",
+			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
+		},
+		{
+			ID:         2,
+			EventType:  "confirmation",
+			OccurredAt: parseTime("2026-07-20T10:00:00Z"),
+		},
+	}
+	referenceTime := parseTime("2026-07-20T17:00:00Z")
+
+	// Act
+	blocks := computeActualBlocks(events, referenceTime)
+
+	// Assert - confirmations should be skipped
+	if len(blocks) != 0 {
+		t.Errorf("Expected 0 blocks for confirmation-only events, got %d", len(blocks))
+	}
+}
+
+func TestComputeActualBlocks_SingleTransition(t *testing.T) {
+	// Arrange
+	categoryID := 5
+	startTime := parseTime("2026-07-20T09:00:00Z")
+	referenceTime := parseTime("2026-07-20T17:00:00Z")
+
+	events := []DayEvent{
+		{
+			ID:                 1,
+			EventType:          "transition",
+			OccurredAt:         startTime,
+			IncomingCategoryID: &categoryID,
+		},
+	}
+
+	// Act
+	blocks := computeActualBlocks(events, referenceTime)
+
+	// Assert
+	if len(blocks) != 1 {
+		t.Fatalf("Expected 1 block, got %d", len(blocks))
+	}
+	if blocks[0].CategoryID == nil || *blocks[0].CategoryID != categoryID {
+		t.Errorf("Expected category_id %d, got %v", categoryID, blocks[0].CategoryID)
+	}
+	if blocks[0].DurationMinutes != 480 { // 8 hours = 480 minutes
+		t.Errorf("Expected 480 minutes, got %d", blocks[0].DurationMinutes)
+	}
+}
+
+func TestComputeActualBlocks_MultipleTransitions(t *testing.T) {
+	// Arrange
+	category1 := 5
+	category2 := 10
+	referenceTime := parseTime("2026-07-20T17:00:00Z")
+
+	events := []DayEvent{
+		{
+			ID:                 1,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
+			IncomingCategoryID: &category1,
+		},
+		{
+			ID:                 2,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T12:00:00Z"),
+			IncomingCategoryID: &category2,
+		},
+		{
+			ID:                 3,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T13:00:00Z"),
+			IncomingCategoryID: &category1,
+		},
+	}
+
+	// Act
+	blocks := computeActualBlocks(events, referenceTime)
+
+	// Assert
+	if len(blocks) != 3 {
+		t.Fatalf("Expected 3 blocks, got %d", len(blocks))
+	}
+
+	// First block: 9:00 to 12:00 (180 minutes)
+	if *blocks[0].CategoryID != category1 {
+		t.Errorf("Block 0: Expected category %d, got %d", category1, *blocks[0].CategoryID)
+	}
+	if blocks[0].DurationMinutes != 180 {
+		t.Errorf("Block 0: Expected 180 minutes, got %d", blocks[0].DurationMinutes)
+	}
+
+	// Second block: 12:00 to 13:00 (60 minutes)
+	if *blocks[1].CategoryID != category2 {
+		t.Errorf("Block 1: Expected category %d, got %d", category2, *blocks[1].CategoryID)
+	}
+	if blocks[1].DurationMinutes != 60 {
+		t.Errorf("Block 1: Expected 60 minutes, got %d", blocks[1].DurationMinutes)
+	}
+
+	// Third block: 13:00 to 17:00 (240 minutes)
+	if *blocks[2].CategoryID != category1 {
+		t.Errorf("Block 2: Expected category %d, got %d", category1, *blocks[2].CategoryID)
+	}
+	if blocks[2].DurationMinutes != 240 {
+		t.Errorf("Block 2: Expected 240 minutes, got %d", blocks[2].DurationMinutes)
+	}
+}
+
+func TestComputeActualBlocks_MixedEvents(t *testing.T) {
+	// Arrange - transitions interspersed with confirmations
+	category1 := 5
+	category2 := 10
+	referenceTime := parseTime("2026-07-20T17:00:00Z")
+
+	events := []DayEvent{
+		{
+			ID:                 1,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
+			IncomingCategoryID: &category1,
+		},
+		{
+			ID:         2,
+			EventType:  "confirmation",
+			OccurredAt: parseTime("2026-07-20T10:30:00Z"),
+		},
+		{
+			ID:                 3,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T12:00:00Z"),
+			IncomingCategoryID: &category2,
+		},
+		{
+			ID:         4,
+			EventType:  "confirmation",
+			OccurredAt: parseTime("2026-07-20T14:00:00Z"),
+		},
+	}
+
+	// Act
+	blocks := computeActualBlocks(events, referenceTime)
+
+	// Assert
+	if len(blocks) != 2 {
+		t.Fatalf("Expected 2 blocks (confirmations skipped), got %d", len(blocks))
+	}
+
+	// First block: 9:00 to 12:00 (180 minutes)
+	if blocks[0].DurationMinutes != 180 {
+		t.Errorf("Block 0: Expected 180 minutes, got %d", blocks[0].DurationMinutes)
+	}
+
+	// Second block: 12:00 to 17:00 (300 minutes)
+	if blocks[1].DurationMinutes != 300 {
+		t.Errorf("Block 1: Expected 300 minutes, got %d", blocks[1].DurationMinutes)
+	}
+}
+
+func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
+	// Arrange - transitions at same time should be skipped
+	category1 := 5
+	referenceTime := parseTime("2026-07-20T17:00:00Z")
+
+	events := []DayEvent{
+		{
+			ID:                 1,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
+			IncomingCategoryID: &category1,
+		},
+		{
+			ID:                 2,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
+			IncomingCategoryID: &category1,
+		},
+	}
+
+	// Act
+	blocks := computeActualBlocks(events, referenceTime)
+
+	// Assert - first block has zero duration and should be skipped
+	if len(blocks) != 1 {
+		t.Fatalf("Expected 1 block (zero-duration skipped), got %d", len(blocks))
+	}
+	if blocks[0].DurationMinutes != 480 {
+		t.Errorf("Expected 480 minutes, got %d", blocks[0].DurationMinutes)
+	}
+}
+
+func TestComputeActualBlocks_NilCategoryID(t *testing.T) {
+	// Arrange - transitions can have nil category_id
+	referenceTime := parseTime("2026-07-20T17:00:00Z")
+
+	events := []DayEvent{
+		{
+			ID:                 1,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
+			IncomingCategoryID: nil,
+		},
+		{
+			ID:                 2,
+			EventType:          "transition",
+			OccurredAt:         parseTime("2026-07-20T12:00:00Z"),
+			IncomingCategoryID: nil,
+		},
+	}
+
+	// Act
+	blocks := computeActualBlocks(events, referenceTime)
+
+	// Assert
+	if len(blocks) != 2 {
+		t.Fatalf("Expected 2 blocks, got %d", len(blocks))
+	}
+	if blocks[0].CategoryID != nil {
+		t.Errorf("Expected nil category_id, got %v", blocks[0].CategoryID)
+	}
+}
+
+// Helper function to parse time strings for tests
+func parseTime(timeStr string) time.Time {
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		panic(err)
+	}
+	return t
 }

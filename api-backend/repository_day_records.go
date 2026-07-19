@@ -20,7 +20,6 @@ type TemplateSnapshot struct {
 	SnapshottedAt  time.Time       `json:"snapshotted_at"`
 }
 
-// A time block in a template snapshot
 type SnapshotBlock struct {
 	ID              int    `json:"id"`
 	SnapshotID      int    `json:"snapshot_id"`
@@ -29,7 +28,6 @@ type SnapshotBlock struct {
 	DurationMinutes int    `json:"duration_minutes"`
 }
 
-// A day's tracked activity
 type DayRecord struct {
 	ID             int             `json:"id"`
 	UserID         int             `json:"user_id"`
@@ -42,7 +40,13 @@ type DayRecord struct {
 	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
-// A real-time activity confirmation or transition
+type DayEventInput struct {
+	EventType          string    `json:"event_type"` // confirmation | transition
+	OutgoingCategoryID *int      `json:"outgoing_category_id"`
+	IncomingCategoryID *int      `json:"incoming_category_id"`
+	OccurredAt         time.Time `json:"occurred_at"`
+}
+
 type DayEvent struct {
 	ID                 int       `json:"id"`
 	DayRecordID        int       `json:"day_record_id"`
@@ -52,15 +56,6 @@ type DayEvent struct {
 	OccurredAt         time.Time `json:"occurred_at"`
 }
 
-// A single day event input
-type DayEventInput struct {
-	EventType          string    `json:"event_type"` // confirmation | transition
-	OutgoingCategoryID *int      `json:"outgoing_category_id"`
-	IncomingCategoryID *int      `json:"incoming_category_id"`
-	OccurredAt         time.Time `json:"occurred_at"`
-}
-
-// A derived time block for a day record
 type ActualBlock struct {
 	ID              int       `json:"id"`
 	DayRecordID     int       `json:"day_record_id"`
@@ -75,7 +70,6 @@ func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
 	return &DayRecordRepository{db: db}
 }
 
-// FindByDateRange returns all day records for a user within the specified date range
 func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, fromDate, toDate string) ([]DayRecord, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, user_id, snapshot_id, calendar_date::text, review_status, created_at, updated_at
@@ -294,7 +288,6 @@ func (r *DayRecordRepository) resolveTemplateForDate(ctx context.Context, userID
 		WHERE user_id = $1 AND day_of_week = $2
 	`, userID, dayOfWeek).Scan(&templateID)
 	if err != nil {
-		// No weekly schedule entry found - return nil (no template)
 		return nil, nil
 	}
 
@@ -312,7 +305,6 @@ func (r *DayRecordRepository) getLatestSnapshot(ctx context.Context, templateID 
 		LIMIT 1
 	`, templateID).Scan(&snapshot.ID, &snapshot.DayTemplateID, &snapshot.UserID, &snapshot.SnapshottedAt)
 	if err != nil {
-		// No snapshot found
 		return nil, nil
 	}
 
@@ -411,93 +403,45 @@ func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, use
 	return createdEvents, actualBlocks, nil
 }
 
-// recomputeActualBlocks recomputes actual blocks from day events
 func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, dayRecordID int) ([]ActualBlock, error) {
-	// Fetch all events for this day record
 	events, err := r.getDayEvents(ctx, dayRecordID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Delete existing actual blocks
 	_, err = r.db.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
 	if err != nil {
 		return nil, err
 	}
 
-	// If no events, return empty blocks
-	if len(events) == 0 {
+	computedBlocks := computeActualBlocks(events, time.Now())
+
+	if len(computedBlocks) == 0 {
 		return []ActualBlock{}, nil
 	}
 
-	// Compute blocks from events
-	blocks := make([]ActualBlock, 0)
+	// Persist computed blocks to database
+	blocks := make([]ActualBlock, 0, len(computedBlocks))
 	now := time.Now()
 
-	for i := 0; i < len(events); i++ {
-		event := events[i]
-
-		// Skip confirmation events for block computation
-		if event.EventType == "confirmation" {
-			continue
+	for _, computed := range computedBlocks {
+		var block ActualBlock
+		err := r.db.QueryRow(ctx, `
+			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at)
+			VALUES ($1, $2, 'actual', $3, $4, $5)
+			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
+		`, dayRecordID, computed.CategoryID, computed.StartTime.Format("15:04:05"), computed.DurationMinutes, now).Scan(
+			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
 		}
-
-		// For transition events, create a block
-		if event.EventType == "transition" {
-			var startTime time.Time
-			var endTime time.Time
-			var categoryID *int
-
-			// Start time is this transition's occurred_at
-			startTime = event.OccurredAt
-
-			// Category is the incoming category
-			categoryID = event.IncomingCategoryID
-
-			// Find next transition to determine end time
-			if i+1 < len(events) {
-				// Find next transition event
-				for j := i + 1; j < len(events); j++ {
-					if events[j].EventType == "transition" {
-						endTime = events[j].OccurredAt
-						break
-					}
-				}
-				// If no next transition found, block extends to now (ongoing)
-				if endTime.IsZero() {
-					endTime = now
-				}
-			} else {
-				// Last event, block extends to now
-				endTime = now
-			}
-
-			// Calculate duration in minutes
-			duration := int(endTime.Sub(startTime).Minutes())
-			if duration <= 0 {
-				continue
-			}
-
-			// Insert actual block
-			var block ActualBlock
-			err := r.db.QueryRow(ctx, `
-				INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at)
-				VALUES ($1, $2, 'actual', $3, $4, $5)
-				RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
-			`, dayRecordID, categoryID, startTime.Format("15:04:05"), duration, now).Scan(
-				&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt,
-			)
-			if err != nil {
-				return nil, err
-			}
-			blocks = append(blocks, block)
-		}
+		blocks = append(blocks, block)
 	}
 
 	return blocks, nil
 }
 
-// Helper: get day events for a day record
 func (r *DayRecordRepository) getDayEvents(ctx context.Context, dayRecordID int) ([]DayEvent, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at
@@ -520,4 +464,67 @@ func (r *DayRecordRepository) getDayEvents(ctx context.Context, dayRecordID int)
 	}
 
 	return events, nil
+}
+
+type ComputedBlock struct {
+	CategoryID      *int
+	StartTime       time.Time
+	DurationMinutes int
+}
+
+func computeActualBlocks(events []DayEvent, referenceTime time.Time) []ComputedBlock {
+	if len(events) == 0 {
+		return []ComputedBlock{}
+	}
+
+	computedBlocks := make([]ComputedBlock, 0)
+
+	for i := 0; i < len(events); i++ {
+		event := events[i]
+
+		// Skip confirmation events for block computation
+		if event.EventType == "confirmation" {
+			continue
+		}
+
+		// For transition events, create a block
+		if event.EventType == "transition" {
+			startTime := event.OccurredAt
+			categoryID := event.IncomingCategoryID
+
+			// Find next transition to determine end time
+			var endTime time.Time
+			if i+1 < len(events) {
+				for j := i + 1; j < len(events); j++ {
+					if events[j].EventType == "transition" {
+						endTime = events[j].OccurredAt
+						break
+					}
+				}
+				// If no next transition found, block extends to referenceTime (ongoing)
+				if endTime.IsZero() {
+					endTime = referenceTime
+				}
+			} else {
+				// Last event, block extends to referenceTime
+				endTime = referenceTime
+			}
+
+			// Calculate duration in minutes
+			duration := int(endTime.Sub(startTime).Minutes())
+			if duration <= 0 {
+				continue
+			}
+
+			// Create computed block
+			block := ComputedBlock{
+				CategoryID:      categoryID,
+				StartTime:       startTime,
+				DurationMinutes: duration,
+			}
+			computedBlocks = append(computedBlocks, block)
+		}
+	}
+
+	return computedBlocks
 }
