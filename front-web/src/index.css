@@ -1,1 +1,24 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-navy: #003448;
+  --color-slate-blue: #91a6be;
+  --color-slate-grey: #afb6cf;
+  --color-cloud: #dee2ef;
+  --color-snow: #f0f0f0;
+  --color-error: #ff3b30;
+  --color-success: #34c759;
+  --color-warning: #ffcc00;
+
+  /* Font Families */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
+
+  /* Border Radius */
+  --radius-outer: 24px;
+  --radius-inner: 16px;
+
+  /* Transition Duration */
+  --duration-micro: 120ms;
+}
