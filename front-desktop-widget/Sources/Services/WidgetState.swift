@@ -5,6 +5,16 @@ extension Notification.Name {
     static let confirmationNeeded = Notification.Name("confirmationNeeded")
 }
 
+enum PomodoroPhase {
+    case work
+    case rest
+}
+
+struct PomodoroState {
+    var phase: PomodoroPhase
+    var elapsed: Int // seconds
+}
+
 enum WidgetDisplayState {
     case confirmationPrompt // State 1: Planned block boundary reached
     case active             // State 2: On-schedule
@@ -26,6 +36,10 @@ class WidgetState: ObservableObject {
     @Published var offsetMinutes: Int = 0
     @Published var plannedDurationMinutes: Int = 0
 
+    // Pomodoro state
+    @Published var pomodoroState: PomodoroState?
+    @Published var pomodoroProgress: Double = 0.0
+
     private var lastCheckedBlockId: Int?
     private var currentPlannedBlock: PlannedBlock?
 
@@ -33,6 +47,15 @@ class WidgetState: ObservableObject {
     private var refreshTimer: Timer?
     private var offsetBarTimer: Timer?
     private var durationTimer: Timer?
+    private var pomodoroTimer: Timer?
+
+    var pomodoroActive: Bool {
+        displayState == .active && isConfirmed && currentCategory?.hasPomodoroEnabled == true
+    }
+
+    var pomodoroPulsing: Bool {
+        pomodoroActive && pomodoroProgress >= 1.0
+    }
 
     func initialize() async {
         print("[INIT] WidgetState: Starting initialization...")
@@ -85,17 +108,17 @@ class WidgetState: ObservableObject {
             if let apiError = error as? APIError {
                 switch apiError {
                 case .invalidURL:
-                    print("   → Invalid URL configuration")
+                    print("   -> Invalid URL configuration")
                 case .networkError(let underlyingError):
-                    print("   → Network error: \(underlyingError.localizedDescription)")
+                    print("   -> Network error: \(underlyingError.localizedDescription)")
                 case .invalidResponse:
-                    print("   → Invalid response from server")
+                    print("   -> Invalid response from server")
                 case .unauthorized:
-                    print("   → Unauthorized - token may be invalid")
+                    print("   -> Unauthorized - token may be invalid")
                 case .serverError(let code, let message):
-                    print("   → Server error \(code): \(message)")
+                    print("   -> Server error \(code): \(message)")
                 case .decodingError(let underlyingError):
-                    print("   → Decoding error: \(underlyingError)")
+                    print("   -> Decoding error: \(underlyingError)")
                 }
             }
         }
@@ -138,6 +161,9 @@ class WidgetState: ObservableObject {
             lastEventTime = Date()
             isConfirmed = true
             print("[OK] Confirmation complete, state: active")
+
+            // Start pomodoro if applicable
+            startPomodoroIfNeeded()
         } catch {
             print("[ERROR] Confirm error: \(error)")
         }
@@ -178,8 +204,12 @@ class WidgetState: ObservableObject {
             lastEventTime = Date()
             isConfirmed = true
             offsetMinutes = 0 // Reset offset on new transition
+            pomodoroState = nil // Reset pomodoro on transition
             updateCurrentState()
             print("[OK] Transition complete")
+
+            // Start pomodoro if applicable
+            startPomodoroIfNeeded()
         } catch {
             print("[ERROR] Transition error: \(error)")
         }
@@ -273,6 +303,7 @@ class WidgetState: ObservableObject {
                     // New block boundary detected
                     lastCheckedBlockId = current.id
                     isConfirmed = false
+                    pomodoroState = nil // Reset pomodoro on new block
 
                     if isAtBoundary {
                         print("[STATE] At block boundary - showing confirmation prompt")
@@ -323,6 +354,13 @@ class WidgetState: ObservableObject {
 
         // Update menu bar icon when state changes
         updateMenuBarIcon()
+
+        // Manage pomodoro state based on conditions
+        if pomodoroActive && pomodoroState == nil {
+            startPomodoroIfNeeded()
+        } else if !pomodoroActive && pomodoroState != nil {
+            stopPomodoroIfNeeded()
+        }
     }
 
     private func updateMenuBarIcon() {
@@ -499,6 +537,8 @@ class WidgetState: ObservableObject {
         refreshTimer = nil
         durationTimer?.invalidate()
         durationTimer = nil
+        pomodoroTimer?.invalidate()
+        pomodoroTimer = nil
     }
 
     private func updateDuration() {
@@ -506,5 +546,78 @@ class WidgetState: ObservableObject {
         let minutes = Int(elapsed) / 60
         let seconds = Int(elapsed) % 60
         currentDuration = String(format: "%d:%02d", minutes, seconds)
+    }
+
+    // MARK: - Pomodoro Management
+
+    private func startPomodoroIfNeeded() {
+        guard pomodoroActive, pomodoroState == nil else { return }
+
+        print("[POMODORO] Starting work phase")
+        pomodoroState = PomodoroState(phase: .work, elapsed: 0)
+        startPomodoroTimer()
+    }
+
+    private func stopPomodoroIfNeeded() {
+        guard !pomodoroActive, pomodoroState != nil else { return }
+
+        print("[POMODORO] Stopping pomodoro")
+        pomodoroState = nil
+        pomodoroTimer?.invalidate()
+        pomodoroTimer = nil
+        pomodoroProgress = 0.0
+    }
+
+    private func startPomodoroTimer() {
+        pomodoroTimer?.invalidate()
+
+        pomodoroTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updatePomodoro()
+            }
+        }
+    }
+
+    private func updatePomodoro() {
+        guard var state = pomodoroState,
+              let config = currentCategory?.pomodoroConfig else {
+            return
+        }
+
+        state.elapsed += 1
+        pomodoroState = state
+
+        // Calculate progress
+        let duration = state.phase == .work ? config.workDuration : config.restDuration
+        pomodoroProgress = duration > 0 ? min(Double(state.elapsed) / Double(duration), 1.0) : 0.0
+
+        // Auto-skip rest after 1.5x rest duration
+        if state.phase == .rest && state.elapsed > Int(Double(config.restDuration) * 1.5) {
+            print("[POMODORO] Auto-skipping rest phase")
+            pomodoroState = PomodoroState(phase: .work, elapsed: 0)
+        }
+    }
+
+    func handleSpaceKey() async {
+        // State 1: Confirm
+        if displayState == .confirmationPrompt {
+            await confirmPlanned()
+            return
+        }
+
+        // State 2 + Pomodoro
+        if pomodoroActive, let state = pomodoroState {
+            if state.phase == .work && pomodoroProgress >= 1.0 {
+                print("[POMODORO] Work complete -> rest")
+                pomodoroState = PomodoroState(phase: .rest, elapsed: 0)
+                return
+            }
+
+            if state.phase == .rest {
+                print("[POMODORO] Rest confirmed -> work")
+                pomodoroState = PomodoroState(phase: .work, elapsed: 0)
+                return
+            }
+        }
     }
 }

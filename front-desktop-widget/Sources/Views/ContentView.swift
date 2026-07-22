@@ -153,8 +153,8 @@ struct ContentView: View {
         Task {
             switch key {
             case " ":
-                print("[KEY] Space - confirming planned")
-                await widgetState.confirmPlanned()
+                print("[KEY] Space - handling space key")
+                await widgetState.handleSpaceKey()
             case "\r": // Return key
                 print("[KEY] Return - syncing to plan")
                 await widgetState.syncToPlan()
@@ -203,54 +203,29 @@ struct ConfirmationPromptView: View {
 
     var body: some View {
         let categoryColor = widgetState.plannedCategory?.color ?? "#808080"
-        let textColor = Color.contrastingTextColor(for: categoryColor)
 
-        Button(action: {
-            Task {
-                await widgetState.confirmPlanned()
-            }
-        }) {
-            ZStack(alignment: .topLeading) {
-                // Category color background with breathe animation
-                Color(hex: categoryColor)
-                    .scaleEffect(breatheScale)
-                    .opacity(breatheOpacity)
+        ZStack(alignment: .topLeading) {
+            // Category color background with breathe animation
+            Color(hex: categoryColor)
+                .scaleEffect(breatheScale)
+                .opacity(breatheOpacity)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    // Top label with alert icon
-                    HStack(spacing: 4) {
-                        Text("ACTUAL")
-                            .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
-                            .foregroundColor(textColor.opacity(Palette.labelOpacity))
-                            .tracking(0.5)
-
-                        Spacer()
-
-                        // Alert icon (bouncing)
-                        Circle()
-                            .fill(textColor.opacity(Palette.labelOpacity))
-                            .frame(width: 12, height: 12)
-                            .overlay {
-                                Image(systemName: "exclamationmark.circle")
-                                    .font(.system(size: Typography.labelBold))
-                                    .foregroundColor(Color(hex: categoryColor))
-                            }
-                    }
-
-                    Spacer()
-
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .top) {
                     // Category name (large, bold, uppercase)
                     Text(widgetState.plannedCategory?.name.uppercased() ?? "")
                         .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
-                        .foregroundColor(textColor)
+                        .foregroundColor(.white)
                         .lineLimit(2)
+
+                    Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 12)
+
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
         }
-        .buttonStyle(PlainButtonStyle())
         .onAppear {
             // Breathe animation (2s cycle, matching React)
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
@@ -261,69 +236,137 @@ struct ConfirmationPromptView: View {
     }
 }
 
+// Circular Timer Component
+struct CircularTimer: View {
+    let progress: Double
+    let color: Color
+    let size: CGFloat
+    let strokeWidth: CGFloat
+
+    init(progress: Double, color: Color, size: CGFloat = 60, strokeWidth: CGFloat = 5) {
+        self.progress = progress
+        self.color = color
+        self.size = size
+        self.strokeWidth = strokeWidth
+    }
+
+    var body: some View {
+        ZStack {
+            // Background circle
+            Circle()
+                .stroke(color.opacity(0.2), lineWidth: strokeWidth)
+                .frame(width: size, height: size)
+
+            // Progress circle
+            Circle()
+                .trim(from: 0, to: min(progress, 1.0))
+                .stroke(color, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
+                .frame(width: size, height: size)
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 0.3), value: progress)
+        }
+    }
+}
+
+// Helper to get complementary color
+extension Color {
+    func complementary() -> Color {
+        // Get RGB components
+        guard let components = NSColor(self).cgColor.components else { return self }
+        let r = components[0]
+        let g = components[1]
+        let b = components[2]
+
+        // Invert
+        return Color(red: 1 - r, green: 1 - g, blue: 1 - b)
+    }
+}
+
 // State 2: Active/On-Schedule
 struct ActiveView: View {
     @ObservedObject var widgetState: WidgetState
+    @State private var pomoPulseScale: CGFloat = 1.0
+    @State private var pomoPulseOpacity: Double = 1.0
 
     var body: some View {
         if let category = widgetState.currentCategory {
-            let textColor = Color.contrastingTextColor(for: category.color)
+            let textColor = Color.white // Always use white for text (matching React)
 
             VStack(spacing: 0) {
                 // Main category block
                 ZStack(alignment: .topLeading) {
                     Color(hex: category.color)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Top label with checkmark
-                        HStack(spacing: 4) {
-                            Text("ACTUAL")
-                                .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
-                                .foregroundColor(textColor.opacity(Palette.labelOpacity))
-                                .tracking(0.5)
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Category name (large, bold, uppercase)
+                        HStack(alignment: .top) {
+                            Text(category.name.uppercased())
+                                .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
+                                .foregroundColor(textColor)
+                                .lineLimit(2)
 
                             Spacer()
-
-                            if widgetState.isConfirmed {
-                                Image(systemName: "checkmark.circle")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(textColor.opacity(Palette.iconOpacity))
-                            }
                         }
 
-                        Spacer()
+                        // Pomodoro ring (State 2 only, when active)
+                        if widgetState.pomodoroActive, let pomoState = widgetState.pomodoroState {
+                            Spacer()
 
-                        // Category name (large, bold, uppercase)
-                        Text(category.name.uppercased())
-                            .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
-                            .foregroundColor(textColor)
-                            .lineLimit(2)
+                            HStack {
+                                Spacer()
 
-                        Spacer()
+                                let ringColor = pomoState.phase == .work ? Color.white : Color(hex: category.color).complementary()
 
-                        // Progress bar container
-                        VStack(alignment: .leading, spacing: 4) {
-                            // Progress bar
-                            GeometryReader { geometry in
+                                CircularTimer(
+                                    progress: widgetState.pomodoroProgress,
+                                    color: ringColor,
+                                    size: 60,
+                                    strokeWidth: 5
+                                )
+                                .scaleEffect(widgetState.pomodoroPulsing ? pomoPulseScale : 1.0)
+                                .opacity(widgetState.pomodoroPulsing ? pomoPulseOpacity : 1.0)
+                                .onChange(of: widgetState.pomodoroPulsing) { _, isPulsing in
+                                    if isPulsing {
+                                        withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                                            pomoPulseScale = 1.06
+                                            pomoPulseOpacity = 0.6
+                                        }
+                                    } else {
+                                        pomoPulseScale = 1.0
+                                        pomoPulseOpacity = 1.0
+                                    }
+                                }
+
+                                Spacer()
+                            }
+
+                            Spacer()
+                        } else {
+                            Spacer()
+                        }
+
+                        // Progress bar container (always visible in State 2)
+                        if widgetState.plannedDurationMinutes > 0 {
+                            HStack(alignment: .center, spacing: 8) {
+                                // Progress bar
                                 ZStack(alignment: .leading) {
                                     // Background
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(textColor.opacity(Palette.progressBgOpacity))
-                                        .frame(height: 4)
+                                    Capsule()
+                                        .fill(Color.black.opacity(0.2))
+                                        .frame(width: 140, height: 5)
 
                                     // Progress fill
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(textColor.opacity(Palette.progressFillOpacity))
-                                        .frame(width: geometry.size.width * widgetState.progressPercentage, height: 4)
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.6))
+                                        .frame(width: 140 * widgetState.progressPercentage, height: 5)
                                 }
-                            }
-                            .frame(height: 4)
 
-                            // Elapsed time
-                            Text("\(Int(widgetState.progressPercentage * Double(widgetState.plannedDurationMinutes)))m elapsed")
-                                .font(.system(size: Typography.tinyMono, design: .monospaced))
-                                .monospacedDigit()
-                                .foregroundColor(textColor.opacity(Palette.progressFillOpacity))
+                                // Elapsed time
+                                Text("\(Int(widgetState.progressPercentage * Double(widgetState.plannedDurationMinutes)))m")
+                                    .font(.system(size: Typography.tinyMono, design: .monospaced))
+                                    .monospacedDigit()
+                                    .foregroundColor(Color.white.opacity(0.6))
+                            }
                         }
                     }
                     .padding(.horizontal, 12)
@@ -357,8 +400,6 @@ struct OffScheduleView: View {
     var body: some View {
         let currentCategoryColor = widgetState.currentCategory?.color ?? "#808080"
         let plannedCategoryColor = widgetState.plannedCategory?.color ?? "#808080"
-        let currentTextColor = Color.contrastingTextColor(for: currentCategoryColor)
-        let plannedTextColor = Color.contrastingTextColor(for: plannedCategoryColor)
 
         VStack(spacing: 0) {
             // Offset bar (conditional visibility) - Top
@@ -394,16 +435,12 @@ struct OffScheduleView: View {
                 Color(hex: currentCategoryColor)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("ACTUAL")
-                        .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
-                        .foregroundColor(currentTextColor.opacity(Palette.labelOpacity))
-                        .tracking(0.5)
-
+                    // Remove ACTUAL label to match React
                     Spacer()
 
                     Text(widgetState.currentCategory?.name.uppercased() ?? "")
                         .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
-                        .foregroundColor(currentTextColor)
+                        .foregroundColor(.white)
                         .lineLimit(2)
 
                     Spacer()
@@ -427,42 +464,39 @@ struct OffScheduleView: View {
                         HStack {
                             Text("PLANNED")
                                 .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
-                                .foregroundColor(plannedTextColor.opacity(Palette.labelOpacity))
+                                .foregroundColor(Color.white.opacity(0.7))
                                 .tracking(0.5)
 
                             Spacer()
 
                             Text("RETURN ↵")
                                 .font(.system(size: Typography.tinyMono, design: .monospaced))
-                                .foregroundColor(plannedTextColor)
+                                .foregroundColor(.white)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
-                                .background(plannedTextColor.opacity(Palette.progressBgOpacity))
-                                .colorInvert()
+                                .background(Color.black.opacity(0.2))
                                 .cornerRadius(2)
                         }
 
-                        Spacer()
-
                         Text(widgetState.plannedCategory?.name.uppercased() ?? "")
                             .font(.system(size: Typography.categoryNameMedium, weight: .bold, design: .default))
-                            .foregroundColor(plannedTextColor)
+                            .foregroundColor(.white)
 
                         Spacer()
 
-                        // Time remaining progress bar
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(plannedTextColor.opacity(Palette.progressBgOpacity))
-                                    .frame(height: 4)
+                        // Time remaining progress bar (full width)
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.black.opacity(0.2))
+                                .frame(height: 5)
 
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(plannedTextColor)
-                                    .frame(width: geometry.size.width * (1.0 - widgetState.progressPercentage), height: 4)
+                            GeometryReader { geometry in
+                                Capsule()
+                                    .fill(Color.white)
+                                    .frame(width: geometry.size.width * (1.0 - widgetState.progressPercentage), height: 5)
                             }
                         }
-                        .frame(height: 4)
+                        .frame(height: 5)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 12)
@@ -479,7 +513,7 @@ struct OffScheduleView: View {
             .frame(height: widgetState.showOffsetBar ? 86 : 100)
             .onAppear {
                 withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                    pulseOpacity = Palette.breatheMinOpacity
+                    pulseOpacity = 0.75
                 }
             }
         }

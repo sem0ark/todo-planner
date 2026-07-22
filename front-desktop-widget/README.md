@@ -6,7 +6,7 @@ See [Design documenation](../docs/style%20system%20v1.md)
 
 | Trigger | Action | UX Intent |
 | :--- | :--- | :--- |
-| `Space` | **Confirm Actual** | Validates current activity (State 1 → 2). |
+| `Space` | **Confirm Actual** | Validates current activity (State 1 -> 2). |
 | `Enter` | **Sync to Plan** | In State 3, instantly transitions back to the planned block. |
 | `1 - 9` | **Category Jump** | Transitions to the category at index $N$ in the right rail. |
 | `[` / `]` | **Offset Nudge** | In State 3, shifts the last transition timestamp back by 5m increments. |
@@ -41,7 +41,7 @@ _______________________________________
 ### State 1: Confirmation Prompt
 *Trigger: Planned block boundary reached.*
 - **Left Panel:** Fills with 100% Saturation Domain Hue.
-- **Animation:** 1.5s "Breathing" pulse (Opacity 100% → 70%).
+- **Animation:** 1.5s "Breathing" pulse (Opacity 100% -> 70%).
 - **Logic:** Clicking the Left Panel or pressing `Space` logs a **Confirmation** at the boundary timestamp.
 
 ### State 2: Active/Idle
