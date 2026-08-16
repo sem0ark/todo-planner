@@ -66,6 +66,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       name: .confirmationNeeded,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handlePomodoroCompleted),
+      name: .pomodoroCompleted,
+      object: nil
+    )
 
     // Auto-open on launch
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -75,6 +81,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
   @objc private func handleConfirmationNeeded() {
     print("[APP] Confirmation needed - auto-opening popover")
+    showPopover()
+  }
+
+  @objc private func handlePomodoroCompleted() {
+    print("[APP] Pomodoro completed - auto-opening popover")
     showPopover()
   }
 

@@ -7,6 +7,7 @@ import SwiftUI
 
 extension Notification.Name {
   static let confirmationNeeded = Notification.Name("confirmationNeeded")
+  static let pomodoroCompleted = Notification.Name("pomodoroCompleted")
 }
 
 enum PomodoroPhase {
@@ -139,15 +140,19 @@ extension DateFormatter {
 
 // MARK: - Pure State Helpers
 
-func tickPomodoro(_ context: inout WidgetContext) {
-  guard let config = context.currentCategory?.pomodoroConfig else { return }
+func tickPomodoro(_ context: inout WidgetContext) -> Bool {
+  guard let config = context.currentCategory?.pomodoroConfig else { return false }
 
   context.pomodoroElapsed += 1
   let limit = context.pomodoroPhase == .work ? config.workDuration : config.restDuration
+  guard limit > 0 else { return false }
+
   if context.pomodoroPhase == .rest && context.pomodoroElapsed > Int(Double(limit) * 1.5) {
     context.pomodoroPhase = .work
     context.pomodoroElapsed = 0
   }
+
+  return context.pomodoroElapsed < limit && context.pomodoroElapsed + 1 >= limit
 }
 
 func togglePomodoro(_ context: inout WidgetContext) {
@@ -343,7 +348,13 @@ final class ActiveState: WidgetStateLogic {
 
     // Pomodoro Logic
     if ctx.currentCategory?.hasPomodoroEnabled == true {
-      tickPomodoro(&ctx)
+      if tickPomodoro(&ctx) {
+        return StateResult(
+          nextState: self,
+          updatedContext: ctx,
+          effects: [.postNotification(.pomodoroCompleted)]
+        )
+      }
     }
 
     return StateResult(nextState: self, updatedContext: ctx, effects: [])

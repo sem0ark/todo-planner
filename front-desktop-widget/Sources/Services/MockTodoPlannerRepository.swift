@@ -143,7 +143,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     return [
       Category(
         id: 1, name: "Deep Work", color: "#1e40af",  // Blue
-        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
+        pomodoroConfig: PomodoroConfig(workDuration: 120, restDuration: 20),
         createdAt: now, updatedAt: now),
       Category(
         id: 2, name: "Admin", color: "#78716c",  // Stone
@@ -155,7 +155,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
         createdAt: now, updatedAt: now),
       Category(
         id: 4, name: "Learning", color: "#0891b2",  // Cyan
-        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
+        pomodoroConfig: PomodoroConfig(workDuration: 120, restDuration: 20),
         createdAt: now, updatedAt: now),
       Category(
         id: 5, name: "Health", color: "#16a34a",  // Green
@@ -170,7 +170,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
 
   private func seedDayRecord(for date: String) -> DayRecord {
     let cycleCategoryIds = [1, 2, 3, 4, 5, 6]
-    let blockDurationMinutes = 2
+    let blockDurationMinutes = 3
     let minutesPerDay = 24 * 60
     let snapshot = stride(from: 0, to: minutesPerDay, by: blockDurationMinutes)
       .enumerated()
