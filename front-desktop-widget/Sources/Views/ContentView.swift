@@ -25,7 +25,7 @@ struct Palette {
   static let iconOpacity = 0.4  // Muted icons
   static let progressBgOpacity = 0.2  // Progress bar backgrounds
   static let progressFillOpacity = 0.6  // Progress bar fills
-  static let breatheMinOpacity = 0.85  // Animation minimum
+  static let breatheMinOpacity = 0.65  // Animation minimum
 }
 
 struct Typography {
@@ -196,8 +196,8 @@ struct ConfirmationPromptView: View {
     ZStack(alignment: .topLeading) {
       // Category color background with breathe animation
       Color(hex: categoryColor)
-        .scaleEffect(breatheScale)
         .opacity(breatheOpacity)
+        .scaleEffect(breatheScale)
 
       VStack(alignment: .leading, spacing: 4) {
         HStack(alignment: .top) {
@@ -395,33 +395,31 @@ struct OffScheduleView: View {
     let plannedCategoryColor = widgetState.plannedCategory?.color ?? "#808080"
 
     VStack(spacing: 0) {
-      // Offset bar (conditional visibility) - Top
-      if widgetState.showOffsetBar {
-        HStack(spacing: 8) {
-          Text("T-\(widgetState.offsetMinutes)m")
-            .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
-            .monospacedDigit()
-            .foregroundColor(StyleTokens.offsetGreen)
+      // Offset bar - Top
+      HStack(spacing: 8) {
+        Text("T-\(widgetState.offsetMinutes)m")
+          .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
+          .monospacedDigit()
+          .foregroundColor(StyleTokens.offsetGreen)
 
-          Spacer()
+        Spacer()
 
-          // Offset buttons
-          HStack(spacing: 4) {
-            OffsetButton(label: "+5m", minutes: 5, widgetState: widgetState)
-            OffsetButton(label: "+15m", minutes: 15, widgetState: widgetState)
-          }
+        // Offset buttons
+        HStack(spacing: 4) {
+          OffsetButton(label: "+5m", minutes: 5, widgetState: widgetState)
+          OffsetButton(label: "+15m", minutes: 15, widgetState: widgetState)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(height: 28)
-        .background(StyleTokens.offsetGreen.opacity(Palette.progressBgOpacity))
-        .overlay(
-          Rectangle()
-            .fill(StyleTokens.offsetGreen.opacity(Palette.hoverOpacity))
-            .frame(height: 1),
-          alignment: .bottom
-        )
       }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .frame(height: 28)
+      .background(StyleTokens.offsetGreen.opacity(Palette.progressBgOpacity))
+      .overlay(
+        Rectangle()
+          .fill(StyleTokens.offsetGreen.opacity(Palette.hoverOpacity))
+          .frame(height: 1),
+        alignment: .bottom
+      )
 
       // Current (Actual) - Top section
       ZStack(alignment: .topLeading) {
@@ -441,7 +439,7 @@ struct OffScheduleView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
       }
-      .frame(height: widgetState.showOffsetBar ? 86 : 100)
+      .frame(height: 86)
 
       // Planned - Bottom section (pulsing clickable with dashed border)
       Button(action: {
@@ -504,7 +502,7 @@ struct OffScheduleView: View {
         )
       }
       .buttonStyle(PlainButtonStyle())
-      .frame(height: widgetState.showOffsetBar ? 86 : 100)
+      .frame(height: 86)
       .onAppear {
         withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
           pulseOpacity = 0.75
