@@ -607,12 +607,14 @@ final class WidgetStateStore {
 
   private func plannedBlockDescription(_ block: PlannedBlock?) -> String {
     guard let block else { return "nil" }
-    return "id=\(block.id),categoryId=\(block.categoryId),start=\(block.startTime),duration=\(block.durationMinutes)m"
+    return
+      "id=\(block.id),categoryId=\(block.categoryId),start=\(block.startTime),duration=\(block.durationMinutes)m"
   }
 
   private func actualBlockDescription(_ block: ActualBlock?) -> String {
     guard let block else { return "nil" }
-    return "id=\(block.id),categoryId=\(block.categoryId.map(String.init) ?? "nil"),type=\(block.blockType),start=\(block.startTime),duration=\(block.durationMinutes)m"
+    return
+      "id=\(block.id),categoryId=\(block.categoryId.map(String.init) ?? "nil"),type=\(block.blockType),start=\(block.startTime),duration=\(block.durationMinutes)m"
   }
 
   // MARK: - Heartbeat
@@ -649,7 +651,8 @@ final class WidgetStateStore {
       case .active: .active
       case .offSchedule: .offSchedule
       }
-    let iconCategory = displayState == .confirmationPrompt
+    let iconCategory =
+      displayState == .confirmationPrompt
       ? context.plannedCategory ?? context.currentCategory
       : context.currentCategory
     MenuBarManager.shared.updateIcon(state: icon, category: iconCategory)
