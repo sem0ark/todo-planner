@@ -61,7 +61,7 @@ config.MaxConnIdleTime = 2 * time.Minute
 All HTTP requests flow through a centralized middleware stack:
 
 ```
-Request → LoggingMiddleware → CORSMiddleware → AuthMiddleware → Handler
+Request -> LoggingMiddleware -> CORSMiddleware -> AuthMiddleware -> Handler
 ```
 
 1. **LoggingMiddleware** - Logs all requests/responses with timing, captures panics, adds stack traces for errors

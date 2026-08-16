@@ -12,7 +12,7 @@ stateDiagram-v2
     state "STATE 3: OFF-SCHEDULE" as S3
 
     [*] --> Init : App Launch
-    
+
     Init --> S2 : Record Found / On Plan
     Init --> S3 : Record Found / Off Plan
     Init --> S1 : Boundary Reached during Init
@@ -28,16 +28,16 @@ stateDiagram-v2
     %% State 2 Logic (Including Pomodoro)
     state S2 {
         [*] --> StandardActive
-        
+
         state "POMODORO_MODE" as Pomo {
             state "Work Phase" as PomoWork
             state "Rest Phase" as PomoRest
-            
+
             [*] --> PomoWork
             PomoWork --> PomoRest : Timer End / Space (if >100%)
             PomoRest --> PomoWork : Space / Auto-Skip (1.5x duration)
         }
-        
+
         StandardActive --> Pomo : Category.hasPomodoro == true
         Pomo --> StandardActive : Category.hasPomodoro == false
     }
@@ -48,13 +48,13 @@ stateDiagram-v2
     %% State 3 Logic
     state S3 {
         [*] --> SplitView
-        
+
         state "OFFSET_WINDOW" as Offset {
             [*] --> Visible : 120s Timer Start
             Visible --> Hidden : Timer Expired
             Visible --> Visible : [ or ] Key (Nudge -5m)
         }
-        
+
         SplitView --> SplitView : [ or ] Key (Update Timestamp)
     }
 
@@ -138,7 +138,7 @@ final class WidgetState: ObservableObject {
   @Published var pomodoroState: PomodoroState?
   @Published var pomodoroProgress = 0.0
 
-  private let apiClient = APIClient.shared
+  private let repository: TodoPlannerRepository
   private var timer: AnyCancellable?
   private var lastCheckedBlockId: Int?
   private var currentPlannedBlock: PlannedBlock?
@@ -150,8 +150,13 @@ final class WidgetState: ObservableObject {
 
   var pomodoroPulsing: Bool { pomodoroActive && pomodoroProgress >= 1.0 }
 
-  init() {
+  init(repository: TodoPlannerRepository) {
+    self.repository = repository
     startGlobalTimer()
+  }
+
+  convenience init() {
+    self.init(repository: RepositoryFactory.createRepository())
   }
 
   // MARK: - External Actions
@@ -191,10 +196,15 @@ final class WidgetState: ObservableObject {
     print("[INIT] WidgetState: Starting initialization")
 
     do {
-      let loadedCategories = try await apiClient.fetchCategories()
+      let loadedCategories = try await repository.fetchCategories()
       let today = todayString()
-      let records = try await apiClient.fetchDayRecords(from: today, to: today)
-      let record = records.first ?? try await apiClient.createDayRecord(date: today)
+
+      var record: DayRecord
+      if let existingRecord = try await repository.fetchDayRecord(date: today) {
+        record = existingRecord
+      } else {
+        record = try await repository.createDayRecord(date: today)
+      }
 
       context.categories = loadedCategories
       context.currentDayRecord = record
@@ -252,7 +262,7 @@ final class WidgetState: ObservableObject {
         eventType: eventType.rawValue, outgoingCategoryId: nil, incomingCategoryId: category?.id,
         occurredAt: eventTime)
       do {
-        let response = try await apiClient.postDayEvents(dayRecordId: record.id, events: [event])
+        let response = try await repository.submitEvents(dayRecordId: record.id, events: [event])
         updateDayRecordWithBlocks(response.actualBlocks)
         print(
           "[SYNC] Event persisted: \(eventType.rawValue), blocks=\(response.actualBlocks.count)")
@@ -417,7 +427,7 @@ final class WidgetState: ObservableObject {
       eventType: DayEventType.transition.rawValue, outgoingCategoryId: current.id,
       incomingCategoryId: current.id, occurredAt: retroactiveTime)
     do {
-      let response = try await apiClient.postDayEvents(dayRecordId: record.id, events: [event])
+      let response = try await repository.submitEvents(dayRecordId: record.id, events: [event])
       updateDayRecordWithBlocks(response.actualBlocks)
       print("[OFFSET] Applied \(minutes)m, total=\(context.offsetMinutes)m")
     } catch {

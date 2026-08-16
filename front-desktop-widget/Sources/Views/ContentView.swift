@@ -60,13 +60,18 @@ struct StyleTokens {
 }
 
 struct ContentView: View {
-  @StateObject private var widgetState = WidgetState()
-  @State private var isAuthenticated: Bool = false
-  @State private var isCheckingAuth: Bool = true
+  @StateObject private var authController: AuthController
+  @StateObject private var widgetState: WidgetState
+
+  init() {
+    let repo = RepositoryFactory.createRepository()
+    _authController = StateObject(wrappedValue: AuthController(repository: repo))
+    _widgetState = StateObject(wrappedValue: WidgetState(repository: repo))
+  }
 
   var body: some View {
     Group {
-      if isCheckingAuth {
+      if authController.isCheckingAuth {
         // Show loading state while checking authentication
         ZStack {
           StyleTokens.baseVoid
@@ -78,7 +83,7 @@ struct ContentView: View {
               .foregroundColor(StyleTokens.mutedText)
           }
         }
-      } else if isAuthenticated {
+      } else if authController.isAuthenticated {
         HStack(spacing: 0) {
           // Left Panel (65%)
           LeftPanelView(widgetState: widgetState)
@@ -91,7 +96,7 @@ struct ContentView: View {
             )
 
           // Right Rail (35%)
-          RightRailView(widgetState: widgetState, isAuthenticated: $isAuthenticated)
+          RightRailView(widgetState: widgetState, authController: authController)
             .frame(width: 112)
         }
         .task {
@@ -107,7 +112,7 @@ struct ContentView: View {
           }
         }
       } else {
-        LoginView(isAuthenticated: $isAuthenticated)
+        LoginView(authController: authController)
       }
     }
     .frame(width: 320, height: 200)
@@ -119,30 +124,8 @@ struct ContentView: View {
     )
     .shadow(color: .black.opacity(Palette.shadowOpacity), radius: 12, x: 0, y: 4)
     .task {
-      await checkAuthentication()
+      await authController.checkInitialAuth()
     }
-  }
-
-  private func checkAuthentication() async {
-    print("[AUTH] Checking for saved token...")
-
-    if APIClient.shared.hasAuthToken() {
-      print("[AUTH] Token found, validating...")
-      let isValid = await APIClient.shared.validateToken()
-
-      if isValid {
-        print("[OK] Token is valid, user authenticated")
-        isAuthenticated = true
-      } else {
-        print("[AUTH] Token invalid, showing login")
-        isAuthenticated = false
-      }
-    } else {
-      print("[AUTH] No token found, showing login")
-      isAuthenticated = false
-    }
-
-    isCheckingAuth = false
   }
 
   private func handleKeyPress(_ event: NSEvent) {
@@ -184,6 +167,12 @@ struct LeftPanelView: View {
   var body: some View {
     ZStack {
       switch widgetState.displayState {
+      case .initializing:
+        ZStack {
+          StyleTokens.baseVoid
+          ProgressView()
+            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+        }
       case .confirmationPrompt:
         ConfirmationPromptView(widgetState: widgetState)
       case .active:
@@ -563,7 +552,7 @@ struct DashedLine: Shape {
 
 struct RightRailView: View {
   @ObservedObject var widgetState: WidgetState
-  @Binding var isAuthenticated: Bool
+  @ObservedObject var authController: AuthController
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -632,10 +621,10 @@ struct RightRailView: View {
   }
 
   private func logout() {
-    print("[AUTH] Logging out...")
-    APIClient.shared.clearAuthToken()
-    widgetState.stopPeriodicRefresh()
-    isAuthenticated = false
+    Task {
+      widgetState.stopPeriodicRefresh()
+      await authController.handleLogout()
+    }
   }
 }
 

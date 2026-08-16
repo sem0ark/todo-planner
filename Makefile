@@ -17,6 +17,7 @@ lint-frontend:
 format:
 	cd api-backend && gofmt -w .
 	cd web-front && pnpm exec prettier --write . --ignore-unknown || true
+	cd front-desktop-widget && swift format --in-place --recursive Sources/ || true
 	@echo "Code formatted"
 
 test-prepare:

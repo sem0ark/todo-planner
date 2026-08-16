@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LoginView: View {
-  @Binding var isAuthenticated: Bool
+  @ObservedObject var authController: AuthController
   @State private var token: String = ""
   @State private var errorMessage: String?
 
@@ -103,8 +103,14 @@ struct LoginView: View {
 
     print("[AUTH] Setting authentication token...")
     print("[AUTH] Token length: \(token.count) characters")
-    APIClient.shared.setAuthToken(token)
-    isAuthenticated = true
-    print("[OK] Authentication successful!")
+
+    Task {
+      do {
+        try await authController.setAuthToken(token)
+      } catch {
+        print("[ERROR] Failed to set token: \(error)")
+        errorMessage = "Authentication failed"
+      }
+    }
   }
 }
