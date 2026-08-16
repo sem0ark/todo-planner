@@ -9,6 +9,7 @@ describe('categories service', () => {
     id: 1,
     name: 'Work',
     color: '#003448',
+    pomodoro_config: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   };
@@ -41,7 +42,7 @@ describe('categories service', () => {
 
   describe('createCategory', () => {
     it('should create category successfully', async () => {
-      const input = { name: 'Work', color: '#003448' };
+      const input = { name: 'Work', color: '#003448', pomodoro_config: { work_duration: 1500, rest_duration: 300 } };
       (fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => mockCategory,
@@ -63,7 +64,7 @@ describe('categories service', () => {
     it('should throw error on failed request', async () => {
       (fetch as any).mockResolvedValueOnce({ ok: false });
 
-      await expect(createCategory(token, { name: 'Work', color: '#003448' })).rejects.toThrow(
+      await expect(createCategory(token, { name: 'Work', color: '#003448', pomodoro_config: null })).rejects.toThrow(
         'Failed to create category'
       );
     });
@@ -71,7 +72,7 @@ describe('categories service', () => {
 
   describe('updateCategory', () => {
     it('should update category successfully', async () => {
-      const input = { name: 'Updated Work', color: '#003448' };
+      const input = { name: 'Updated Work', color: '#003448', pomodoro_config: null };
       (fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ ...mockCategory, ...input }),
@@ -93,7 +94,7 @@ describe('categories service', () => {
     it('should throw error on failed request', async () => {
       (fetch as any).mockResolvedValueOnce({ ok: false });
 
-      await expect(updateCategory(token, 1, { name: 'Work', color: '#003448' })).rejects.toThrow(
+      await expect(updateCategory(token, 1, { name: 'Work', color: '#003448', pomodoro_config: null })).rejects.toThrow(
         'Failed to update category'
       );
     });

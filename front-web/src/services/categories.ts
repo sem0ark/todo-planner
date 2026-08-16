@@ -1,9 +1,15 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
+export interface PomodoroConfig {
+  work_duration: number;
+  rest_duration: number;
+}
+
 export interface Category {
   id: number;
   name: string;
   color: string;
+  pomodoro_config: PomodoroConfig | null;
   created_at: string;
   updated_at: string;
 }
@@ -11,6 +17,7 @@ export interface Category {
 export interface CategoryInput {
   name: string;
   color: string;
+  pomodoro_config: PomodoroConfig | null;
 }
 
 export async function getCategories(token: string): Promise<Category[]> {

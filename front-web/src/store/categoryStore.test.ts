@@ -7,6 +7,7 @@ describe('categoryStore', () => {
     id: 1,
     name: 'Work',
     color: '#003448',
+    pomodoro_config: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   };
