@@ -299,5 +299,23 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   4,
+			Name: "add_category_pomodoro_config",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE block_categories
+					ADD COLUMN IF NOT EXISTS pomodoro_config JSONB;
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE block_categories
+					DROP COLUMN IF EXISTS pomodoro_config;
+				`)
+				return err
+			},
+		},
 	}
 }
