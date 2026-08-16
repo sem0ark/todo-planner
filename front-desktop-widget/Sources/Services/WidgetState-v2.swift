@@ -121,7 +121,8 @@ struct TimeLogic {
   }
 
   static func parseSeconds(from timeString: String) -> Int {
-    let parts = timeString.split(separator: ".").first?.split(separator: ":").compactMap { Int($0) }
+    let parts =
+      timeString.split(separator: ".").first?.split(separator: ":").compactMap { Int($0) }
       ?? []
     guard parts.count == 3 else { return 0 }
     return parts[0] * 3600 + parts[1] * 60 + parts[2]
@@ -160,6 +161,7 @@ extension WidgetContext {
   }
 
   /// Performs a category transition with all side effects
+  @MainActor
   mutating func transitionTo(
     category: Category, isPlanned: Bool, repo: TodoPlannerRepository
   ) async -> StateResult {
@@ -182,14 +184,21 @@ extension WidgetContext {
       repo: repo)
     updateBlocks(blocks)
 
-    let nextState: WidgetStateLogic = isPlanned ? ActiveState() : OffScheduleState()
-    print(
-      "[STATE] Transition -> \(nextState.identity == .active ? "active" : "offSchedule") category=\(category.name)"
-    )
+    let nextState: WidgetStateLogic
+    let stateName: String
+    if isPlanned {
+      nextState = ActiveState()
+      stateName = "active"
+    } else {
+      nextState = OffScheduleState()
+      stateName = "offSchedule"
+    }
+    print("[STATE] Transition -> \(stateName) category=\(category.name)")
     return StateResult(nextState: nextState, updatedContext: self)
   }
 
   /// Confirms the current plan
+  @MainActor
   mutating func confirm(repo: TodoPlannerRepository) async -> StateResult {
     isConfirmed = true
     lastEventTime = Date()
@@ -200,7 +209,8 @@ extension WidgetContext {
     updateBlocks(blocks)
 
     print("[CONFIRM] Plan validated")
-    return StateResult(nextState: ActiveState(), updatedContext: self)
+    let nextState = ActiveState()
+    return StateResult(nextState: nextState, updatedContext: self)
   }
 
   /// Updates Pomodoro state (called every second in active mode)
@@ -284,9 +294,11 @@ final class InitializingState: WidgetStateLogic {
       ctx.categories = try await repository.fetchCategories()
 
       let today = DateFormatter.yyyyMMdd.string(from: Date())
-      ctx.currentDayRecord =
-        try await repository.fetchDayRecord(date: today)
-        ?? (try await repository.createDayRecord(date: today))
+      if let record = try await repository.fetchDayRecord(date: today) {
+        ctx.currentDayRecord = record
+      } else {
+        ctx.currentDayRecord = try await repository.createDayRecord(date: today)
+      }
 
       return reconcileInitialState(context: ctx)
 
@@ -300,6 +312,7 @@ final class InitializingState: WidgetStateLogic {
     return StateResult(nextState: self, updatedContext: context)
   }
 
+  @MainActor
   private func reconcileInitialState(context: WidgetContext) -> StateResult {
     var ctx = context
     let now = Date()
@@ -307,7 +320,8 @@ final class InitializingState: WidgetStateLogic {
     guard let record = ctx.currentDayRecord else {
       ctx.isConfirmed = true
       print("[INIT] Complete: no record available")
-      return StateResult(nextState: ActiveState(), updatedContext: ctx)
+      let nextState = ActiveState()
+      return StateResult(nextState: nextState, updatedContext: ctx)
     }
 
     let currentPlanned = TimeLogic.getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
@@ -335,8 +349,8 @@ final class InitializingState: WidgetStateLogic {
       ctx.offsetExpiry = Date().addingTimeInterval(120)
     }
 
-    return StateResult(
-      nextState: isOnSchedule ? ActiveState() : OffScheduleState(), updatedContext: ctx)
+    let nextState: WidgetStateLogic = isOnSchedule ? ActiveState() : OffScheduleState()
+    return StateResult(nextState: nextState, updatedContext: ctx)
   }
 }
 
@@ -391,7 +405,8 @@ final class ActiveState: WidgetStateLogic {
       ctx.markBlockAsChecked(newBlock.id)
       ctx.isConfirmed = false
       NotificationCenter.default.post(name: .confirmationNeeded, object: nil)
-      return StateResult(nextState: ConfirmationPromptState(), updatedContext: ctx)
+      let nextState = ConfirmationPromptState()
+      return StateResult(nextState: nextState, updatedContext: ctx)
     }
 
     // Pomodoro Logic
@@ -503,7 +518,8 @@ final class OffScheduleState: WidgetStateLogic {
       ctx.markBlockAsChecked(newBlock.id)
       ctx.isConfirmed = false
       NotificationCenter.default.post(name: .confirmationNeeded, object: nil)
-      return StateResult(nextState: ConfirmationPromptState(), updatedContext: ctx)
+      let nextState = ConfirmationPromptState()
+      return StateResult(nextState: nextState, updatedContext: ctx)
     }
 
     return StateResult(nextState: self, updatedContext: ctx)
