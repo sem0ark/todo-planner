@@ -2,7 +2,7 @@ import Foundation
 
 /// A high-fidelity mock repository for testing the Todo Planner widget.
 /// Implements in-memory logic for transitions, offsets, and Pomodoro states.
-final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
+class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
 
   // MARK: - In-Memory Storage
   private var mockToken: String? = "mock-jwt-token"
@@ -136,14 +136,14 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
   func hasPendingSync() async -> Bool { return false }
   func synchronize() async throws {}
 
-  // MARK: - Private Seeding Logic
+  // MARK: - Seeding Logic
 
-  private func seedCategories() -> [Category] {
+  func seedCategories() -> [Category] {
     let now = Date()
     return [
       Category(
         id: 1, name: "Deep Work", color: "#1e40af",  // Blue
-        pomodoroConfig: PomodoroConfig(workDuration: 120, restDuration: 20),
+        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
         createdAt: now, updatedAt: now),
       Category(
         id: 2, name: "Admin", color: "#78716c",  // Stone
@@ -155,7 +155,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
         createdAt: now, updatedAt: now),
       Category(
         id: 4, name: "Learning", color: "#0891b2",  // Cyan
-        pomodoroConfig: PomodoroConfig(workDuration: 120, restDuration: 20),
+        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
         createdAt: now, updatedAt: now),
       Category(
         id: 5, name: "Health", color: "#16a34a",  // Green
@@ -168,9 +168,9 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     ]
   }
 
-  private func seedDayRecord(for date: String) -> DayRecord {
+  func seedDayRecord(for date: String) -> DayRecord {
     let cycleCategoryIds = [1, 2, 3, 4, 5, 6]
-    let blockDurationMinutes = 3
+    let blockDurationMinutes = 1
     let minutesPerDay = 24 * 60
     let snapshot = stride(from: 0, to: minutesPerDay, by: blockDurationMinutes)
       .enumerated()
