@@ -143,7 +143,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     return [
       Category(
         id: 1, name: "Deep Work", color: "#1e40af",  // Blue
-        pomodoroConfig: PomodoroConfig(workDuration: 1500, restDuration: 300),
+        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
         createdAt: now, updatedAt: now),
       Category(
         id: 2, name: "Admin", color: "#78716c",  // Stone
@@ -155,7 +155,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
         createdAt: now, updatedAt: now),
       Category(
         id: 4, name: "Learning", color: "#0891b2",  // Cyan
-        pomodoroConfig: PomodoroConfig(workDuration: 1800, restDuration: 300),
+        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
         createdAt: now, updatedAt: now),
       Category(
         id: 5, name: "Health", color: "#16a34a",  // Green
@@ -169,17 +169,18 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
   }
 
   private func seedDayRecord(for date: String) -> DayRecord {
-    // Create a mock "Ideal Day" template with a realistic schedule
-    let snapshot = [
-      PlannedBlock(id: 101, categoryId: 1, startTime: "09:00:00", durationMinutes: 90),  // Deep Work
-      PlannedBlock(id: 102, categoryId: 6, startTime: "10:30:00", durationMinutes: 15),  // Break
-      PlannedBlock(id: 103, categoryId: 1, startTime: "10:45:00", durationMinutes: 90),  // Deep Work
-      PlannedBlock(id: 104, categoryId: 6, startTime: "12:15:00", durationMinutes: 45),  // Lunch
-      PlannedBlock(id: 105, categoryId: 3, startTime: "13:00:00", durationMinutes: 60),  // Communication
-      PlannedBlock(id: 106, categoryId: 2, startTime: "14:00:00", durationMinutes: 60),  // Admin
-      PlannedBlock(id: 107, categoryId: 4, startTime: "15:00:00", durationMinutes: 90),  // Learning
-      PlannedBlock(id: 108, categoryId: 5, startTime: "16:30:00", durationMinutes: 60),  // Health
-    ]
+    let cycleCategoryIds = [1, 2, 3, 4, 5, 6]
+    let blockDurationMinutes = 5
+    let minutesPerDay = 24 * 60
+    let snapshot = stride(from: 0, to: minutesPerDay, by: blockDurationMinutes)
+      .enumerated()
+      .map { index, minuteOfDay in
+        PlannedBlock(
+          id: 101 + index,
+          categoryId: cycleCategoryIds[index % cycleCategoryIds.count],
+          startTime: String(format: "%02d:%02d:00", minuteOfDay / 60, minuteOfDay % 60),
+          durationMinutes: blockDurationMinutes)
+      }
 
     return DayRecord(
       id: 5001,

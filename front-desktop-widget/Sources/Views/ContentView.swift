@@ -60,13 +60,13 @@ struct StyleTokens {
 }
 
 struct ContentView: View {
-  @StateObject private var authController: AuthController
-  @StateObject private var widgetState: WidgetState
+  @State private var authController: AuthController
+  @State private var widgetState: WidgetStateStoreV2
 
   init() {
     let repo = RepositoryFactory.createRepository()
-    _authController = StateObject(wrappedValue: AuthController(repository: repo))
-    _widgetState = StateObject(wrappedValue: WidgetState(repository: repo))
+    _authController = State(wrappedValue: AuthController(repository: repo))
+    _widgetState = State(wrappedValue: WidgetStateStoreV2(repository: repo))
   }
 
   var body: some View {
@@ -162,7 +162,7 @@ struct ContentView: View {
 }
 
 struct LeftPanelView: View {
-  @ObservedObject var widgetState: WidgetState
+  var widgetState: WidgetStateStoreV2
 
   var body: some View {
     ZStack {
@@ -186,7 +186,7 @@ struct LeftPanelView: View {
 
 // State 1: Confirmation Prompt
 struct ConfirmationPromptView: View {
-  @ObservedObject var widgetState: WidgetState
+  var widgetState: WidgetStateStoreV2
   @State private var breatheScale: CGFloat = 1.0
   @State private var breatheOpacity: Double = 1.0
 
@@ -273,7 +273,7 @@ extension Color {
 
 // State 2: Active/On-Schedule
 struct ActiveView: View {
-  @ObservedObject var widgetState: WidgetState
+  var widgetState: WidgetStateStoreV2
   @State private var pomoPulseScale: CGFloat = 1.0
   @State private var pomoPulseOpacity: Double = 1.0
 
@@ -387,7 +387,7 @@ struct ActiveView: View {
 
 // State 3: Off-Schedule
 struct OffScheduleView: View {
-  @ObservedObject var widgetState: WidgetState
+  var widgetState: WidgetStateStoreV2
   @State private var pulseOpacity: Double = 1.0
 
   var body: some View {
@@ -518,7 +518,7 @@ struct OffScheduleView: View {
 struct OffsetButton: View {
   let label: String
   let minutes: Int
-  let widgetState: WidgetState
+  let widgetState: WidgetStateStoreV2
 
   var body: some View {
     Button(action: {
@@ -551,8 +551,8 @@ struct DashedLine: Shape {
 }
 
 struct RightRailView: View {
-  @ObservedObject var widgetState: WidgetState
-  @ObservedObject var authController: AuthController
+  var widgetState: WidgetStateStoreV2
+  var authController: AuthController
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -631,7 +631,7 @@ struct RightRailView: View {
 struct CategoryRow: View {
   let index: Int
   let category: Category
-  @ObservedObject var widgetState: WidgetState
+  var widgetState: WidgetStateStoreV2
 
   private var isActive: Bool {
     widgetState.currentCategory?.id == category.id

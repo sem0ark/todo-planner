@@ -1,13 +1,15 @@
 import Foundation
+import Observation
 import SwiftUI
 
 /// Controller for authentication state and operations
+@Observable
 @MainActor
-final class AuthController: ObservableObject {
+final class AuthController {
   private let repository: TodoPlannerRepository
 
-  @Published var isAuthenticated: Bool = false
-  @Published var isCheckingAuth: Bool = true
+  var isAuthenticated: Bool = false
+  var isCheckingAuth: Bool = true
 
   init(repository: TodoPlannerRepository) {
     self.repository = repository

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LoginView: View {
-  @ObservedObject var authController: AuthController
+  var authController: AuthController
   @State private var token: String = ""
   @State private var errorMessage: String?
 

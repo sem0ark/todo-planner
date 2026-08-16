@@ -2,71 +2,6 @@ import Combine
 import Foundation
 import SwiftUI
 
-/*
-stateDiagram-v2
-    direction TB
-
-    state "INITIALIZING" as Init
-    state "STATE 1: CONFIRMATION_PROMPT" as S1
-    state "STATE 2: ACTIVE (ON-SCHEDULE)" as S2
-    state "STATE 3: OFF-SCHEDULE" as S3
-
-    [*] --> Init : App Launch
-
-    Init --> S2 : Record Found / On Plan
-    Init --> S3 : Record Found / Off Plan
-    Init --> S1 : Boundary Reached during Init
-
-    %% State 1 Logic
-    state S1 {
-        [*] --> PulsingUI
-        PulsingUI --> PulsingUI : Timer Tick (Breathing)
-    }
-    S1 --> S2 : Space / Click Left (Confirm Plan)
-    S1 --> S3 : Click Category [N] (Unplanned Start)
-
-    %% State 2 Logic (Including Pomodoro)
-    state S2 {
-        [*] --> StandardActive
-
-        state "POMODORO_MODE" as Pomo {
-            state "Work Phase" as PomoWork
-            state "Rest Phase" as PomoRest
-
-            [*] --> PomoWork
-            PomoWork --> PomoRest : Timer End / Space (if >100%)
-            PomoRest --> PomoWork : Space / Auto-Skip (1.5x duration)
-        }
-
-        StandardActive --> Pomo : Category.hasPomodoro == true
-        Pomo --> StandardActive : Category.hasPomodoro == false
-    }
-
-    S2 --> S3 : Click Category [N] (Distraction logged)
-    S2 --> S1 : Block Boundary Reached (New Plan)
-
-    %% State 3 Logic
-    state S3 {
-        [*] --> SplitView
-
-        state "OFFSET_WINDOW" as Offset {
-            [*] --> Visible : 120s Timer Start
-            Visible --> Hidden : Timer Expired
-            Visible --> Visible : [ or ] Key (Nudge -5m)
-        }
-
-        SplitView --> SplitView : [ or ] Key (Update Timestamp)
-    }
-
-    S3 --> S2 : Enter / Click Bottom (Sync to Plan)
-    S3 --> S3 : Click Category [N] (New Distraction)
-    S3 --> S1 : Block Boundary Reached (New Plan)
-
-    %% Global Transitions
-    S2 --> S2 : Space (Confirmation Pulse)
-    S3 --> Init : Cmd+Z (Undo to previous state)
-*/
-
 extension Notification.Name {
   static let confirmationNeeded = Notification.Name("confirmationNeeded")
 }
@@ -208,8 +143,10 @@ final class WidgetState: ObservableObject {
 
       context.categories = loadedCategories
       context.currentDayRecord = record
+      context.isConfirmed = true
       categories = loadedCategories
       currentDayRecord = record
+      isConfirmed = true
       setState(.active)
       updateCurrentState()
       print("[INIT] Complete: categories=\(loadedCategories.count), record=\(record.id)")
@@ -375,6 +312,7 @@ final class WidgetState: ObservableObject {
       context.currentCategory = context.plannedCategory
     }
     currentCategory = context.currentCategory
+    updatePomodoroStateIfNeeded()
 
     if stateIdentity != .confirmationPrompt, let current = context.currentCategory,
       let plan = context.plannedCategory
@@ -382,6 +320,20 @@ final class WidgetState: ObservableObject {
       setState(current.id == plan.id ? .active : .offSchedule)
     }
     updateDerivedUI()
+  }
+
+  private func updatePomodoroStateIfNeeded() {
+    guard context.currentCategory?.hasPomodoroEnabled == true else {
+      pomodoroState = nil
+      pomodoroProgress = 0
+      return
+    }
+
+    guard pomodoroState == nil else { return }
+    context.pomodoroPhase = .work
+    context.pomodoroElapsed = 0
+    pomodoroState = PomodoroState(phase: .work, elapsed: 0)
+    pomodoroProgress = 0
   }
 
   private func updateDerivedUI() {
@@ -503,9 +455,11 @@ final class WidgetState: ObservableObject {
 
   private func getCurrentActualBlock(at time: Date, from blocks: [ActualBlock]) -> ActualBlock? {
     let current = secondsSinceStart(of: time)
-    return blocks.first { block in
+    return blocks.last { block in
       let begin = seconds(from: block.startTime)
-      return current >= begin && current < begin + block.durationMinutes * 60
+      let isOpenEnded = block.durationMinutes <= 0
+      return current >= begin
+        && (isOpenEnded || current < begin + block.durationMinutes * 60)
     }
   }
 
