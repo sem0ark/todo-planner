@@ -556,10 +556,14 @@ struct RightRailView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      ForEach(Array(widgetState.categories.enumerated()), id: \.element.id) { index, category in
-        CategoryRow(index: index + 1, category: category, widgetState: widgetState)
+      ScrollView(.vertical, showsIndicators: true) {
+        LazyVStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(widgetState.categories.enumerated()), id: \.element.id) { index, category in
+            CategoryRow(index: index + 1, category: category, widgetState: widgetState)
+          }
+        }
       }
-      Spacer()
+      .frame(maxHeight: .infinity)
 
       // Open Web App button
       Button(action: {

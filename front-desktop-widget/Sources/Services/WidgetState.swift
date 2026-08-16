@@ -2,6 +2,71 @@ import Combine
 import Foundation
 import SwiftUI
 
+/*
+stateDiagram-v2
+    direction TB
+
+    state "INITIALIZING" as Init
+    state "STATE 1: CONFIRMATION_PROMPT" as S1
+    state "STATE 2: ACTIVE (ON-SCHEDULE)" as S2
+    state "STATE 3: OFF-SCHEDULE" as S3
+
+    [*] --> Init : App Launch
+
+    Init --> S2 : Record Found / On Plan
+    Init --> S3 : Record Found / Off Plan
+    Init --> S1 : Boundary Reached during Init
+
+    %% State 1 Logic
+    state S1 {
+        [*] --> PulsingUI
+        PulsingUI --> PulsingUI : Timer Tick (Breathing)
+    }
+    S1 --> S2 : Space / Click Left (Confirm Plan)
+    S1 --> S3 : Click Category [N] (Unplanned Start)
+
+    %% State 2 Logic (Including Pomodoro)
+    state S2 {
+        [*] --> StandardActive
+
+        state "POMODORO_MODE" as Pomo {
+            state "Work Phase" as PomoWork
+            state "Rest Phase" as PomoRest
+
+            [*] --> PomoWork
+            PomoWork --> PomoRest : Timer End / Space (if >100%)
+            PomoRest --> PomoWork : Space / Auto-Skip (1.5x duration)
+        }
+
+        StandardActive --> Pomo : Category.hasPomodoro == true
+        Pomo --> StandardActive : Category.hasPomodoro == false
+    }
+
+    S2 --> S3 : Click Category [N] (Distraction logged)
+    S2 --> S1 : Block Boundary Reached (New Plan)
+
+    %% State 3 Logic
+    state S3 {
+        [*] --> SplitView
+
+        state "OFFSET_WINDOW" as Offset {
+            [*] --> Visible : 120s Timer Start
+            Visible --> Hidden : Timer Expired
+            Visible --> Visible : [ or ] Key (Nudge -5m)
+        }
+
+        SplitView --> SplitView : [ or ] Key (Update Timestamp)
+    }
+
+    S3 --> S2 : Enter / Click Bottom (Sync to Plan)
+    S3 --> S3 : Click Category [N] (New Distraction)
+    S3 --> S1 : Block Boundary Reached (New Plan)
+
+    %% Global Transitions
+    S2 --> S2 : Space (Confirmation Pulse)
+    S3 --> Init : Cmd+Z (Undo to previous state)
+*/
+
 extension Notification.Name {
   static let confirmationNeeded = Notification.Name("confirmationNeeded")
 }
