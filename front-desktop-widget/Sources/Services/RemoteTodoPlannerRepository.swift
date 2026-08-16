@@ -1,6 +1,6 @@
 import Foundation
 
-final class RemoteTodoPlannerRepository: TodoPlannerRepository {
+final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerRepository {
   private let api = APIClient.shared
 
   func getAuthToken() -> String? {

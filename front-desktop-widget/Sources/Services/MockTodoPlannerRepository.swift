@@ -170,7 +170,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
 
   private func seedDayRecord(for date: String) -> DayRecord {
     let cycleCategoryIds = [1, 2, 3, 4, 5, 6]
-    let blockDurationMinutes = 5
+    let blockDurationMinutes = 2
     let minutesPerDay = 24 * 60
     let snapshot = stride(from: 0, to: minutesPerDay, by: blockDurationMinutes)
       .enumerated()

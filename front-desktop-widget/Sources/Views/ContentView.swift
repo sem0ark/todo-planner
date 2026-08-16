@@ -135,18 +135,15 @@ struct ContentView: View {
 
     Task {
       switch key {
-      case " ":
-        print("[KEY] Space - handling space key")
-        await widgetState.handleSpaceKey()
-      case "\r":  // Return key
-        print("[KEY] Return - syncing to plan")
-        await widgetState.syncToPlan()
+      case "\r", " ":  // Primary action key
+        print("[KEY] Return / Space")
+        await widgetState.handlePrimaryAction()
       case "1", "2", "3", "4", "5", "6", "7", "8", "9":
         if let number = Int(key) {
           let index = number - 1
           guard index < widgetState.categories.count else { return }
           print("[KEY] Number \(number) - transitioning to category")
-          await widgetState.transitionToCategory(widgetState.categories[index])
+          await widgetState.handleSelectCategory(widgetState.categories[index])
         }
       case "[":
         print("[KEY] [ - adjusting offset -5m")
@@ -214,6 +211,12 @@ struct ConfirmationPromptView: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 12)
+    }
+    .contentShape(Rectangle())
+    .onTapGesture {
+      Task {
+        await widgetState.handlePrimaryAction()
+      }
     }
     .onAppear {
       // Breathe animation (2s cycle, matching React)
@@ -366,6 +369,12 @@ struct ActiveView: View {
           .padding(.vertical, 12)
         }
       }
+      .contentShape(Rectangle())
+      .onTapGesture {
+        Task {
+          await widgetState.handlePrimaryAction()
+        }
+      }
     } else {
       // Loading or no category selected
       ZStack {
@@ -444,7 +453,7 @@ struct OffScheduleView: View {
       // Planned - Bottom section (pulsing clickable with dashed border)
       Button(action: {
         Task {
-          await widgetState.syncToPlan()
+          await widgetState.handlePrimaryAction()
         }
       }) {
         ZStack(alignment: .topLeading) {
@@ -642,7 +651,7 @@ struct CategoryRow: View {
   var body: some View {
     Button(action: {
       Task {
-        await widgetState.transitionToCategory(category)
+        await widgetState.handleSelectCategory(category)
       }
     }) {
       HStack(spacing: 8) {

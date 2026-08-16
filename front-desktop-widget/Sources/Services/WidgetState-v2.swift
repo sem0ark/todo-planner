@@ -40,11 +40,9 @@ struct WidgetContext {
 
 enum WidgetAction {
   case initialize
-  case confirm
   case selectCategory(Category)
-  case syncToPlan
   case adjustOffset(Int)
-  case spacePressed
+  case primaryAction
 }
 
 enum DayEventType: String {
@@ -208,6 +206,9 @@ func confirmationResult(context: WidgetContext, nextState: WidgetStateLogic) -> 
   guard let plannedCategory = updatedContext.plannedCategory else {
     return StateResult(nextState: nextState, updatedContext: updatedContext, effects: [])
   }
+  updatedContext.currentCategory = plannedCategory
+  updatedContext.pomodoroPhase = .work
+  updatedContext.pomodoroElapsed = 0
   return StateResult(
     nextState: nextState,
     updatedContext: updatedContext,
@@ -317,24 +318,14 @@ final class ActiveState: WidgetStateLogic {
     var ctx = context
 
     switch action {
-    case .confirm:
-      return confirmationResult(context: ctx, nextState: ActiveState())
-
-    case .selectCategory(let category):
-      return transitionResult(context: ctx, category: category)
-
-    case .syncToPlan:
-      guard let planned = ctx.plannedCategory else {
-        print("[ACTION] syncToPlan ignored: no planned category")
-        return StateResult(nextState: self, updatedContext: ctx, effects: [])
-      }
-      return transitionResult(context: ctx, category: planned)
-
-    case .spacePressed:
+    case .primaryAction:
       if ctx.currentCategory?.hasPomodoroEnabled == true {
         togglePomodoro(&ctx)
       }
       return StateResult(nextState: self, updatedContext: ctx, effects: [])
+
+    case .selectCategory(let category):
+      return transitionResult(context: ctx, category: category)
 
     case .initialize, .adjustOffset:
       return StateResult(nextState: self, updatedContext: ctx, effects: [])
@@ -368,17 +359,11 @@ final class ConfirmationPromptState: WidgetStateLogic {
     let ctx = context
 
     switch action {
-    case .confirm, .spacePressed:
+    case .primaryAction:
       return confirmationResult(context: ctx, nextState: ActiveState())
 
     case .selectCategory(let category):
       return transitionResult(context: ctx, category: category)
-
-    case .syncToPlan:
-      guard let planned = ctx.plannedCategory else {
-        return StateResult(nextState: self, updatedContext: ctx, effects: [])
-      }
-      return transitionResult(context: ctx, category: planned)
 
     default:
       return StateResult(nextState: self, updatedContext: ctx, effects: [])
@@ -399,7 +384,7 @@ final class OffScheduleState: WidgetStateLogic {
     var ctx = context
 
     switch action {
-    case .syncToPlan:
+    case .primaryAction:
       guard let planned = ctx.plannedCategory else {
         return StateResult(nextState: self, updatedContext: ctx, effects: [])
       }
@@ -422,9 +407,6 @@ final class OffScheduleState: WidgetStateLogic {
 
     case .selectCategory(let category):
       return transitionResult(context: ctx, category: category)
-
-    case .confirm:
-      return confirmationResult(context: ctx, nextState: ActiveState())
 
     default:
       return StateResult(nextState: self, updatedContext: ctx, effects: [])
@@ -539,13 +521,11 @@ final class WidgetStateStore {
       print("[ERROR] Initialization error: \(error)")
     }
   }
-  func confirmPlanned() async { await dispatch(.confirm) }
-  func transitionToCategory(_ category: Category) async {
+  func handleSelectCategory(_ category: Category) async {
     await dispatch(.selectCategory(category))
   }
-  func syncToPlan() async { await dispatch(.syncToPlan) }
+  func handlePrimaryAction() async { await dispatch(.primaryAction) }
   func adjustOffset(minutes: Int) async { await dispatch(.adjustOffset(minutes)) }
-  func handleSpaceKey() async { await dispatch(.spacePressed) }
 
   // MARK: - State Application & Projection
 
@@ -562,6 +542,7 @@ final class WidgetStateStore {
   private func execute(_ effect: WidgetEffect) async {
     switch effect {
     case .logTransition(let category, let occurredAt):
+      logEffectContext("logTransition", eventCategory: category)
       let blocks = await logEvent(
         type: .transition,
         category: category,
@@ -572,6 +553,7 @@ final class WidgetStateStore {
       updateDayRecord(&context, with: blocks)
 
     case .logConfirmation(let category):
+      logEffectContext("logConfirmation", eventCategory: category)
       let blocks = await logEvent(
         type: .confirmation,
         category: category,
@@ -587,6 +569,39 @@ final class WidgetStateStore {
     case .updateMenuBarIcon:
       updateMenuBarIcon()
     }
+  }
+
+  private func logEffectContext(_ effectName: String, eventCategory: Category) {
+    let plannedBlock = currentPlannedBlock
+    let actualBlock = context.currentDayRecord.flatMap {
+      TimeLogic.getCurrentActualBlock(at: Date(), from: $0.actualBlocks)
+    }
+
+    print(
+      "[EFFECT] \(effectName) eventCategory=\(categoryDescription(eventCategory)); "
+        + "state=\(stateDescription(displayState)); "
+        + "currentCategory=\(categoryDescription(context.currentCategory)); "
+        + "plannedCategory=\(categoryDescription(context.plannedCategory)); "
+        + "plannedBlock=\(plannedBlockDescription(plannedBlock)); "
+        + "actualBlock=\(actualBlockDescription(actualBlock)); "
+        + "lastEventTime=\(context.lastEventTime); offsetMinutes=\(context.offsetMinutes); "
+        + "lastCheckedBlockId=\(context.lastCheckedBlockId.map(String.init) ?? "nil")"
+    )
+  }
+
+  private func categoryDescription(_ category: Category?) -> String {
+    guard let category else { return "nil" }
+    return "id=\(category.id),name=\(category.name)"
+  }
+
+  private func plannedBlockDescription(_ block: PlannedBlock?) -> String {
+    guard let block else { return "nil" }
+    return "id=\(block.id),categoryId=\(block.categoryId),start=\(block.startTime),duration=\(block.durationMinutes)m"
+  }
+
+  private func actualBlockDescription(_ block: ActualBlock?) -> String {
+    guard let block else { return "nil" }
+    return "id=\(block.id),categoryId=\(block.categoryId.map(String.init) ?? "nil"),type=\(block.blockType),start=\(block.startTime),duration=\(block.durationMinutes)m"
   }
 
   // MARK: - Heartbeat
@@ -623,7 +638,10 @@ final class WidgetStateStore {
       case .active: .active
       case .offSchedule: .offSchedule
       }
-    MenuBarManager.shared.updateIcon(state: icon, category: context.currentCategory)
+    let iconCategory = displayState == .confirmationPrompt
+      ? context.plannedCategory ?? context.currentCategory
+      : context.currentCategory
+    MenuBarManager.shared.updateIcon(state: icon, category: iconCategory)
   }
 
   private func stateDescription(_ state: WidgetStateIdentity) -> String {
@@ -638,11 +656,9 @@ final class WidgetStateStore {
   private func actionDescription(_ action: WidgetAction) -> String {
     switch action {
     case .initialize: "initialize"
-    case .confirm: "confirm"
     case .selectCategory(let category): "selectCategory(\(category.name))"
-    case .syncToPlan: "syncToPlan"
     case .adjustOffset(let minutes): "adjustOffset(\(minutes)m)"
-    case .spacePressed: "spacePressed"
+    case .primaryAction: "primaryAction"
     }
   }
 }

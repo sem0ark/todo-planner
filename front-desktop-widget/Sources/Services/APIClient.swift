@@ -9,7 +9,7 @@ enum APIError: Error {
   case decodingError(Error)
 }
 
-class APIClient {
+final class APIClient: @unchecked Sendable {
   static let shared = APIClient()
 
   private let baseURL: String

@@ -3,7 +3,7 @@ import SQLite3
 
 /// SQLite-backed repository that caches data locally and syncs with remote API
 /// Uses native SQLite3 C library (no external dependencies)
-final class LocalTodoPlannerRepository: TodoPlannerRepository {
+final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerRepository {
   private var db: OpaquePointer?
   private let remoteAPI = APIClient.shared
   private let dbPath: String
