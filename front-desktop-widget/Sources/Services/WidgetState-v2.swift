@@ -32,11 +32,9 @@ struct WidgetContext {
   var currentCategory: Category?
   var plannedCategory: Category?
   var lastEventTime = Date()
-  var isConfirmed = false
   var pomodoroPhase: PomodoroPhase = .work
   var pomodoroElapsed = 0
   var offsetMinutes = 0
-  var offsetExpiry: Date?
   var lastCheckedBlockId: Int?
 }
 
@@ -54,12 +52,20 @@ enum DayEventType: String {
   case transition
 }
 
+enum WidgetEffect {
+  case logTransition(category: Category, occurredAt: Date?)
+  case logConfirmation(category: Category)
+  case postNotification(Notification.Name)
+  case updateMenuBarIcon
+}
+
 // MARK: - State Protocol & Result
 
 /// The atomic output of a state operation.
 struct StateResult {
   let nextState: WidgetStateLogic
   let updatedContext: WidgetContext
+  let effects: [WidgetEffect]
 }
 
 /// The blueprint for all widget state logic modules.
@@ -68,11 +74,7 @@ protocol WidgetStateLogic {
   var identity: WidgetStateIdentity { get }
 
   /// Processes user intents (e.g., button clicks, key presses).
-  func handle(
-    action: WidgetAction,
-    context: WidgetContext,
-    repository: TodoPlannerRepository
-  ) async -> StateResult
+  func handle(action: WidgetAction, context: WidgetContext) -> StateResult
 
   /// Processes temporal events (e.g., 1s heartbeat, boundary checks).
   func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult
@@ -137,111 +139,94 @@ extension DateFormatter {
   }()
 }
 
-// MARK: - Context Extensions (Centralized Logic)
+// MARK: - Pure State Helpers
 
-extension WidgetContext {
-  /// Updates the day record with new actual blocks
-  mutating func updateBlocks(_ blocks: [ActualBlock]) {
-    guard let record = currentDayRecord else { return }
-    currentDayRecord = DayRecord(
-      id: record.id,
-      snapshotId: record.snapshotId,
-      calendarDate: record.calendarDate,
-      reviewStatus: record.reviewStatus,
-      snapshotBlocks: record.snapshotBlocks,
-      actualBlocks: blocks,
-      createdAt: record.createdAt,
-      updatedAt: Date()
-    )
+func tickPomodoro(_ context: inout WidgetContext) {
+  guard let config = context.currentCategory?.pomodoroConfig else { return }
+
+  context.pomodoroElapsed += 1
+  let limit = context.pomodoroPhase == .work ? config.workDuration : config.restDuration
+  if context.pomodoroPhase == .rest && context.pomodoroElapsed > Int(Double(limit) * 1.5) {
+    context.pomodoroPhase = .work
+    context.pomodoroElapsed = 0
   }
+}
 
-  /// Updates lastCheckedBlockId for boundary detection
-  mutating func markBlockAsChecked(_ blockId: Int) {
-    lastCheckedBlockId = blockId
+func togglePomodoro(_ context: inout WidgetContext) {
+  guard let config = context.currentCategory?.pomodoroConfig else { return }
+
+  if context.pomodoroPhase == .work && context.pomodoroElapsed >= config.workDuration {
+    context.pomodoroPhase = .rest
+    context.pomodoroElapsed = 0
+  } else if context.pomodoroPhase == .rest {
+    context.pomodoroPhase = .work
+    context.pomodoroElapsed = 0
   }
+}
 
-  /// Performs a category transition with all side effects
-  @MainActor
-  mutating func transitionTo(
-    category: Category, isPlanned: Bool, repo: TodoPlannerRepository
-  ) async -> StateResult {
-    currentCategory = category
-    lastEventTime = Date()
-    isConfirmed = true
-    pomodoroPhase = .work
-    pomodoroElapsed = 0
+@MainActor
+func confirmationBoundaryResult(
+  context: WidgetContext,
+  currentPlannedBlock: PlannedBlock?
+) -> StateResult? {
+  guard let newBlock = currentPlannedBlock,
+    newBlock.id != context.lastCheckedBlockId,
+    TimeLogic.isWithinConfirmationWindow(for: newBlock, at: Date())
+  else { return nil }
 
-    if isPlanned {
-      offsetExpiry = nil
-      offsetMinutes = 0
-    } else {
-      offsetExpiry = Date().addingTimeInterval(120)
-      offsetMinutes = 0
-    }
+  var updatedContext = context
+  updatedContext.lastCheckedBlockId = newBlock.id
+  return StateResult(
+    nextState: ConfirmationPromptState(),
+    updatedContext: updatedContext,
+    effects: [.updateMenuBarIcon, .postNotification(.confirmationNeeded)]
+  )
+}
 
-    let blocks = await logEvent(
-      type: .transition, category: category, occurredAt: nil, recordId: currentDayRecord?.id,
-      repo: repo)
-    updateBlocks(blocks)
+@MainActor
+func transitionResult(context: WidgetContext, category: Category) -> StateResult {
+  var updatedContext = context
+  updatedContext.currentCategory = category
+  updatedContext.lastEventTime = Date()
+  updatedContext.pomodoroPhase = .work
+  updatedContext.pomodoroElapsed = 0
+  updatedContext.offsetMinutes = 0
 
-    let nextState: WidgetStateLogic
-    let stateName: String
-    if isPlanned {
-      nextState = ActiveState()
-      stateName = "active"
-    } else {
-      nextState = OffScheduleState()
-      stateName = "offSchedule"
-    }
-    print("[STATE] Transition -> \(stateName) category=\(category.name)")
-    return StateResult(nextState: nextState, updatedContext: self)
+  let isPlanned = category.id == context.plannedCategory?.id
+  let nextState: WidgetStateLogic = isPlanned ? ActiveState() : OffScheduleState()
+  return StateResult(
+    nextState: nextState,
+    updatedContext: updatedContext,
+    effects: [.updateMenuBarIcon, .logTransition(category: category, occurredAt: nil)]
+  )
+}
+
+@MainActor
+func confirmationResult(context: WidgetContext, nextState: WidgetStateLogic) -> StateResult {
+  var updatedContext = context
+  updatedContext.lastEventTime = Date()
+  guard let plannedCategory = updatedContext.plannedCategory else {
+    return StateResult(nextState: nextState, updatedContext: updatedContext, effects: [])
   }
+  return StateResult(
+    nextState: nextState,
+    updatedContext: updatedContext,
+    effects: [.updateMenuBarIcon, .logConfirmation(category: plannedCategory)]
+  )
+}
 
-  /// Confirms the current plan
-  @MainActor
-  mutating func confirm(repo: TodoPlannerRepository) async -> StateResult {
-    isConfirmed = true
-    lastEventTime = Date()
-
-    let blocks = await logEvent(
-      type: .confirmation, category: plannedCategory, occurredAt: nil,
-      recordId: currentDayRecord?.id, repo: repo)
-    updateBlocks(blocks)
-
-    print("[CONFIRM] Plan validated")
-    let nextState = ActiveState()
-    return StateResult(nextState: nextState, updatedContext: self)
-  }
-
-  /// Updates Pomodoro state (called every second in active mode)
-  mutating func tickPomodoro() {
-    guard let config = currentCategory?.pomodoroConfig else { return }
-
-    pomodoroElapsed += 1
-    let limit = pomodoroPhase == .work ? config.workDuration : config.restDuration
-
-    // Auto-reset if rest phase exceeds 1.5x duration
-    if pomodoroPhase == .rest && pomodoroElapsed > Int(Double(limit) * 1.5) {
-      pomodoroPhase = .work
-      pomodoroElapsed = 0
-      print("[POMODORO] Auto-reset rest -> work")
-    }
-  }
-
-  /// Toggles Pomodoro phase (space key in active state)
-  mutating func togglePomodoro() {
-    guard let config = currentCategory?.pomodoroConfig else { return }
-
-    if pomodoroPhase == .work && pomodoroElapsed >= config.workDuration {
-      pomodoroPhase = .rest
-      pomodoroElapsed = 0
-      print("[POMODORO] Work complete -> rest")
-    } else if pomodoroPhase == .rest {
-      pomodoroPhase = .work
-      pomodoroElapsed = 0
-      print("[POMODORO] Rest skipped -> work")
-    }
-  }
+func updateDayRecord(_ context: inout WidgetContext, with blocks: [ActualBlock]) {
+  guard let record = context.currentDayRecord else { return }
+  context.currentDayRecord = DayRecord(
+    id: record.id,
+    snapshotId: record.snapshotId,
+    calendarDate: record.calendarDate,
+    reviewStatus: record.reviewStatus,
+    snapshotBlocks: record.snapshotBlocks,
+    actualBlocks: blocks,
+    createdAt: record.createdAt,
+    updatedAt: Date()
+  )
 }
 
 /// Unified event logging helper
@@ -277,58 +262,32 @@ func logEvent(
 final class InitializingState: WidgetStateLogic {
   let identity: WidgetStateIdentity = .initializing
 
-  func handle(
-    action: WidgetAction,
-    context: WidgetContext,
-    repository: TodoPlannerRepository
-  ) async -> StateResult {
+  func handle(action: WidgetAction, context: WidgetContext) -> StateResult {
     guard case .initialize = action else {
-      return StateResult(nextState: self, updatedContext: context)
+      return StateResult(nextState: self, updatedContext: context, effects: [])
     }
 
-    var ctx = context
-
-    do {
-      print("[INIT] WidgetState: Starting initialization")
-
-      ctx.categories = try await repository.fetchCategories()
-
-      let today = DateFormatter.yyyyMMdd.string(from: Date())
-      if let record = try await repository.fetchDayRecord(date: today) {
-        ctx.currentDayRecord = record
-      } else {
-        ctx.currentDayRecord = try await repository.createDayRecord(date: today)
-      }
-
-      return reconcileInitialState(context: ctx)
-
-    } catch {
-      print("[ERROR] Initialization error: \(error)")
-      return StateResult(nextState: self, updatedContext: ctx)
-    }
+    return reconcileInitialState(context: context)
   }
 
   func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult {
-    return StateResult(nextState: self, updatedContext: context)
+    return StateResult(nextState: self, updatedContext: context, effects: [])
   }
 
-  @MainActor
   private func reconcileInitialState(context: WidgetContext) -> StateResult {
     var ctx = context
     let now = Date()
 
     guard let record = ctx.currentDayRecord else {
-      ctx.isConfirmed = true
       print("[INIT] Complete: no record available")
       let nextState = ActiveState()
-      return StateResult(nextState: nextState, updatedContext: ctx)
+      return StateResult(nextState: nextState, updatedContext: ctx, effects: [])
     }
 
     let currentPlanned = TimeLogic.getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
     let planned =
       currentPlanned ?? TimeLogic.getNextPlannedBlock(at: now, from: record.snapshotBlocks)
     ctx.plannedCategory = ctx.categories.first { $0.id == planned?.categoryId }
-
     if let actual = TimeLogic.getCurrentActualBlock(at: now, from: record.actualBlocks),
       let actualId = actual.categoryId
     {
@@ -337,7 +296,6 @@ final class InitializingState: WidgetStateLogic {
       ctx.currentCategory = ctx.plannedCategory
     }
 
-    ctx.isConfirmed = true
     ctx.lastEventTime = Date()
 
     let isOnSchedule = ctx.currentCategory?.id == ctx.plannedCategory?.id
@@ -345,12 +303,8 @@ final class InitializingState: WidgetStateLogic {
       "[INIT] System Status: \(isOnSchedule ? "ON-SCHEDULE" : "OFF-SCHEDULE"). Transitioning to \(isOnSchedule ? "Active" : "OffSchedule")State."
     )
 
-    if !isOnSchedule {
-      ctx.offsetExpiry = Date().addingTimeInterval(120)
-    }
-
     let nextState: WidgetStateLogic = isOnSchedule ? ActiveState() : OffScheduleState()
-    return StateResult(nextState: nextState, updatedContext: ctx)
+    return StateResult(nextState: nextState, updatedContext: ctx, effects: [])
   }
 }
 
@@ -359,62 +313,49 @@ final class InitializingState: WidgetStateLogic {
 final class ActiveState: WidgetStateLogic {
   let identity: WidgetStateIdentity = .active
 
-  func handle(
-    action: WidgetAction,
-    context: WidgetContext,
-    repository: TodoPlannerRepository
-  ) async -> StateResult {
+  func handle(action: WidgetAction, context: WidgetContext) -> StateResult {
     var ctx = context
 
     switch action {
     case .confirm:
-      return await ctx.confirm(repo: repository)
+      return confirmationResult(context: ctx, nextState: ActiveState())
 
     case .selectCategory(let category):
-      let isPlanned = category.id == ctx.plannedCategory?.id
-      return await ctx.transitionTo(category: category, isPlanned: isPlanned, repo: repository)
+      return transitionResult(context: ctx, category: category)
 
     case .syncToPlan:
       guard let planned = ctx.plannedCategory else {
         print("[ACTION] syncToPlan ignored: no planned category")
-        return StateResult(nextState: self, updatedContext: ctx)
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
       }
-      return await ctx.transitionTo(category: planned, isPlanned: true, repo: repository)
+      return transitionResult(context: ctx, category: planned)
 
     case .spacePressed:
-      if ctx.currentCategory?.hasPomodoroEnabled == true, ctx.isConfirmed {
-        ctx.togglePomodoro()
+      if ctx.currentCategory?.hasPomodoroEnabled == true {
+        togglePomodoro(&ctx)
       }
-      return StateResult(nextState: self, updatedContext: ctx)
+      return StateResult(nextState: self, updatedContext: ctx, effects: [])
 
     case .initialize, .adjustOffset:
-      return StateResult(nextState: self, updatedContext: ctx)
+      return StateResult(nextState: self, updatedContext: ctx, effects: [])
     }
   }
 
   func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult {
     var ctx = context
 
-    // Boundary Detection
-    if let newBlock = currentPlannedBlock,
-      newBlock.id != ctx.lastCheckedBlockId,
-      TimeLogic.isWithinConfirmationWindow(for: newBlock, at: Date()),
-      ctx.isConfirmed
+    if let boundary = confirmationBoundaryResult(
+      context: ctx, currentPlannedBlock: currentPlannedBlock)
     {
-      print("[BOUNDARY] New block detected: \(newBlock.id). Prompting confirmation.")
-      ctx.markBlockAsChecked(newBlock.id)
-      ctx.isConfirmed = false
-      NotificationCenter.default.post(name: .confirmationNeeded, object: nil)
-      let nextState = ConfirmationPromptState()
-      return StateResult(nextState: nextState, updatedContext: ctx)
+      return boundary
     }
 
     // Pomodoro Logic
-    if ctx.currentCategory?.hasPomodoroEnabled == true, ctx.isConfirmed {
-      ctx.tickPomodoro()
+    if ctx.currentCategory?.hasPomodoroEnabled == true {
+      tickPomodoro(&ctx)
     }
 
-    return StateResult(nextState: self, updatedContext: ctx)
+    return StateResult(nextState: self, updatedContext: ctx, effects: [])
   }
 }
 
@@ -423,34 +364,29 @@ final class ActiveState: WidgetStateLogic {
 final class ConfirmationPromptState: WidgetStateLogic {
   let identity: WidgetStateIdentity = .confirmationPrompt
 
-  func handle(
-    action: WidgetAction,
-    context: WidgetContext,
-    repository: TodoPlannerRepository
-  ) async -> StateResult {
-    var ctx = context
+  func handle(action: WidgetAction, context: WidgetContext) -> StateResult {
+    let ctx = context
 
     switch action {
     case .confirm, .spacePressed:
-      return await ctx.confirm(repo: repository)
+      return confirmationResult(context: ctx, nextState: ActiveState())
 
     case .selectCategory(let category):
-      let isPlanned = category.id == ctx.plannedCategory?.id
-      return await ctx.transitionTo(category: category, isPlanned: isPlanned, repo: repository)
+      return transitionResult(context: ctx, category: category)
 
     case .syncToPlan:
       guard let planned = ctx.plannedCategory else {
-        return StateResult(nextState: self, updatedContext: ctx)
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
       }
-      return await ctx.transitionTo(category: planned, isPlanned: true, repo: repository)
+      return transitionResult(context: ctx, category: planned)
 
     default:
-      return StateResult(nextState: self, updatedContext: ctx)
+      return StateResult(nextState: self, updatedContext: ctx, effects: [])
     }
   }
 
   func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult {
-    return StateResult(nextState: self, updatedContext: context)
+    return StateResult(nextState: self, updatedContext: context, effects: [])
   }
 }
 
@@ -459,70 +395,45 @@ final class ConfirmationPromptState: WidgetStateLogic {
 final class OffScheduleState: WidgetStateLogic {
   let identity: WidgetStateIdentity = .offSchedule
 
-  func handle(
-    action: WidgetAction,
-    context: WidgetContext,
-    repository: TodoPlannerRepository
-  ) async -> StateResult {
+  func handle(action: WidgetAction, context: WidgetContext) -> StateResult {
     var ctx = context
 
     switch action {
     case .syncToPlan:
       guard let planned = ctx.plannedCategory else {
-        return StateResult(nextState: self, updatedContext: ctx)
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
       }
-      return await ctx.transitionTo(category: planned, isPlanned: true, repo: repository)
+      return transitionResult(context: ctx, category: planned)
 
     case .adjustOffset(let minutes):
       let retroactiveTime = ctx.lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
       ctx.offsetMinutes += minutes
       ctx.lastEventTime = retroactiveTime
-      ctx.offsetExpiry = Date().addingTimeInterval(120)
-
-      let blocks = await logEvent(
-        type: .transition, category: ctx.currentCategory, occurredAt: retroactiveTime,
-        recordId: ctx.currentDayRecord?.id, repo: repository)
-      ctx.updateBlocks(blocks)
 
       print("[OFFSET] Applied \(minutes)m, total=\(ctx.offsetMinutes)m")
-      return StateResult(nextState: self, updatedContext: ctx)
+      guard let category = ctx.currentCategory else {
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
+      }
+      return StateResult(
+        nextState: self,
+        updatedContext: ctx,
+        effects: [.logTransition(category: category, occurredAt: retroactiveTime)]
+      )
 
     case .selectCategory(let category):
-      let isPlanned = category.id == ctx.plannedCategory?.id
-      return await ctx.transitionTo(category: category, isPlanned: isPlanned, repo: repository)
+      return transitionResult(context: ctx, category: category)
 
     case .confirm:
-      return await ctx.confirm(repo: repository)
+      return confirmationResult(context: ctx, nextState: ActiveState())
 
     default:
-      return StateResult(nextState: self, updatedContext: ctx)
+      return StateResult(nextState: self, updatedContext: ctx, effects: [])
     }
   }
 
   func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult {
-    var ctx = context
-    let now = Date()
-
-    // Offset Window Expiry
-    if let expiry = ctx.offsetExpiry, now > expiry {
-      print("[OFF-SCHEDULE] Offset window expired")
-      ctx.offsetExpiry = nil
-    }
-
-    // Boundary Detection
-    if let newBlock = currentPlannedBlock,
-      newBlock.id != ctx.lastCheckedBlockId,
-      TimeLogic.isWithinConfirmationWindow(for: newBlock, at: now)
-    {
-      print("[BOUNDARY] New block detected while off-schedule: \(newBlock.id)")
-      ctx.markBlockAsChecked(newBlock.id)
-      ctx.isConfirmed = false
-      NotificationCenter.default.post(name: .confirmationNeeded, object: nil)
-      let nextState = ConfirmationPromptState()
-      return StateResult(nextState: nextState, updatedContext: ctx)
-    }
-
-    return StateResult(nextState: self, updatedContext: ctx)
+    return confirmationBoundaryResult(context: context, currentPlannedBlock: currentPlannedBlock)
+      ?? StateResult(nextState: self, updatedContext: context, effects: [])
   }
 }
 
@@ -535,30 +446,56 @@ final class WidgetStateStore {
   private var currentState: WidgetStateLogic = InitializingState()
   private var context = WidgetContext()
   private let repository: TodoPlannerRepository
+  private var tick = 0
 
   // --- UI Projections (Glanceable Data) ---
-  var displayState: WidgetStateIdentity = .initializing
-  var categories: [Category] = []
-  var currentDayRecord: DayRecord?
-  var currentCategory: Category?
-  var plannedCategory: Category?
-  var lastEventTime = Date()
-  var progressPercentage = 0.0
-  var currentDuration = "0:00"
-  var isConfirmed = false
-  var offsetMinutes = 0
-  var plannedDurationMinutes = 0
-  var showOffsetBar = false
-  var pomodoroState: PomodoroState?
-  var pomodoroProgress = 0.0
+  var displayState: WidgetStateIdentity { currentState.identity }
+  var categories: [Category] { context.categories }
+  var currentDayRecord: DayRecord? { context.currentDayRecord }
+  var currentCategory: Category? { context.currentCategory }
+  var plannedCategory: Category? {
+    guard let record = context.currentDayRecord else { return nil }
+    let block =
+      TimeLogic.getCurrentPlannedBlock(at: Date(), from: record.snapshotBlocks)
+      ?? TimeLogic.getNextPlannedBlock(at: Date(), from: record.snapshotBlocks)
+    return context.categories.first { $0.id == block?.categoryId }
+  }
+  var lastEventTime: Date { context.lastEventTime }
+  var offsetMinutes: Int { context.offsetMinutes }
+  var currentPlannedBlock: PlannedBlock? {
+    _ = tick
+    guard let record = context.currentDayRecord else { return nil }
+    let now = Date()
+    return TimeLogic.getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
+      ?? TimeLogic.getNextPlannedBlock(at: now, from: record.snapshotBlocks)
+  }
+  var plannedDurationMinutes: Int { currentPlannedBlock?.durationMinutes ?? 0 }
+  var progressPercentage: Double {
+    _ = tick
+    guard let planned = currentPlannedBlock else { return 0.0 }
+    return TimeLogic.calculateProgress(for: planned, at: Date())
+  }
+  var currentDuration: String {
+    _ = tick
+    let elapsed = max(0, Int(Date().timeIntervalSince(lastEventTime)))
+    return String(format: "%d:%02d", elapsed / 60, elapsed % 60)
+  }
+  var pomodoroState: PomodoroState? {
+    guard context.currentCategory?.pomodoroConfig != nil else { return nil }
+    return PomodoroState(phase: context.pomodoroPhase, elapsed: context.pomodoroElapsed)
+  }
+  var pomodoroProgress: Double {
+    let config = context.currentCategory?.pomodoroConfig
+    let limit = context.pomodoroPhase == .work ? config?.workDuration : config?.restDuration
+    guard let limit, limit > 0 else { return 0.0 }
+    return min(Double(context.pomodoroElapsed) / Double(limit), 1.0)
+  }
 
   // --- Internal State ---
   private var ticker: AnyCancellable?
-  private var currentPlannedBlock: PlannedBlock?
 
   var pomodoroActive: Bool {
-    displayState == .active && isConfirmed
-      && context.currentCategory?.hasPomodoroEnabled == true
+    displayState == .active && context.currentCategory?.hasPomodoroEnabled == true
   }
 
   var pomodoroPulsing: Bool { pomodoroActive && pomodoroProgress >= 1.0 }
@@ -578,12 +515,9 @@ final class WidgetStateStore {
     print(
       "[ACTION] Received: \(actionDescription(action)); state=\(stateDescription(displayState))")
 
-    let result = await currentState.handle(
-      action: action,
-      context: context,
-      repository: repository
-    )
-    apply(result)
+    context.plannedCategory = plannedCategory
+    let result = currentState.handle(action: action, context: context)
+    await apply(result)
 
     print(
       "[ACTION] Completed: \(actionDescription(action)); state=\(stateDescription(displayState))")
@@ -591,7 +525,20 @@ final class WidgetStateStore {
 
   // MARK: - Compatibility API
 
-  func initialize() async { await dispatch(.initialize) }
+  func initialize() async {
+    do {
+      context.categories = try await repository.fetchCategories()
+      let today = DateFormatter.yyyyMMdd.string(from: Date())
+      if let record = try await repository.fetchDayRecord(date: today) {
+        context.currentDayRecord = record
+      } else {
+        context.currentDayRecord = try await repository.createDayRecord(date: today)
+      }
+      await dispatch(.initialize)
+    } catch {
+      print("[ERROR] Initialization error: \(error)")
+    }
+  }
   func confirmPlanned() async { await dispatch(.confirm) }
   func transitionToCategory(_ category: Category) async {
     await dispatch(.selectCategory(category))
@@ -602,71 +549,43 @@ final class WidgetStateStore {
 
   // MARK: - State Application & Projection
 
-  private func apply(_ result: StateResult) {
+  private func apply(_ result: StateResult) async {
     self.context = result.updatedContext
 
-    if result.nextState.identity != self.displayState {
-      self.currentState = result.nextState
-      self.displayState = result.nextState.identity
+    self.currentState = result.nextState
+
+    for effect in result.effects {
+      await execute(effect)
+    }
+  }
+
+  private func execute(_ effect: WidgetEffect) async {
+    switch effect {
+    case .logTransition(let category, let occurredAt):
+      let blocks = await logEvent(
+        type: .transition,
+        category: category,
+        occurredAt: occurredAt,
+        recordId: context.currentDayRecord?.id,
+        repo: repository
+      )
+      updateDayRecord(&context, with: blocks)
+
+    case .logConfirmation(let category):
+      let blocks = await logEvent(
+        type: .confirmation,
+        category: category,
+        occurredAt: nil,
+        recordId: context.currentDayRecord?.id,
+        repo: repository
+      )
+      updateDayRecord(&context, with: blocks)
+
+    case .postNotification(let name):
+      NotificationCenter.default.post(name: name, object: nil)
+
+    case .updateMenuBarIcon:
       updateMenuBarIcon()
-    }
-
-    updateCurrentState()
-    projectContextToUI()
-  }
-
-  private func projectContextToUI() {
-    // Direct mappings
-    categories = context.categories
-    currentDayRecord = context.currentDayRecord
-    currentCategory = context.currentCategory
-    plannedCategory = context.plannedCategory
-    lastEventTime = context.lastEventTime
-    isConfirmed = context.isConfirmed
-    offsetMinutes = context.offsetMinutes
-
-    let now = Date()
-
-    // Duration string
-    let elapsed = max(0, Int(now.timeIntervalSince(context.lastEventTime)))
-    currentDuration = String(format: "%d:%02d", elapsed / 60, elapsed % 60)
-
-    // Progress percentage
-    if let planned = currentPlannedBlock {
-      progressPercentage = TimeLogic.calculateProgress(for: planned, at: now)
-    } else {
-      progressPercentage = 0.0
-    }
-
-    // Offset bar visibility
-    showOffsetBar =
-      context.offsetExpiry.map { now < $0 } ?? false
-
-    // Pomodoro projection
-    if let config = context.currentCategory?.pomodoroConfig {
-      let limit = context.pomodoroPhase == .work ? config.workDuration : config.restDuration
-      pomodoroProgress =
-        limit > 0 ? min(Double(context.pomodoroElapsed) / Double(limit), 1.0) : 0.0
-      pomodoroState = PomodoroState(
-        phase: context.pomodoroPhase, elapsed: context.pomodoroElapsed)
-    } else {
-      pomodoroState = nil
-      pomodoroProgress = 0.0
-    }
-  }
-
-  private func updateCurrentState() {
-    guard let record = context.currentDayRecord else { return }
-    let now = Date()
-
-    let currentPlanned = TimeLogic.getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
-    let planned =
-      currentPlanned ?? TimeLogic.getNextPlannedBlock(at: now, from: record.snapshotBlocks)
-    currentPlannedBlock = planned
-
-    if let planned {
-      plannedDurationMinutes = planned.durationMinutes
-      context.plannedCategory = context.categories.first { $0.id == planned.categoryId }
     }
   }
 
@@ -677,9 +596,11 @@ final class WidgetStateStore {
       .autoconnect()
       .sink { [weak self] _ in
         guard let self = self else { return }
+        self.tick += 1
+        self.context.plannedCategory = self.plannedCategory
         let result = self.currentState.onTick(
           context: self.context, currentPlannedBlock: self.currentPlannedBlock)
-        self.apply(result)
+        Task { await self.apply(result) }
       }
   }
 
