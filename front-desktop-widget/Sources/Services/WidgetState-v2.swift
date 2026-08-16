@@ -530,7 +530,7 @@ final class OffScheduleState: WidgetStateLogic {
 
 @Observable
 @MainActor
-final class WidgetStateStoreV2 {
+final class WidgetStateStore {
   // --- Source of Truth ---
   private var currentState: WidgetStateLogic = InitializingState()
   private var context = WidgetContext()

@@ -61,12 +61,12 @@ struct StyleTokens {
 
 struct ContentView: View {
   @State private var authController: AuthController
-  @State private var widgetState: WidgetStateStoreV2
+  @State private var widgetState: WidgetStateStore
 
   init() {
     let repo = RepositoryFactory.createRepository()
     _authController = State(wrappedValue: AuthController(repository: repo))
-    _widgetState = State(wrappedValue: WidgetStateStoreV2(repository: repo))
+    _widgetState = State(wrappedValue: WidgetStateStore(repository: repo))
   }
 
   var body: some View {
@@ -162,7 +162,7 @@ struct ContentView: View {
 }
 
 struct LeftPanelView: View {
-  var widgetState: WidgetStateStoreV2
+  var widgetState: WidgetStateStore
 
   var body: some View {
     ZStack {
@@ -186,7 +186,7 @@ struct LeftPanelView: View {
 
 // State 1: Confirmation Prompt
 struct ConfirmationPromptView: View {
-  var widgetState: WidgetStateStoreV2
+  var widgetState: WidgetStateStore
   @State private var breatheScale: CGFloat = 1.0
   @State private var breatheOpacity: Double = 1.0
 
@@ -273,7 +273,7 @@ extension Color {
 
 // State 2: Active/On-Schedule
 struct ActiveView: View {
-  var widgetState: WidgetStateStoreV2
+  var widgetState: WidgetStateStore
   @State private var pomoPulseScale: CGFloat = 1.0
   @State private var pomoPulseOpacity: Double = 1.0
 
@@ -387,7 +387,7 @@ struct ActiveView: View {
 
 // State 3: Off-Schedule
 struct OffScheduleView: View {
-  var widgetState: WidgetStateStoreV2
+  var widgetState: WidgetStateStore
   @State private var pulseOpacity: Double = 1.0
 
   var body: some View {
@@ -518,7 +518,7 @@ struct OffScheduleView: View {
 struct OffsetButton: View {
   let label: String
   let minutes: Int
-  let widgetState: WidgetStateStoreV2
+  let widgetState: WidgetStateStore
 
   var body: some View {
     Button(action: {
@@ -551,7 +551,7 @@ struct DashedLine: Shape {
 }
 
 struct RightRailView: View {
-  var widgetState: WidgetStateStoreV2
+  var widgetState: WidgetStateStore
   var authController: AuthController
 
   var body: some View {
@@ -635,7 +635,7 @@ struct RightRailView: View {
 struct CategoryRow: View {
   let index: Int
   let category: Category
-  var widgetState: WidgetStateStoreV2
+  var widgetState: WidgetStateStore
 
   private var isActive: Bool {
     widgetState.currentCategory?.id == category.id

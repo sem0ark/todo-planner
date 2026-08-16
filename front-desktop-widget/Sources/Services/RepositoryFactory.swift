@@ -12,6 +12,16 @@ enum RepositoryFactory {
     case "mock":
       print("[FACTORY] Using MockTodoPlannerRepository (in-memory)")
       return MockTodoPlannerRepository()
+    case "local":
+      print("[FACTORY] Using LocalTodoPlannerRepository (SQLite)")
+      let dbPath = getLocalDatabasePath()
+      do {
+        return try LocalTodoPlannerRepository(dbPath: dbPath)
+      } catch {
+        print("[FACTORY] Failed to initialize LocalTodoPlannerRepository: \(error)")
+        print("[FACTORY] Falling back to MockTodoPlannerRepository")
+        return MockTodoPlannerRepository()
+      }
     case "remote":
       print("[FACTORY] Using RemoteTodoPlannerRepository (API)")
       return RemoteTodoPlannerRepository()
