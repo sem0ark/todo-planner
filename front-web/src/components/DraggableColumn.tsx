@@ -72,6 +72,34 @@ interface DraggableColumnProps {
   snapToInterval?: number; // Snap to multiples of this value (in grid units)
 }
 
+function DragOverlayContent({
+  item,
+  position,
+  gridUnit,
+  renderItem,
+  className,
+}: {
+  item: LayoutItem;
+  position: ItemPosition;
+  gridUnit: number;
+  renderItem: DraggableColumnProps["renderItem"];
+  dragMode: DragMode;
+  className?: string;
+}) {
+  const style: React.CSSProperties = {
+    width: position.width,
+    height: item.size * gridUnit,
+    opacity: 0.9,
+    pointerEvents: "none",
+  };
+
+  return (
+    <div style={style} className={`shadow-xl rounded-lg ${className}`}>
+      {renderItem(item, "overlay")}
+    </div>
+  );
+}
+
 const DraggableItemWrapper = ({
   item,
   position,
@@ -281,16 +309,14 @@ export function DraggableColumn({
           />
         ))}
 
-        <DragOverlay>
+        <DragOverlay dropAnimation={null}>
           {activeItem ? (
-            <DraggableItemWrapper
+            <DragOverlayContent
               item={activeItem}
               position={itemPositions[activeItem.id]}
               gridUnit={gridUnit}
-              isOverlay
               renderItem={renderItem}
               className={itemClassName}
-              onDragModeChange={handleDragModeChange}
               dragMode={dragMode}
             />
           ) : null}

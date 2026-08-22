@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { useTemplateStore } from '../store/templateStore';
@@ -12,13 +12,40 @@ interface TemplateEditorProps {
   onClose: () => void;
 }
 
+function useUndoStack<T>(initial: T, maxHistory = 20) {
+  const [state, setState] = useState(initial);
+  const stateRef = useRef(initial);
+  const history = useRef<T[]>([]);
+
+  const push = (next: T) => {
+    history.current = [...history.current, stateRef.current].slice(-maxHistory);
+    stateRef.current = next;
+    setState(next);
+  };
+
+  const undo = () => {
+    const previous = history.current.pop();
+    if (previous === undefined) return;
+    stateRef.current = previous;
+    setState(previous);
+  };
+
+  const reset = (next: T) => {
+    history.current = [];
+    stateRef.current = next;
+    setState(next);
+  };
+
+  return { state, push, undo, reset, canUndo: history.current.length > 0 };
+}
+
 export default function TemplateEditor({ templateId, onClose }: TemplateEditorProps) {
   const { token } = useAuthStore();
   const { categories, setCategories } = useCategoryStore();
   const { templates, addTemplate, updateTemplate: updateTemplateStore, setTemplates } = useTemplateStore();
 
   const [name, setName] = useState('');
-  const [blocks, setBlocks] = useState<PlannedBlock[]>([]);
+  const { state: blocks, push: pushBlocks, undo: undoBlocks, reset: resetBlocks, canUndo } = useUndoStack<PlannedBlock[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -33,13 +60,26 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
       const template = templates.find((t) => t.id === templateId);
       if (template) {
         setName(template.name);
-        setBlocks(template.planned_blocks);
+        resetBlocks(template.planned_blocks);
       }
     } else {
       setName('');
-      setBlocks([]);
+      resetBlocks([]);
     }
   }, [templateId, templates]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      const isEditingField = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && canUndo && !isEditingField) {
+        event.preventDefault();
+        undoBlocks();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [canUndo, undoBlocks]);
 
   const loadData = async () => {
     if (!token) return;
@@ -120,7 +160,7 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
           />
         </div>
 
-        <TimelineEditor blocks={blocks} categories={categories} onChange={setBlocks} />
+        <TimelineEditor blocks={blocks} categories={categories} onChange={pushBlocks} />
 
         <div className="flex gap-3 pt-4">
           <button

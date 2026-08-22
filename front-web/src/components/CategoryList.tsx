@@ -162,7 +162,7 @@ export default function CategoryList() {
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                className="w-20 h-10 bg-navy/60 border-2 border-slate-grey rounded-lg cursor-pointer"
+                className="w-10 h-10 bg-navy/60 border-2 border-slate-grey rounded-lg cursor-pointer"
                 title="Custom color"
               />
             </div>
@@ -190,7 +190,7 @@ export default function CategoryList() {
                         className="w-full rounded-lg border-2 border-slate-grey bg-navy/60 px-3 py-2 pr-16 text-right font-mono tabular-nums text-snow outline-none focus:border-cloud"
                         aria-label="Work duration in minutes"
                       />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-cloud">min</span>
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-cloud">min</span>
                     </span>
                   </label>
                   <label className="text-sm text-cloud">
@@ -205,7 +205,7 @@ export default function CategoryList() {
                         className="w-full rounded-lg border-2 border-slate-grey bg-navy/60 px-3 py-2 pr-16 text-right font-mono tabular-nums text-snow outline-none focus:border-cloud"
                         aria-label="Rest duration in minutes"
                       />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-cloud">min</span>
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-cloud">min</span>
                     </span>
                   </label>
                 </div>
@@ -242,7 +242,7 @@ export default function CategoryList() {
             <div className="min-w-0 flex-1">
               <span className="block truncate text-snow font-medium">{category.name}</span>
               {category.pomodoro_config && (
-                <span className="mt-1 block font-mono text-xs tabular-nums text-cloud">
+                <span className="mt-1 block font-mono text-sm tabular-nums text-cloud">
                   Pomodoro {category.pomodoro_config.work_duration / 60}/{category.pomodoro_config.rest_duration / 60} min
                 </span>
               )}
