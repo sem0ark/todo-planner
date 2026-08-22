@@ -28,25 +28,26 @@ final class WorkingDayMockTodoPlannerRepository: MockTodoPlannerRepository, @unc
         createdAt: now,
         updatedAt: now
       ),
+      Category(
+        id: 4,
+        name: "Learning",
+        color: "#27b208",
+        pomodoroConfig: nil,
+        createdAt: now,
+        updatedAt: now
+      ),
     ]
   }
 
   override func seedDayRecord(for date: String) -> DayRecord {
-    // Schedule breakdown:
-    // 00:00 - 08:00: Rest (480 min)
-    // 08:00 - 12:00: Working (240 min)
-    // 12:00 - 13:00: Rest/Lunch (60 min)
-    // 13:00 - 17:00: Working (240 min)
-    // 17:00 - 18:00: Exercise (60 min)
-    // 18:00 - 00:00: Rest (360 min)
-
     let schedule: [(String, Int, Int)] = [
       ("00:00:00", 3, 480),  // Rest
-      ("08:00:00", 1, 240),  // Working
+      ("08:00:00", 4, 60),  // Learning
+      ("09:00:00", 1, 180),  // Working
       ("12:00:00", 3, 60),  // Lunch (Rest)
-      ("13:00:00", 1, 240),  // Working
-      ("17:00:00", 2, 60),  // Exercise
-      ("18:00:00", 3, 360),  // Rest
+      ("13:00:00", 1, 300),  // Working
+      ("18:00:00", 2, 60),  // Exercise
+      ("19:00:00", 3, 360),  // Rest
     ]
 
     let blocks = schedule.enumerated().map { index, item in

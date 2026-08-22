@@ -31,7 +31,7 @@ _______________________________________
 |____________________|___________________|
 ```
 
-- **[A] Offset Bar:** Only visible in State 3 for 120 seconds post-transition.
+- **[A] Offset Bar**
 - **[B] Current Activity:** Large Domain Hue block.
 - **[C] Category List:** Fixed order (Web-configured). Monospaced index numbers for quick-key reference.
 - **[D] Planned Block:** Appears only when Actual diverges from Template.

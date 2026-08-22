@@ -24,14 +24,28 @@ func (r *UserRepository) Create(ctx context.Context, username, password string) 
 		return nil, err
 	}
 
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	var user User
 	query := `INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username, created_at`
-	err = r.db.QueryRow(ctx, query, username, string(passwordHash)).Scan(&user.ID, &user.Username, &user.CreatedAt)
+	err = tx.QueryRow(ctx, query, username, string(passwordHash)).Scan(&user.ID, &user.Username, &user.CreatedAt)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			return nil, ErrDuplicateUsername
 		}
+		return nil, err
+	}
+
+	if err := createDefaultUserConfiguration(ctx, tx, user.ID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 

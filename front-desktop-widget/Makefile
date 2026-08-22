@@ -78,12 +78,6 @@ endif
 	@plutil -replace LSUIElement -bool YES "$(CONTENTS)/Info.plist"
 	@echo "Built $(APP_BUNDLE)"
 
-run: all ## Build and run the application
-	@open "$(APP_BUNDLE)"
-
-dev: all ## Run in development mode (with console output)
-	@"$(APP_EXECUTABLE)"
-
 # --- Variant Targets ---
 
 build-remote: ## Build using .env.remote
@@ -98,12 +92,18 @@ build-mock: ## Build using .env.mock
 	$(MAKE) clean
 	$(MAKE) build ENV_FILE=.env.mock
 
-run-mock: ## Build and run with mock storage
-	$(MAKE) build-mock
-	$(MAKE) run ENV_FILE=.env.mock
-
 dev-mock: ## Build and run in foreground (logs to terminal)
 	$(MAKE) build-mock
+	@echo "Starting $(APP_NAME) in foreground..."
+	@"$(APP_EXECUTABLE)"
+
+dev-remote: ## Build and run in foreground (logs to terminal)
+	$(MAKE) build-remote
+	@echo "Starting $(APP_NAME) in foreground..."
+	@"$(APP_EXECUTABLE)"
+
+dev-local: ## Build and run in foreground (logs to terminal)
+	$(MAKE) build-local
 	@echo "Starting $(APP_NAME) in foreground..."
 	@"$(APP_EXECUTABLE)"
 
