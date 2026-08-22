@@ -5,6 +5,15 @@ local:
 	docker-compose up --build --force-recreate
 	@echo "Application started. Backend: http://localhost:8080, Frontend: http://localhost:5173"
 
+clear-local:
+	docker-compose down -v
+	docker volume rm $(docker volume ls -qf dangling=true)
+	-colima stop
+	@echo "Application stopped and cleared"
+
+local-fe:
+	cd front-web && pnpm dev
+
 lint: format lint-backend lint-frontend
 
 lint-backend:
@@ -17,6 +26,7 @@ lint-frontend:
 format:
 	cd api-backend && gofmt -w .
 	cd web-front && pnpm exec prettier --write . --ignore-unknown || true
+	cd front-desktop-widget && swift format --in-place --recursive Sources/ || true
 	@echo "Code formatted"
 
 test-prepare:

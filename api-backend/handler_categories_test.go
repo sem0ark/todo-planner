@@ -89,6 +89,50 @@ func TestCreateCategoryHandler_Success(t *testing.T) {
 	}
 }
 
+func TestCreateCategoryHandler_WithPomodoroConfig(t *testing.T) {
+	// Arrange
+	db := setupTestDB(t)
+	api := NewAPI(db, "test-secret", NewLogger("test"))
+	user := createTestUser(t, db, "pomodoro_handler_user", "password123")
+	reqBody := CategoryInput{
+		Name:           "Focus",
+		Color:          "#FF5733",
+		PomodoroConfig: &PomodoroConfig{WorkDuration: 1500, RestDuration: 300},
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/categories", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(withUserID(context.Background(), user.ID))
+	w := httptest.NewRecorder()
+
+	// Act
+	api.createCategoryHandler(w, req)
+
+	// Assert
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var category BlockCategory
+	if err := json.NewDecoder(w.Body).Decode(&category); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if category.PomodoroConfig == nil || *category.PomodoroConfig != *reqBody.PomodoroConfig {
+		t.Errorf("Expected pomodoro config %+v, got %+v", reqBody.PomodoroConfig, category.PomodoroConfig)
+	}
+}
+
+func TestCreateCategoryHandler_InvalidPomodoroConfig(t *testing.T) {
+	for _, config := range []*PomodoroConfig{
+		{WorkDuration: 0, RestDuration: 300},
+		{WorkDuration: 1500, RestDuration: 0},
+		{WorkDuration: -1, RestDuration: 300},
+	} {
+		if err := validatePomodoroConfig(config); err == nil {
+			t.Errorf("Expected config %+v to be rejected", config)
+		}
+	}
+}
+
 func TestCreateCategoryHandler_MissingName(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)

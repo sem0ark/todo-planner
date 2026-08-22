@@ -38,6 +38,41 @@ func TestCategoryRepository_Create(t *testing.T) {
 	}
 }
 
+func TestCategoryRepository_CreateWithPomodoroConfig(t *testing.T) {
+	// Arrange
+	db := setupTestDB(t)
+	repo := NewCategoryRepository(db)
+	user := createTestUser(t, db, "pomodoro_create_user", "password123")
+	ctx := context.Background()
+	config := &PomodoroConfig{WorkDuration: 1500, RestDuration: 300}
+
+	// Act
+	category, err := repo.Create(ctx, CategoryInput{
+		Name:           "Focus",
+		Color:          "#FF5733",
+		PomodoroConfig: config,
+	}, user.ID)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if category.PomodoroConfig == nil {
+		t.Fatal("Expected pomodoro config to be set")
+	}
+	if *category.PomodoroConfig != *config {
+		t.Errorf("Expected pomodoro config %+v, got %+v", config, category.PomodoroConfig)
+	}
+
+	fetched, err := repo.FindByID(ctx, category.ID, user.ID)
+	if err != nil {
+		t.Fatalf("FindByID failed: %v", err)
+	}
+	if fetched.PomodoroConfig == nil || *fetched.PomodoroConfig != *config {
+		t.Errorf("Expected persisted pomodoro config %+v, got %+v", config, fetched.PomodoroConfig)
+	}
+}
+
 func TestCategoryRepository_FindByUser(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
@@ -142,6 +177,36 @@ func TestCategoryRepository_Update(t *testing.T) {
 	}
 	if updated.ID != category.ID {
 		t.Error("Category ID should not change")
+	}
+}
+
+func TestCategoryRepository_UpdateClearsPomodoroConfig(t *testing.T) {
+	// Arrange
+	db := setupTestDB(t)
+	repo := NewCategoryRepository(db)
+	user := createTestUser(t, db, "pomodoro_update_user", "password123")
+	ctx := context.Background()
+	category, err := repo.Create(ctx, CategoryInput{
+		Name:           "Focus",
+		Color:          "#FF5733",
+		PomodoroConfig: &PomodoroConfig{WorkDuration: 1500, RestDuration: 300},
+	}, user.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Act
+	updated, err := repo.Update(ctx, category.ID, CategoryInput{
+		Name:  "Focus",
+		Color: "#FF5733",
+	}, user.ID)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if updated.PomodoroConfig != nil {
+		t.Errorf("Expected pomodoro config to be cleared, got %+v", updated.PomodoroConfig)
 	}
 }
 

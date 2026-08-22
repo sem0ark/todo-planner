@@ -10,9 +10,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type PomodoroConfig struct {
+	WorkDuration int `json:"work_duration"`
+	RestDuration int `json:"rest_duration"`
+}
+
 type CategoryInput struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	Name           string          `json:"name"`
+	Color          string          `json:"color"`
+	PomodoroConfig *PomodoroConfig `json:"pomodoro_config"`
 }
 
 type CategoriesResponse struct {
@@ -59,13 +65,8 @@ func (api *API) createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.Name == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
-		return
-	}
-
-	if !isValidHexColor(input.Color) {
-		http.Error(w, "invalid color format", http.StatusBadRequest)
+	if err := validateCategoryInput(input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -98,13 +99,8 @@ func (api *API) updateCategoryHandler(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	if input.Name == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
-		return
-	}
-
-	if !isValidHexColor(input.Color) {
-		http.Error(w, "invalid color format", http.StatusBadRequest)
+	if err := validateCategoryInput(input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -146,11 +142,7 @@ func (api *API) deleteCategoryHandler(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	response := CategoryDeleteResponse{
-		ID:      id,
-		Deleted: true,
-	}
-
+	response := CategoryDeleteResponse{ID: id, Deleted: true}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
@@ -184,6 +176,26 @@ func (api *API) categoriesHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func validateCategoryInput(input CategoryInput) error {
+	if input.Name == "" {
+		return &ValidationError{Message: "name is required"}
+	}
+	if !isValidHexColor(input.Color) {
+		return &ValidationError{Message: "invalid color format"}
+	}
+	return validatePomodoroConfig(input.PomodoroConfig)
+}
+
+func validatePomodoroConfig(config *PomodoroConfig) error {
+	if config == nil {
+		return nil
+	}
+	if config.WorkDuration <= 0 || config.RestDuration <= 0 {
+		return &ValidationError{Message: "pomodoro durations must be positive"}
+	}
+	return nil
 }
 
 func isValidHexColor(color string) bool {
