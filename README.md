@@ -24,3 +24,4 @@ The core question the app answers over time: "Is the life structure I designed f
 - [x] Plan out the phone UI widget-like flow + how to later migrate web UI.
 - [ ] UI analytics logic.
 - [ ] More reselient day event logging logic.
+- [ ] Rewrite widget to store events locally to lower communication with backend to lower costs, sync on startup & shutdown only.
