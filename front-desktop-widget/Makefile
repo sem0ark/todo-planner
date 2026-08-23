@@ -31,7 +31,7 @@ ifndef SWIFTC
 $(error Swift compiler not found. Install via Swiftly: curl -L https://swift-server.github.io/swiftly/swiftly-install.sh | bash)
 endif
 
-.PHONY: all clean run dev help test install build setup universal
+.PHONY: all clean run dev help test install build setup universal build-remote build-local build-mock build-weekend-mock dev-remote dev-local dev-mock dev-weekend-mock logs
 
 help: ## Show this help message
 	@echo "Todo Planner Desktop Widget - macOS Swift App"
@@ -92,8 +92,17 @@ build-mock: ## Build using .env.mock
 	$(MAKE) clean
 	$(MAKE) build ENV_FILE=.env.mock
 
+build-weekend-mock: ## Build using .env.weekend.mock
+	$(MAKE) clean
+	$(MAKE) build ENV_FILE=.env.weekend.mock
+
 dev-mock: ## Build and run in foreground (logs to terminal)
 	$(MAKE) build-mock
+	@echo "Starting $(APP_NAME) in foreground..."
+	@"$(APP_EXECUTABLE)"
+
+dev-weekend-mock: ## Build and run weekend mock in foreground (logs to terminal)
+	$(MAKE) build-weekend-mock
 	@echo "Starting $(APP_NAME) in foreground..."
 	@"$(APP_EXECUTABLE)"
 

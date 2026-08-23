@@ -15,6 +15,9 @@ enum RepositoryFactory {
     case "working-mock":
       print("[FACTORY] Using WorkingDayMockTodoPlannerRepository (in-memory)")
       return WorkingDayMockTodoPlannerRepository()
+    case "weekend-mock":
+      print("[FACTORY] Using WeekendMockTodoPlannerRepository (in-memory)")
+      return WeekendMockTodoPlannerRepository()
     case "local":
       print("[FACTORY] Using LocalTodoPlannerRepository (SQLite)")
       let dbPath = getLocalDatabasePath()
