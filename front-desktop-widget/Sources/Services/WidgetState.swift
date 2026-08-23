@@ -22,9 +22,14 @@ struct PomodoroState {
 
 enum WidgetStateIdentity {
   case initializing
-  case confirmationPrompt
   case active
-  case offSchedule
+  case prompted
+}
+
+struct ScheduleDeviation {
+  let expected: Category
+  let actual: Category
+  let deviatedAt: Date
 }
 
 struct WidgetContext {
@@ -44,6 +49,7 @@ enum WidgetAction {
   case selectCategory(Category)
   case adjustOffset(Int)
   case primaryAction
+  case returnToPlan
 }
 
 enum DayEventType: String {
@@ -180,7 +186,7 @@ func confirmationBoundaryResult(
   var updatedContext = context
   updatedContext.lastCheckedBlockId = newBlock.id
   return StateResult(
-    nextState: ConfirmationPromptState(),
+    nextState: PromptedState(),
     updatedContext: updatedContext,
     effects: [.updateMenuBarIcon, .postNotification(.confirmationNeeded)]
   )
@@ -195,10 +201,8 @@ func transitionResult(context: WidgetContext, category: Category) -> StateResult
   updatedContext.pomodoroElapsed = 0
   updatedContext.offsetMinutes = 0
 
-  let isPlanned = category.id == context.plannedCategory?.id
-  let nextState: WidgetStateLogic = isPlanned ? ActiveState() : OffScheduleState()
   return StateResult(
-    nextState: nextState,
+    nextState: ActiveState(),
     updatedContext: updatedContext,
     effects: [.updateMenuBarIcon, .logTransition(category: category, occurredAt: nil)]
   )
@@ -306,11 +310,10 @@ final class InitializingState: WidgetStateLogic {
 
     let isOnSchedule = ctx.currentCategory?.id == ctx.plannedCategory?.id
     print(
-      "[INIT] System Status: \(isOnSchedule ? "ON-SCHEDULE" : "OFF-SCHEDULE"). Transitioning to \(isOnSchedule ? "Active" : "OffSchedule")State."
+      "[INIT] System Status: \(isOnSchedule ? "ON-SCHEDULE" : "OFF-SCHEDULE"). Transitioning to ActiveState."
     )
 
-    let nextState: WidgetStateLogic = isOnSchedule ? ActiveState() : OffScheduleState()
-    return StateResult(nextState: nextState, updatedContext: ctx, effects: [])
+    return StateResult(nextState: ActiveState(), updatedContext: ctx, effects: [])
   }
 }
 
@@ -332,7 +335,27 @@ final class ActiveState: WidgetStateLogic {
     case .selectCategory(let category):
       return transitionResult(context: ctx, category: category)
 
-    case .initialize, .adjustOffset:
+    case .adjustOffset(let minutes):
+      let retroactiveTime = ctx.lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
+      ctx.offsetMinutes += minutes
+      ctx.lastEventTime = retroactiveTime
+
+      guard let category = ctx.currentCategory else {
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
+      }
+      return StateResult(
+        nextState: self,
+        updatedContext: ctx,
+        effects: [.logTransition(category: category, occurredAt: retroactiveTime)]
+      )
+
+    case .returnToPlan:
+      guard let planned = ctx.plannedCategory, planned.id != ctx.currentCategory?.id else {
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
+      }
+      return transitionResult(context: ctx, category: planned)
+
+    case .initialize:
       return StateResult(nextState: self, updatedContext: ctx, effects: [])
     }
   }
@@ -363,8 +386,8 @@ final class ActiveState: WidgetStateLogic {
 
 // MARK: - Concrete State: Confirmation Prompt
 
-final class ConfirmationPromptState: WidgetStateLogic {
-  let identity: WidgetStateIdentity = .confirmationPrompt
+final class PromptedState: WidgetStateLogic {
+  let identity: WidgetStateIdentity = .prompted
 
   func handle(action: WidgetAction, context: WidgetContext) -> StateResult {
     let ctx = context
@@ -386,50 +409,6 @@ final class ConfirmationPromptState: WidgetStateLogic {
   }
 }
 
-// MARK: - Concrete State: Off Schedule
-
-final class OffScheduleState: WidgetStateLogic {
-  let identity: WidgetStateIdentity = .offSchedule
-
-  func handle(action: WidgetAction, context: WidgetContext) -> StateResult {
-    var ctx = context
-
-    switch action {
-    case .primaryAction:
-      guard let planned = ctx.plannedCategory else {
-        return StateResult(nextState: self, updatedContext: ctx, effects: [])
-      }
-      return transitionResult(context: ctx, category: planned)
-
-    case .adjustOffset(let minutes):
-      let retroactiveTime = ctx.lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
-      ctx.offsetMinutes += minutes
-      ctx.lastEventTime = retroactiveTime
-
-      print("[OFFSET] Applied \(minutes)m, total=\(ctx.offsetMinutes)m")
-      guard let category = ctx.currentCategory else {
-        return StateResult(nextState: self, updatedContext: ctx, effects: [])
-      }
-      return StateResult(
-        nextState: self,
-        updatedContext: ctx,
-        effects: [.logTransition(category: category, occurredAt: retroactiveTime)]
-      )
-
-    case .selectCategory(let category):
-      return transitionResult(context: ctx, category: category)
-
-    default:
-      return StateResult(nextState: self, updatedContext: ctx, effects: [])
-    }
-  }
-
-  func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult {
-    return confirmationBoundaryResult(context: context, currentPlannedBlock: currentPlannedBlock)
-      ?? StateResult(nextState: self, updatedContext: context, effects: [])
-  }
-}
-
 // MARK: - Modern Store Implementation
 
 @Observable
@@ -446,6 +425,16 @@ final class WidgetStateStore {
   var categories: [Category] { context.categories }
   var currentDayRecord: DayRecord? { context.currentDayRecord }
   var currentCategory: Category? { context.currentCategory }
+  var isOnSchedule: Bool {
+    guard let current = context.currentCategory, let planned = plannedCategory else { return true }
+    return current.id == planned.id
+  }
+  var scheduleDeviation: ScheduleDeviation? {
+    guard !isOnSchedule, let planned = plannedCategory, let actual = context.currentCategory else {
+      return nil
+    }
+    return ScheduleDeviation(expected: planned, actual: actual, deviatedAt: context.lastEventTime)
+  }
   var plannedCategory: Category? {
     guard let record = context.currentDayRecord else { return nil }
     let block =
@@ -647,12 +636,11 @@ final class WidgetStateStore {
     let icon: MenuBarManager.IconState =
       switch displayState {
       case .initializing: .active
-      case .confirmationPrompt: .confirmationNeeded
+      case .prompted: .confirmationNeeded
       case .active: .active
-      case .offSchedule: .offSchedule
       }
     let iconCategory =
-      displayState == .confirmationPrompt
+      displayState == .prompted
       ? context.plannedCategory ?? context.currentCategory
       : context.currentCategory
     MenuBarManager.shared.updateIcon(state: icon, category: iconCategory)
@@ -661,9 +649,8 @@ final class WidgetStateStore {
   private func stateDescription(_ state: WidgetStateIdentity) -> String {
     switch state {
     case .initializing: "initializing"
-    case .confirmationPrompt: "confirmationPrompt"
+    case .prompted: "prompted"
     case .active: "active"
-    case .offSchedule: "offSchedule"
     }
   }
 
@@ -673,6 +660,7 @@ final class WidgetStateStore {
     case .selectCategory(let category): "selectCategory(\(category.name))"
     case .adjustOffset(let minutes): "adjustOffset(\(minutes)m)"
     case .primaryAction: "primaryAction"
+    case .returnToPlan: "returnToPlan"
     }
   }
 }

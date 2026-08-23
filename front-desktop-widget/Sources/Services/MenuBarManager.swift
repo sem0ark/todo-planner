@@ -28,10 +28,6 @@ class MenuBarManager: ObservableObject {
       image = NSImage(
         systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Todo Planner - Active"
       )
-    case .offSchedule:
-      image = NSImage(
-        systemSymbolName: "exclamationmark.circle.fill",
-        accessibilityDescription: "Todo Planner - Off Schedule")
     case .confirmationNeeded:
       image = NSImage(
         systemSymbolName: "bell.fill", accessibilityDescription: "Todo Planner - Confirm")
@@ -45,7 +41,6 @@ class MenuBarManager: ObservableObject {
   enum IconState {
     case idle
     case active
-    case offSchedule
     case confirmationNeeded
   }
 }
