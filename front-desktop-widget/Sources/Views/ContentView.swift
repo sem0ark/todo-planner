@@ -170,12 +170,10 @@ struct LeftPanelView: View {
           ProgressView()
             .progressViewStyle(CircularProgressViewStyle(tint: .white))
         }
-      case .confirmationPrompt:
+      case .prompted:
         ConfirmationPromptView(widgetState: widgetState)
       case .active:
         ActiveView(widgetState: widgetState)
-      case .offSchedule:
-        OffScheduleView(widgetState: widgetState)
       }
     }
   }
@@ -274,7 +272,7 @@ extension Color {
   }
 }
 
-// State 2: Active/On-Schedule
+// Active state
 struct ActiveView: View {
   var widgetState: WidgetStateStore
   @State private var pomoPulseScale: CGFloat = 1.0
@@ -285,6 +283,40 @@ struct ActiveView: View {
       let textColor = Color.white  // Always use white for text (matching React)
 
       VStack(spacing: 0) {
+        if widgetState.scheduleDeviation != nil {
+          HStack(spacing: 4) {
+            Text("T-\(widgetState.offsetMinutes)m")
+              .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
+              .monospacedDigit()
+              .foregroundColor(StyleTokens.offsetGreen)
+
+            Spacer(minLength: 0)
+
+            OffsetButton(label: "+5m", minutes: 5, widgetState: widgetState)
+            OffsetButton(label: "+15m", minutes: 15, widgetState: widgetState)
+
+            Button("RETURN") {
+              Task { await widgetState.dispatch(.returnToPlan) }
+            }
+            .font(.system(size: Typography.tinyMono, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background(StyleTokens.baseVoid.opacity(Palette.hoverOpacity))
+            .cornerRadius(StyleTokens.radiusButton)
+            .buttonStyle(PlainButtonStyle())
+          }
+          .padding(.horizontal, 8)
+          .frame(height: 28)
+          .background(StyleTokens.baseVoid.opacity(Palette.overlayOpacity))
+          .overlay(
+            Rectangle()
+              .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
+              .frame(height: 1),
+            alignment: .bottom
+          )
+        }
+
         // Main category block
         ZStack(alignment: .topLeading) {
           Color(hex: category.color)
@@ -300,7 +332,14 @@ struct ActiveView: View {
               Spacer()
             }
 
-            // Pomodoro ring (State 2 only, when active)
+            if let deviation = widgetState.scheduleDeviation {
+              Text("EXPECTED: \(deviation.expected.name.uppercased())")
+                .font(.system(size: Typography.labelBold, weight: .bold))
+                .foregroundColor(textColor.opacity(Palette.labelOpacity))
+                .lineLimit(1)
+            }
+
+            // Pomodoro ring when the current category supports it
             if widgetState.pomodoroActive, let pomoState = widgetState.pomodoroState {
               Spacer()
 
@@ -388,133 +427,6 @@ struct ActiveView: View {
           Text("Press 1-9 to start")
             .font(.system(size: Typography.labelBold))
             .foregroundColor(StyleTokens.mutedText.opacity(Palette.labelOpacity))
-        }
-      }
-    }
-  }
-}
-
-// State 3: Off-Schedule
-struct OffScheduleView: View {
-  var widgetState: WidgetStateStore
-  @State private var pulseOpacity: Double = 1.0
-
-  var body: some View {
-    let currentCategoryColor = widgetState.currentCategory?.color ?? "#808080"
-    let plannedCategoryColor = widgetState.plannedCategory?.color ?? "#808080"
-
-    VStack(spacing: 0) {
-      // Offset bar - Top
-      HStack(spacing: 8) {
-        Text("T-\(widgetState.offsetMinutes)m")
-          .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
-          .monospacedDigit()
-          .foregroundColor(StyleTokens.offsetGreen)
-
-        Spacer()
-
-        // Offset buttons
-        HStack(spacing: 4) {
-          OffsetButton(label: "+5m", minutes: 5, widgetState: widgetState)
-          OffsetButton(label: "+15m", minutes: 15, widgetState: widgetState)
-        }
-      }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .frame(height: 28)
-      .background(StyleTokens.offsetGreen.opacity(Palette.progressBgOpacity))
-      .overlay(
-        Rectangle()
-          .fill(StyleTokens.offsetGreen.opacity(Palette.hoverOpacity))
-          .frame(height: 1),
-        alignment: .bottom
-      )
-
-      // Current (Actual) - Top section
-      ZStack(alignment: .topLeading) {
-        Color(hex: currentCategoryColor)
-
-        VStack(alignment: .leading, spacing: 4) {
-          // Remove ACTUAL label to match React
-          Spacer()
-
-          Text(widgetState.currentCategory?.name.uppercased() ?? "")
-            .font(.system(size: Typography.categoryNameLarge, weight: .black, design: .default))
-            .foregroundColor(.white)
-            .lineLimit(2)
-
-          Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-      }
-      .frame(height: 86)
-
-      // Planned - Bottom section (pulsing clickable with dashed border)
-      Button(action: {
-        Task {
-          await widgetState.handlePrimaryAction()
-        }
-      }) {
-        ZStack(alignment: .topLeading) {
-          Color(hex: plannedCategoryColor)
-            .opacity(pulseOpacity)
-
-          VStack(alignment: .leading, spacing: 4) {
-            HStack {
-              Text("PLANNED")
-                .font(.system(size: Typography.labelBold, weight: .bold, design: .default))
-                .foregroundColor(Color.white.opacity(0.7))
-                .tracking(0.5)
-
-              Spacer()
-
-              Text("RETURN ↵")
-                .font(.system(size: Typography.tinyMono, design: .monospaced))
-                .foregroundColor(.white)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(Color.black.opacity(0.2))
-                .cornerRadius(2)
-            }
-
-            Text(widgetState.plannedCategory?.name.uppercased() ?? "")
-              .font(.system(size: Typography.categoryNameMedium, weight: .bold, design: .default))
-              .foregroundColor(.white)
-
-            Spacer()
-
-            // Time remaining progress bar (full width)
-            ZStack(alignment: .leading) {
-              Capsule()
-                .fill(Color.black.opacity(0.2))
-                .frame(height: 5)
-
-              GeometryReader { geometry in
-                Capsule()
-                  .fill(Color.white)
-                  .frame(
-                    width: geometry.size.width * (1.0 - widgetState.progressPercentage), height: 5)
-              }
-            }
-            .frame(height: 5)
-          }
-          .padding(.horizontal, 12)
-          .padding(.vertical, 12)
-        }
-        // Dashed border at top
-        .overlay(
-          DashedLine()
-            .stroke(StyleTokens.mutedText, style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
-            .frame(height: 2),
-          alignment: .top
-        )
-      }
-      .buttonStyle(PlainButtonStyle())
-      .frame(height: 86)
-      .onAppear {
-        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-          pulseOpacity = 0.75
         }
       }
     }
@@ -624,7 +536,7 @@ struct RightRailView: View {
   private func openWebApp() {
     print("[WEB] Opening web app in browser...")
     if let url = URL(string: BuildConfig.webAppBaseURL) {
-      NSWorkspace.shared.open(url)
+      NSWorkspace.shared.open(url + "/")
       print("[WEB] Browser opened: \(BuildConfig.webAppBaseURL)")
     } else {
       print("[ERROR] Invalid web app URL: \(BuildConfig.webAppBaseURL)")
@@ -678,7 +590,7 @@ struct CategoryRow: View {
           .foregroundColor(StyleTokens.structuralBorder.opacity(Palette.iconOpacity))
       }
       .padding(.horizontal, 12)
-      .padding(.vertical, 10)
+      .frame(height: 28)
       .contentShape(Rectangle())
     }
     .buttonStyle(PlainButtonStyle())

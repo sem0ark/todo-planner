@@ -169,29 +169,94 @@ Actual Block Derivation:
 ## Live Widget
 A persistent, minimal UI element always visible during the day on desktop and mobile. Handles Day Event input (Confirmations and Transitions). Never requires navigation for its core function.
 
-Display (always on):
-- Shows at all times: **current category name** + **time remaining until next planned block**.
-- Display is constant regardless of current category (including Rest, Outside, Exercising).
-- No additional information displayed in v1.
+### Core Display
+- **Always-On Status**: Shows current category name (large, bold, uppercase) and progress bar indicating time remaining in current planned block.
+- **Category List (Right Rail)**: Fixed vertical list of all categories. Each category shows:
+  - Color indicator dot with a distinct active state
+  - Category name (uppercase, abbreviated if needed)
+  - Keyboard shortcut index (1-9) for direct jump
+- **Elapsed Time Display**: Shows elapsed time in current activity (MM:SS format) during active states.
+- **No Additional Information**: Widget surface displays only what's needed for immediate action. Detailed analysis lives in the web review surface.
 
-Transition Prompts:
-- At every planned block boundary, the widget surfaces a prompt: *"[Next Block Category] - Start"*.
-- **Start** -> one tap. Logs a Transition event (outgoing -> incoming category). Prompt dismisses.
-- Prompt does not auto-dismiss - persists until the user acts.
-- Missed prompt (no tap) = gap logged as Untracked in the derived timeline.
+### State-Specific Visuals
 
-#### Platform Behavior
+#### State 1: Prompted (Block Boundary)
+- **Appearance**: Full-width category block for the planned category with a visually distinct treatment.
+- **Animation**: A breathing animation indicates that user action is required.
+- **Affordance**: Tap to confirm, or press 1-9 to switch activity.
+- **Persistence**: No auto-dismiss. Waits for user action.
 
-**Desktop App:**
-- Small floating window, always on top.
-- Transition prompt appears inline within the widget.
-- Contains: status display, transition prompt (when active), Sync button, *Open Web* link.
+#### State 2: Active (Any Activity)
+- **Core Display**: Current category name (large, uppercase) + progress bar showing block progress.
+- **Progress Indicator**: bar showing % elapsed, with remaining time. Updates real-time.
+- **Pomodoro** (when enabled for category): Circular ring tracking work/rest phases, with distinct phase and completion states. Toggle via Space.
+- **Schedule Deviation** (when off-plan): Subtle info banner showing planned category + return button (→ [Category]).
+- **Offset Adjustments** (retroactive time correction): Keyboard `[`/`]` for ±5m, UI buttons for +5m/+15m increments. Recalculates `occurredAt` and updates timeline.
+- **Key Principle**: Full feature set (pomodoro, offsets, category switch) available *always*. On/off schedule is purely informational.
 
-**Mobile App:**
-- Persistent notification (non-dismissable during an active day).
-- Tapping notification opens the app to a Transition Confirmation Screen.
-- Transition Confirmation Screen contains: prompt, inline chips, Sync trigger (pull-to-refresh), *Open Web* link.
-- After confirmation, app returns to background.
+### Transition & Confirmation Mechanics
+
+**Boundary Detection & Prompts**:
+- At every planned block boundary, widget enters State 1 (Prompted).
+- Prompt displays the next planned category, offering choices:
+  - **Space/Return**: Confirm the planned category → transition to Active.
+  - **Key 1-9**: Switch to selected category → stay in Active (may be on/off plan).
+  - **No action**: Prompt persists until user acts (no auto-dismiss).
+- After 60 seconds of ignored prompt: untracked gap created in timeline.
+
+**Off-Plan Tracking**:
+- Selecting an unplanned category → user enters Active state with that category.
+- Widget displays schedule deviation indicator (subtle banner).
+- All features available: pomodoro (if enabled), offset adjustments, category switching.
+- Return-to-plan button visible when diverged, labeled with planned category name.
+
+#### Live Nudging (Offset Adjustment)
+- **Feature Summary**: Retroactively adjust transition timestamps when logging is delayed.
+- **Value**: Solves friction without requiring full day review. User remembers activity started 5 min ago → two key presses to correct.
+- **When Available**: Always in Active state.
+- **Controls**:
+  - Keyboard: `[` nudge -5m, `]` nudge +5m (activity started earlier/later).
+  - UI: +5m, +15m buttons.
+- **Behavior**: Each nudge recalculates `occurredAt`, updates derived timeline, displays cumulative offset (e.g., "T-10m").
+- **Limits**: Cannot move before previous event or after current time.
+
+### Keyboard Shortcut Map
+
+| Trigger | Action | State(s) | Intent |
+|---|---|---|---|
+| `Space` / `Return` | Confirm (Prompted) / Pomodoro Toggle (Active) | State 1, State 2 | Confirm planned activity or toggle pomodoro phase. |
+| `1` - `9` | Category Jump | All | Switch to category at index N in right rail. |
+| `[` / `]` | Offset Nudge ±5m | State 2 | Adjust transition timestamp (retroactive correction). |
+| `Enter` (from State 2) | Return to Plan | State 2 (when off-plan) | Explicit return to planned category (if diverged). |
+| `Cmd+Z` | Undo | State 2 | Revert last offs≈et/category change (future: v2). |
+
+### Pomodoro Integration
+- **Per-Category Config**: Each category can have an optional pomodoro configuration (work duration + rest duration in minutes).
+- **Work Phase**: Timer counts up. When elapsed time reaches work duration, timer enters rest phase.
+- **Rest Phase**: Timer counts up. User can:
+  - Press Space to return to work phase early.
+  - Let timer auto-advance to work if rest duration expires and extends to 1.5x duration (auto-skip).
+- **Visual Indicator**: Circular progress ring appears only in State 2 (Active) when pomodoro is enabled for the current category.
+- **Notifications**: Sends a notification when pomodoro timer completes (transitions from work to rest or rest to work).
+
+#### Platform Behavior & Implementation Details
+
+**Desktop App (macOS Widget):**
+- Small, floating window, always on top, independent of other app windows. Made of two main panels with activity information and category selection.
+- Navigation:
+  - Keyboard-primary: All state changes via `Space, Return, 1-9, [, ]` keys.
+  - Mouse secondary: Click left panel for confirmation, click categories on right rail to jump.
+- **Sync Integration**: Manual sync button visible in right rail footer. Shows last sync timestamp on hover.
+- **Web App Link**: "Open Web" button in right rail footer for accessing the full review surface.
+- **Authentication**: Uses stored token after initial web login. No login UI on desktop widget after first auth.
+- **Menu Bar Icon**: Updates based on widget state (active, confirmation needed), while schedule deviation remains an informational widget indicator.
+
+**Mobile App (Future - v2):**
+- **Surface**: Persistent notification (non-dismissable during active day).
+- **Interaction**: Tapping notification opens app to Transition Confirmation Screen.
+- **Confirmation Screen**: Shows prompt, category chips (1-9 selectable), sync button (pull-to-refresh), *Open Web* link.
+- **Return to Background**: After confirming transition, app auto-minimizes.
+- **Note**: Mobile-specific offset nudging UI (if needed) to be designed in v2.
 
 
 ## Review: Day View
@@ -249,7 +314,7 @@ Aggregate analysis of how closely actual Day Records match a given Day Template 
 
 Overlay view:
 - All Day Records that used this template (within the selected time window), overlaid as semi-transparent actual-day shapes on top of the template structure.
-- Color matches category colors. Opacity reflects frequency - more days at a given block position = more opaque.
+- Color matches category colors. Visual intensity reflects frequency - more days at a given block position should be more prominent.
 - Shape divergence from the template = visible drift.
 
 #### Distribution Comparison
