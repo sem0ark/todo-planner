@@ -535,8 +535,8 @@ struct RightRailView: View {
 
   private func openWebApp() {
     print("[WEB] Opening web app in browser...")
-    if let url = URL(string: BuildConfig.webAppBaseURL) {
-      NSWorkspace.shared.open(url + "/")
+    if let url = URL(string: BuildConfig.webAppBaseURL + "/") {
+      NSWorkspace.shared.open(url)
       print("[WEB] Browser opened: \(BuildConfig.webAppBaseURL)")
     } else {
       print("[ERROR] Invalid web app URL: \(BuildConfig.webAppBaseURL)")
