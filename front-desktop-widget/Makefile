@@ -24,6 +24,7 @@ endif
 API_BASE_URL ?= http://localhost:8080
 WEB_APP_BASE_URL ?= http://localhost:5173/todo-planner
 STORAGE_MODE ?= remote
+MOCK_SCHEDULE ?=
 
 # Detect Swift compiler
 SWIFTC := $(shell command -v swiftc 2> /dev/null)
@@ -40,6 +41,7 @@ help: ## Show this help message
 	@echo "  API_BASE_URL:     $(API_BASE_URL)"
 	@echo "  WEB_APP_BASE_URL: $(WEB_APP_BASE_URL)"
 	@echo "  STORAGE_MODE:     $(STORAGE_MODE)"
+	@echo "  MOCK_SCHEDULE:    $(MOCK_SCHEDULE)"
 	@echo ""
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -58,6 +60,7 @@ Sources/Config.swift: $(ENV_FILE) Makefile
 	@echo "    static let apiBaseURL = \"$(API_BASE_URL)\"" >> Sources/Config.swift
 	@echo "    static let webAppBaseURL = \"$(WEB_APP_BASE_URL)\"" >> Sources/Config.swift
 	@echo "    static let storageMode = \"$(STORAGE_MODE)\"" >> Sources/Config.swift
+	@echo "    static let mockSchedule = \"$(MOCK_SCHEDULE)\"" >> Sources/Config.swift
 	@echo "}" >> Sources/Config.swift
 
 $(APP_EXECUTABLE): $(SOURCES) Info.plist Sources/Config.swift
@@ -88,21 +91,15 @@ build-local: ## Build using .env.local
 	$(MAKE) clean
 	$(MAKE) build ENV_FILE=.env.local
 
-build-mock: ## Build using .env.mock
+dev-working-mock: ## Build and run in foreground (logs to terminal)
 	$(MAKE) clean
-	$(MAKE) build ENV_FILE=.env.mock
-
-build-weekend-mock: ## Build using .env.weekend.mock
-	$(MAKE) clean
-	$(MAKE) build ENV_FILE=.env.weekend.mock
-
-dev-mock: ## Build and run in foreground (logs to terminal)
-	$(MAKE) build-mock
+	$(MAKE) build ENV_FILE=.env.working.mock
 	@echo "Starting $(APP_NAME) in foreground..."
 	@"$(APP_EXECUTABLE)"
 
 dev-weekend-mock: ## Build and run weekend mock in foreground (logs to terminal)
-	$(MAKE) build-weekend-mock
+	$(MAKE) clean
+	$(MAKE) build ENV_FILE=.env.weekend.mock
 	@echo "Starting $(APP_NAME) in foreground..."
 	@"$(APP_EXECUTABLE)"
 

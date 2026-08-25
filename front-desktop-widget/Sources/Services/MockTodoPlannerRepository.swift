@@ -142,45 +142,30 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
     let now = Date()
     return [
       Category(
-        id: 1, name: "Deep Work", color: "#1e40af",  // Blue
-        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
+        id: 1, name: "Working", color: "#2563eb",
+        pomodoroConfig: PomodoroConfig(workDuration: 45 * 60, restDuration: 5 * 60),
         createdAt: now, updatedAt: now),
       Category(
-        id: 2, name: "Admin", color: "#78716c",  // Stone
+        id: 2, name: "Exercise", color: "#dc2626",
         pomodoroConfig: nil,
         createdAt: now, updatedAt: now),
       Category(
-        id: 3, name: "Communication", color: "#7c3aed",  // Violet
+        id: 3, name: "Rest", color: "#0891b2",
         pomodoroConfig: nil,
         createdAt: now, updatedAt: now),
       Category(
-        id: 4, name: "Learning", color: "#0891b2",  // Cyan
-        pomodoroConfig: PomodoroConfig(workDuration: 10, restDuration: 5),
+        id: 4, name: "Learning", color: "#27b208",
+        pomodoroConfig: PomodoroConfig(workDuration: 25 * 60, restDuration: 5 * 60),
         createdAt: now, updatedAt: now),
       Category(
-        id: 5, name: "Health", color: "#16a34a",  // Green
+        id: 5, name: "Housework", color: "#e9a663",
         pomodoroConfig: nil,
-        createdAt: now, updatedAt: now),
-      Category(
-        id: 6, name: "Break", color: "#94a3b8",  // Slate
-        pomodoroConfig: nil,
-        createdAt: now, updatedAt: now),
+        createdAt: now, updatedAt: now)
     ]
   }
 
   func seedDayRecord(for date: String) -> DayRecord {
-    let cycleCategoryIds = [1, 2, 3, 4, 5, 6]
-    let blockDurationMinutes = 1
-    let minutesPerDay = 24 * 60
-    let snapshot = stride(from: 0, to: minutesPerDay, by: blockDurationMinutes)
-      .enumerated()
-      .map { index, minuteOfDay in
-        PlannedBlock(
-          id: 101 + index,
-          categoryId: cycleCategoryIds[index % cycleCategoryIds.count],
-          startTime: String(format: "%02d:%02d:00", minuteOfDay / 60, minuteOfDay % 60),
-          durationMinutes: blockDurationMinutes)
-      }
+    let snapshot = makeScheduleBlocks()
 
     return DayRecord(
       id: 5001,
@@ -192,6 +177,40 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
       createdAt: Date(),
       updatedAt: Date()
     )
+  }
+
+  private func makeScheduleBlocks() -> [PlannedBlock] {
+    let configuredEntries = BuildConfig.mockSchedule
+      .split(separator: ",")
+      .compactMap { entry -> (String, Int)? in
+        let fields = entry.split(whereSeparator: { $0 == " " || $0 == "\t" })
+        guard fields.count == 2, let categoryId = Int(fields[1]) else { return nil }
+        return (String(fields[0]), categoryId)
+      }
+
+    let entries = configuredEntries.isEmpty
+      ? (0..<24 * 60).map { minute in
+        (String(format: "%02d:%02d:00", minute / 60, minute % 60), (minute % 5) + 1)
+      }
+      : configuredEntries
+
+    return entries.enumerated().map { index, entry in
+      let nextStart = index + 1 < entries.count ? entries[index + 1].0 : "24:00:00"
+      return PlannedBlock(
+        id: 101 + index,
+        categoryId: entry.1,
+        startTime: entry.0,
+        durationMinutes: minutesBetween(start: entry.0, end: nextStart))
+    }
+  }
+
+  private func minutesBetween(start: String, end: String) -> Int {
+    let startParts = start.split(separator: ":").compactMap { Int($0) }
+    let endParts = end.split(separator: ":").compactMap { Int($0) }
+    guard startParts.count == 3, endParts.count == 3 else { return 0 }
+    let startMinutes = startParts[0] * 60 + startParts[1]
+    let endMinutes = endParts[0] * 60 + endParts[1]
+    return max(1, endMinutes - startMinutes)
   }
 
   // MARK: - Helpers
