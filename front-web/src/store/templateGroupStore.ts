@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import type { TemplateGroup } from '../services/templateGroups';
+import { create } from "zustand";
+import type { TemplateGroup } from "../services/templateGroups";
 
 interface TemplateGroupState {
   groups: TemplateGroup[];

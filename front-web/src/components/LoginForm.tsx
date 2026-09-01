@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { useAuthStore } from '../store/authStore';
-import { login, register } from '../services/auth';
+import { useState } from "react";
+import { useAuthStore } from "../store/authStore";
+import { login, register } from "../services/auth";
 
 export default function LoginForm() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const { setToken, setLoading, setError, isLoading, error } = useAuthStore();
 
@@ -22,7 +22,7 @@ export default function LoginForm() {
         window.location.href = `todoplanner://auth?token=${response.token}`;
       }, 100);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed');
+      setError(err instanceof Error ? err.message : "Authentication failed");
     }
   };
 
@@ -30,12 +30,15 @@ export default function LoginForm() {
     <div className="w-full max-w-md">
       <div className="bg-slate-blue/10 border border-slate-grey rounded-outer p-8 backdrop-blur">
         <h1 className="text-3xl font-semibold text-snow mb-6 text-center">
-          {isRegisterMode ? 'Create Account' : 'Sign In'}
+          {isRegisterMode ? "Create Account" : "Sign In"}
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label htmlFor="username" className="block text-sm font-medium text-cloud">
+            <label
+              htmlFor="username"
+              className="block text-sm font-medium text-cloud"
+            >
               Username
             </label>
             <input
@@ -52,7 +55,10 @@ export default function LoginForm() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="password" className="block text-sm font-medium text-cloud">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-cloud"
+            >
               Password
             </label>
             <input
@@ -62,7 +68,9 @@ export default function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro placeholder:text-slate-blue focus:border-cloud focus:bg-navy/80 disabled:opacity-50"
               placeholder="Enter password"
-              autoComplete={isRegisterMode ? 'new-password' : 'current-password'}
+              autoComplete={
+                isRegisterMode ? "new-password" : "current-password"
+              }
               required
             />
           </div>
@@ -78,7 +86,11 @@ export default function LoginForm() {
             className="w-full px-6 py-3 text-base font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud hover:-translate-y-0.5 active:translate-y-0.5 disabled:opacity-50 disabled:transform-none"
             disabled={isLoading}
           >
-            {isLoading ? 'Processing...' : isRegisterMode ? 'Create Account' : 'Sign In'}
+            {isLoading
+              ? "Processing..."
+              : isRegisterMode
+                ? "Create Account"
+                : "Sign In"}
           </button>
         </form>
 
@@ -90,7 +102,9 @@ export default function LoginForm() {
             setError(null);
           }}
         >
-          {isRegisterMode ? 'Already have an account? Sign in' : "Don't have an account? Create one"}
+          {isRegisterMode
+            ? "Already have an account? Sign in"
+            : "Don't have an account? Create one"}
         </button>
       </div>
     </div>

@@ -1,5 +1,5 @@
-import { Link } from 'wouter';
-import { useAuthStore } from '../store/authStore';
+import { Link } from "wouter";
+import { useAuthStore } from "../store/authStore";
 
 export default function Home() {
   const { user } = useAuthStore();
@@ -11,7 +11,7 @@ export default function Home() {
           Welcome to Todo Planner
         </h1>
         <p className="text-lg text-cloud">
-          {user ? `Hello, ${user.username}!` : 'Plan your day with ease'}
+          {user ? `Hello, ${user.username}!` : "Plan your day with ease"}
         </p>
       </div>
 
@@ -49,7 +49,9 @@ export default function Home() {
         <Link href="/token">
           <div className="p-8 bg-slate-blue/10 border border-slate-grey rounded-lg hover:bg-slate-blue/20 transition-colors cursor-pointer">
             <div className="text-4xl mb-4">🖥️</div>
-            <h3 className="text-xl font-semibold text-snow mb-2">Desktop Widget</h3>
+            <h3 className="text-xl font-semibold text-snow mb-2">
+              Desktop Widget
+            </h3>
             <p className="text-cloud text-sm">
               Open the macOS desktop widget application
             </p>

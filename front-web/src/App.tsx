@@ -1,14 +1,14 @@
-import { useAuthStore } from './store/authStore';
-import { Route, Switch, Link, Router } from 'wouter';
-import { useHashLocation } from 'wouter/use-hash-location';
-import LoginForm from './components/LoginForm';
-import Home from './components/Home';
-import TokenDisplay from './components/TokenDisplay';
-import CategoryList from './components/CategoryList';
-import TemplateList from './components/TemplateList';
-import TemplateEditor from './components/TemplateEditor';
-import WeeklySchedule from './components/WeeklySchedule';
-import ScheduleOverrides from './components/ScheduleOverrides';
+import { useAuthStore } from "./store/authStore";
+import { Route, Switch, Link, Router } from "wouter";
+import { useHashLocation } from "wouter/use-hash-location";
+import LoginForm from "./components/LoginForm";
+import Home from "./components/Home";
+import TokenDisplay from "./components/TokenDisplay";
+import CategoryList from "./components/CategoryList";
+import TemplateList from "./components/TemplateList";
+import TemplateEditor from "./components/TemplateEditor";
+import WeeklySchedule from "./components/WeeklySchedule";
+import ScheduleOverrides from "./components/ScheduleOverrides";
 
 function App() {
   const { token, clearAuth } = useAuthStore();
@@ -27,11 +27,11 @@ function App() {
   };
 
   const handleCreateTemplate = () => {
-    setLocation('/templates/new');
+    setLocation("/templates/new");
   };
 
   const handleCloseEditor = () => {
-    setLocation('/templates');
+    setLocation("/templates");
   };
 
   return (
@@ -45,7 +45,9 @@ function App() {
                 <Link
                   href="/"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location === '/' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location === "/"
+                      ? "text-snow font-semibold"
+                      : "text-cloud hover:text-snow"
                   }`}
                 >
                   Home
@@ -53,7 +55,9 @@ function App() {
                 <Link
                   href="/categories"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location === '/categories' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location === "/categories"
+                      ? "text-snow font-semibold"
+                      : "text-cloud hover:text-snow"
                   }`}
                 >
                   Categories
@@ -61,7 +65,9 @@ function App() {
                 <Link
                   href="/templates"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location.startsWith('/templates') ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location.startsWith("/templates")
+                      ? "text-snow font-semibold"
+                      : "text-cloud hover:text-snow"
                   }`}
                 >
                   Templates
@@ -69,7 +75,9 @@ function App() {
                 <Link
                   href="/schedule"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location === '/schedule' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location === "/schedule"
+                      ? "text-snow font-semibold"
+                      : "text-cloud hover:text-snow"
                   }`}
                 >
                   Schedule
@@ -91,7 +99,10 @@ function App() {
             <Route path="/token" component={TokenDisplay} />
             <Route path="/categories" component={CategoryList} />
             <Route path="/templates">
-              <TemplateList onEdit={handleEditTemplate} onCreate={handleCreateTemplate} />
+              <TemplateList
+                onEdit={handleEditTemplate}
+                onCreate={handleCreateTemplate}
+              />
             </Route>
             <Route path="/templates/new">
               <TemplateEditor templateId={null} onClose={handleCloseEditor} />

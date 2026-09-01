@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 export interface WeeklyScheduleSlot {
   id?: number | null;
@@ -38,7 +38,7 @@ export async function getSchedule(token: string): Promise<Schedule> {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch schedule');
+    throw new Error("Failed to fetch schedule");
   }
 
   return response.json();
@@ -46,19 +46,19 @@ export async function getSchedule(token: string): Promise<Schedule> {
 
 export async function updateWeeklySchedule(
   token: string,
-  input: UpdateWeeklyScheduleInput
+  input: UpdateWeeklyScheduleInput,
 ): Promise<Schedule> {
   const response = await fetch(`${API_URL}/schedule/weekly`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to update weekly schedule');
+    throw new Error("Failed to update weekly schedule");
   }
 
   const data = await response.json();
@@ -71,19 +71,19 @@ export async function updateWeeklySchedule(
 export async function updateScheduleOverride(
   token: string,
   date: string,
-  input: UpdateScheduleOverrideInput
+  input: UpdateScheduleOverrideInput,
 ): Promise<ScheduleOverride | null> {
   const response = await fetch(`${API_URL}/schedule/overrides/${date}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to update schedule override');
+    throw new Error("Failed to update schedule override");
   }
 
   const data = await response.json();

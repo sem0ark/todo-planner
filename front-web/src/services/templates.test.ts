@@ -1,27 +1,32 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from './templates';
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  getTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+} from "./templates";
 
-vi.stubGlobal('fetch', vi.fn());
+vi.stubGlobal("fetch", vi.fn());
 
-describe('templates service', () => {
-  const token = 'test-token';
+describe("templates service", () => {
+  const token = "test-token";
   const mockTemplate = {
     id: 1,
-    name: 'Weekday Schedule',
+    name: "Weekday Schedule",
     template_group_id: null,
     planned_blocks: [
-      { id: 1, category_id: 1, start_time: '09:00:00', duration_minutes: 60 },
+      { id: 1, category_id: 1, start_time: "09:00:00", duration_minutes: 60 },
     ],
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('getTemplates', () => {
-    it('should fetch templates successfully', async () => {
+  describe("getTemplates", () => {
+    it("should fetch templates successfully", async () => {
       (fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ templates: [mockTemplate] }),
@@ -29,25 +34,29 @@ describe('templates service', () => {
 
       const result = await getTemplates(token);
 
-      expect(fetch).toHaveBeenCalledWith('http://localhost:8080/templates', {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates", {
         headers: { Authorization: `Bearer ${token}` },
       });
       expect(result).toEqual([mockTemplate]);
     });
 
-    it('should throw error on failed request', async () => {
+    it("should throw error on failed request", async () => {
       (fetch as any).mockResolvedValueOnce({ ok: false });
 
-      await expect(getTemplates(token)).rejects.toThrow('Failed to fetch templates');
+      await expect(getTemplates(token)).rejects.toThrow(
+        "Failed to fetch templates",
+      );
     });
   });
 
-  describe('createTemplate', () => {
-    it('should create template successfully', async () => {
+  describe("createTemplate", () => {
+    it("should create template successfully", async () => {
       const input = {
-        name: 'Weekday Schedule',
+        name: "Weekday Schedule",
         template_group_id: null,
-        planned_blocks: [{ category_id: 1, start_time: '09:00:00', duration_minutes: 60 }],
+        planned_blocks: [
+          { category_id: 1, start_time: "09:00:00", duration_minutes: 60 },
+        ],
       };
       (fetch as any).mockResolvedValueOnce({
         ok: true,
@@ -56,32 +65,38 @@ describe('templates service', () => {
 
       const result = await createTemplate(token, input);
 
-      expect(fetch).toHaveBeenCalledWith('http://localhost:8080/templates', {
-        method: 'POST',
+      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(input),
       });
       expect(result).toEqual(mockTemplate);
     });
 
-    it('should throw error on failed request', async () => {
+    it("should throw error on failed request", async () => {
       (fetch as any).mockResolvedValueOnce({ ok: false });
 
       await expect(
-        createTemplate(token, { name: 'Test', template_group_id: null, planned_blocks: [] })
-      ).rejects.toThrow('Failed to create template');
+        createTemplate(token, {
+          name: "Test",
+          template_group_id: null,
+          planned_blocks: [],
+        }),
+      ).rejects.toThrow("Failed to create template");
     });
   });
 
-  describe('updateTemplate', () => {
-    it('should update template successfully', async () => {
+  describe("updateTemplate", () => {
+    it("should update template successfully", async () => {
       const input = {
-        name: 'Updated Schedule',
+        name: "Updated Schedule",
         template_group_id: null,
-        planned_blocks: [{ category_id: 1, start_time: '09:00:00', duration_minutes: 90 }],
+        planned_blocks: [
+          { category_id: 1, start_time: "09:00:00", duration_minutes: 90 },
+        ],
       };
       (fetch as any).mockResolvedValueOnce({
         ok: true,
@@ -90,42 +105,48 @@ describe('templates service', () => {
 
       const result = await updateTemplate(token, 1, input);
 
-      expect(fetch).toHaveBeenCalledWith('http://localhost:8080/templates/1', {
-        method: 'PUT',
+      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates/1", {
+        method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(input),
       });
       expect(result.name).toBe(input.name);
     });
 
-    it('should throw error on failed request', async () => {
+    it("should throw error on failed request", async () => {
       (fetch as any).mockResolvedValueOnce({ ok: false });
 
       await expect(
-        updateTemplate(token, 1, { name: 'Test', template_group_id: null, planned_blocks: [] })
-      ).rejects.toThrow('Failed to update template');
+        updateTemplate(token, 1, {
+          name: "Test",
+          template_group_id: null,
+          planned_blocks: [],
+        }),
+      ).rejects.toThrow("Failed to update template");
     });
   });
 
-  describe('deleteTemplate', () => {
-    it('should delete template successfully', async () => {
+  describe("deleteTemplate", () => {
+    it("should delete template successfully", async () => {
       (fetch as any).mockResolvedValueOnce({ ok: true });
 
       await deleteTemplate(token, 1);
 
-      expect(fetch).toHaveBeenCalledWith('http://localhost:8080/templates/1', {
-        method: 'DELETE',
+      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates/1", {
+        method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
     });
 
-    it('should throw error on failed request', async () => {
+    it("should throw error on failed request", async () => {
       (fetch as any).mockResolvedValueOnce({ ok: false });
 
-      await expect(deleteTemplate(token, 1)).rejects.toThrow('Failed to delete template');
+      await expect(deleteTemplate(token, 1)).rejects.toThrow(
+        "Failed to delete template",
+      );
     });
   });
 });

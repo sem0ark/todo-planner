@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import type { UserSettings } from '../services/settings';
+import { create } from "zustand";
+import type { UserSettings } from "../services/settings";
 
 interface SettingsStore {
   settings: UserSettings | null;

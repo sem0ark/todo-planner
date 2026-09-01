@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 export interface UserSettings {
   id: number;
@@ -15,29 +15,32 @@ export interface UserSettingsInput {
 export async function getSettings(token: string): Promise<UserSettings> {
   const response = await fetch(`${API_URL}/settings`, {
     headers: {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch settings');
+    throw new Error("Failed to fetch settings");
   }
 
   return response.json();
 }
 
-export async function updateSettings(token: string, input: UserSettingsInput): Promise<UserSettings> {
+export async function updateSettings(
+  token: string,
+  input: UserSettingsInput,
+): Promise<UserSettings> {
   const response = await fetch(`${API_URL}/settings`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to update settings');
+    throw new Error("Failed to update settings");
   }
 
   return response.json();

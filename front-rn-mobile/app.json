@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Tempo",
+    "slug": "tempo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "tempo",
+    "backgroundColor": "#003448",
+    "splash": { "backgroundColor": "#003448" },
+    "ios": {
+      "bundleIdentifier": "com.tempo.mobile",
+      "infoPlist": { "UIBackgroundModes": ["fetch", "remote-notification"] }
+    },
+    "android": {
+      "package": "com.tempo.mobile",
+      "permissions": ["VIBRATE", "SCHEDULE_EXACT_ALARM"]
+    },
+    "plugins": [
+      "expo-font",
+      "expo-haptics",
+      "expo-notifications",
+      "expo-router",
+      "react-native-reanimated"
+    ]
+  }
+}

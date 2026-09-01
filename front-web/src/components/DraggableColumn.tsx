@@ -257,7 +257,10 @@ export function DraggableColumn({
 
       if (dragMode === "resize-bottom") {
         // Bottom resize: Only size changes
-        return { ...item, size: Math.max(snapToInterval, item.size + deltaUnits) };
+        return {
+          ...item,
+          size: Math.max(snapToInterval, item.size + deltaUnits),
+        };
       }
 
       // Default: Move

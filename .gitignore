@@ -98,3 +98,7 @@ dist-ssr
 *.sw?
 
 temp
+
+# Exported sessions
+2026-*
+session-ses*

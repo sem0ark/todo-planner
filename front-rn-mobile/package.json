@@ -1,0 +1,37 @@
+{
+  "name": "front-rn-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "test": "jest",
+    "lint": "prettier --write . || true; oxlint || true",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "expo": "^54.0.37",
+    "expo-font": "~14.0.12",
+    "expo-haptics": "~15.0.8",
+    "expo-notifications": "~0.32.17",
+    "expo-router": "~6.0.24",
+    "react": "19.1.0",
+    "react-native": "0.81.4",
+    "react-native-reanimated": "~4.1.7",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.17",
+    "oxlint": "^1.81.0",
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.3"
+  }
+}

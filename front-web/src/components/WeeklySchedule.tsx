@@ -1,17 +1,28 @@
-import { useEffect, useState } from 'react';
-import { useAuthStore } from '../store/authStore';
-import { useScheduleStore } from '../store/scheduleStore';
-import { useTemplateStore } from '../store/templateStore';
-import { getSchedule, updateWeeklySchedule } from '../services/schedule';
-import { getTemplates } from '../services/templates';
+import { useEffect, useState } from "react";
+import { useAuthStore } from "../store/authStore";
+import { useScheduleStore } from "../store/scheduleStore";
+import { useTemplateStore } from "../store/templateStore";
+import { getSchedule, updateWeeklySchedule } from "../services/schedule";
+import { getTemplates } from "../services/templates";
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 
 export default function WeeklySchedule() {
   const { token } = useAuthStore();
-  const { weeklySchedule, setWeeklySchedule, setOverrides } = useScheduleStore();
+  const { weeklySchedule, setWeeklySchedule, setOverrides } =
+    useScheduleStore();
   const { templates, setTemplates } = useTemplateStore();
-  const [localSchedule, setLocalSchedule] = useState<Record<number, number | null>>({});
+  const [localSchedule, setLocalSchedule] = useState<
+    Record<number, number | null>
+  >({});
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -41,12 +52,12 @@ export default function WeeklySchedule() {
       setOverrides(scheduleData.overrides);
       setTemplates(templatesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      setError(err instanceof Error ? err.message : "Failed to load data");
     }
   };
 
   const handleChange = (dayOfWeek: number, templateId: string) => {
-    const id = templateId === '' ? null : parseInt(templateId);
+    const id = templateId === "" ? null : parseInt(templateId);
     setLocalSchedule((prev) => ({ ...prev, [dayOfWeek]: id }));
     setHasChanges(true);
   };
@@ -68,7 +79,7 @@ export default function WeeklySchedule() {
       setWeeklySchedule(result.weekly_schedule);
       setHasChanges(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save schedule');
+      setError(err instanceof Error ? err.message : "Failed to save schedule");
     } finally {
       setIsSaving(false);
     }
@@ -84,8 +95,8 @@ export default function WeeklySchedule() {
   };
 
   const getTemplateName = (id: number | null) => {
-    if (id === null) return 'Unassigned';
-    return templates.find((t) => t.id === id)?.name || 'Unknown';
+    if (id === null) return "Unassigned";
+    return templates.find((t) => t.id === id)?.name || "Unknown";
   };
 
   return (
@@ -105,7 +116,7 @@ export default function WeeklySchedule() {
               disabled={isSaving}
               className="px-4 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+              {isSaving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         )}
@@ -125,7 +136,7 @@ export default function WeeklySchedule() {
           >
             <span className="w-28 text-snow font-medium">{day}</span>
             <select
-              value={localSchedule[index] ?? ''}
+              value={localSchedule[index] ?? ""}
               onChange={(e) => handleChange(index, e.target.value)}
               className="flex-1 px-4 py-2 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro focus:border-cloud"
             >
@@ -138,7 +149,8 @@ export default function WeeklySchedule() {
             </select>
             {weeklySchedule[index] && (
               <span className="text-sm text-cloud">
-                Current: {getTemplateName(weeklySchedule[index]?.day_template_id)}
+                Current:{" "}
+                {getTemplateName(weeklySchedule[index]?.day_template_id)}
               </span>
             )}
           </div>

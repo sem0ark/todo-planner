@@ -1,20 +1,31 @@
-import { useEffect, useState } from 'react';
-import { useAuthStore } from '../store/authStore';
-import { useCategoryStore } from '../store/categoryStore';
-import { getCategories, createCategory, updateCategory, deleteCategory } from '../services/categories';
-import { DEFAULT_PASTEL_COLORS } from '../utils/colors';
-import type { Category, CategoryInput } from '../services/categories';
+import { useEffect, useState } from "react";
+import { useAuthStore } from "../store/authStore";
+import { useCategoryStore } from "../store/categoryStore";
+import {
+  getCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+} from "../services/categories";
+import { DEFAULT_PASTEL_COLORS } from "../utils/colors";
+import type { Category, CategoryInput } from "../services/categories";
 
 export default function CategoryList() {
   const { token } = useAuthStore();
-  const { categories, setCategories, addCategory, updateCategory: updateCategoryStore, removeCategory } = useCategoryStore();
+  const {
+    categories,
+    setCategories,
+    addCategory,
+    updateCategory: updateCategoryStore,
+    removeCategory,
+  } = useCategoryStore();
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   const [color, setColor] = useState(DEFAULT_PASTEL_COLORS[0]);
   const [pomodoroEnabled, setPomodoroEnabled] = useState(false);
-  const [workDuration, setWorkDuration] = useState('25');
-  const [restDuration, setRestDuration] = useState('5');
+  const [workDuration, setWorkDuration] = useState("25");
+  const [restDuration, setRestDuration] = useState("5");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,7 +40,9 @@ export default function CategoryList() {
       const data = await getCategories(token);
       setCategories(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load categories');
+      setError(
+        err instanceof Error ? err.message : "Failed to load categories",
+      );
     }
   };
 
@@ -43,7 +56,9 @@ export default function CategoryList() {
       setIsCreating(false);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create category');
+      setError(
+        err instanceof Error ? err.message : "Failed to create category",
+      );
     }
   };
 
@@ -57,29 +72,47 @@ export default function CategoryList() {
       setEditingId(null);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update category');
+      setError(
+        err instanceof Error ? err.message : "Failed to update category",
+      );
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!token) return;
-    if (!confirm('Delete this category? It will be removed from view but historical data will remain.')) return;
+    if (
+      !confirm(
+        "Delete this category? It will be removed from view but historical data will remain.",
+      )
+    )
+      return;
     try {
       await deleteCategory(token, id);
       removeCategory(id);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete category');
+      setError(
+        err instanceof Error ? err.message : "Failed to delete category",
+      );
     }
   };
 
-  const startEdit = (id: number, currentName: string, currentColor: string, pomodoroConfig: Category['pomodoro_config']) => {
+  const startEdit = (
+    id: number,
+    currentName: string,
+    currentColor: string,
+    pomodoroConfig: Category["pomodoro_config"],
+  ) => {
     setEditingId(id);
     setName(currentName);
     setColor(currentColor);
     setPomodoroEnabled(pomodoroConfig !== null);
-    setWorkDuration(pomodoroConfig ? String(pomodoroConfig.work_duration / 60) : '25');
-    setRestDuration(pomodoroConfig ? String(pomodoroConfig.rest_duration / 60) : '5');
+    setWorkDuration(
+      pomodoroConfig ? String(pomodoroConfig.work_duration / 60) : "25",
+    );
+    setRestDuration(
+      pomodoroConfig ? String(pomodoroConfig.rest_duration / 60) : "5",
+    );
     setIsCreating(false);
   };
 
@@ -91,11 +124,11 @@ export default function CategoryList() {
   };
 
   const resetForm = () => {
-    setName('');
+    setName("");
     setColor(DEFAULT_PASTEL_COLORS[0]);
     setPomodoroEnabled(false);
-    setWorkDuration('25');
-    setRestDuration('5');
+    setWorkDuration("25");
+    setRestDuration("5");
   };
 
   const buildCategoryInput = (): CategoryInput => ({
@@ -132,7 +165,9 @@ export default function CategoryList() {
         <div className="mb-4 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-cloud mb-2">Name</label>
+              <label className="block text-sm font-medium text-cloud mb-2">
+                Name
+              </label>
               <input
                 type="text"
                 value={name}
@@ -143,7 +178,9 @@ export default function CategoryList() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-cloud mb-2">Color</label>
+              <label className="block text-sm font-medium text-cloud mb-2">
+                Color
+              </label>
               <div className="flex flex-wrap gap-2 mb-3">
                 {DEFAULT_PASTEL_COLORS.map((pastellColor) => (
                   <button
@@ -151,7 +188,9 @@ export default function CategoryList() {
                     type="button"
                     onClick={() => setColor(pastellColor)}
                     className={`w-10 h-10 rounded-lg border-2 transition-all duration-micro ${
-                      color === pastellColor ? 'border-cloud scale-110' : 'border-slate-grey hover:border-cloud/50'
+                      color === pastellColor
+                        ? "border-cloud scale-110"
+                        : "border-slate-grey hover:border-cloud/50"
                     }`}
                     style={{ backgroundColor: pastellColor }}
                     title={pastellColor}
@@ -190,7 +229,9 @@ export default function CategoryList() {
                         className="w-full rounded-lg border-2 border-slate-grey bg-navy/60 px-3 py-2 pr-16 text-right font-mono tabular-nums text-snow outline-none focus:border-cloud"
                         aria-label="Work duration in minutes"
                       />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-cloud">min</span>
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-cloud">
+                        min
+                      </span>
                     </span>
                   </label>
                   <label className="text-sm text-cloud">
@@ -205,7 +246,9 @@ export default function CategoryList() {
                         className="w-full rounded-lg border-2 border-slate-grey bg-navy/60 px-3 py-2 pr-16 text-right font-mono tabular-nums text-snow outline-none focus:border-cloud"
                         aria-label="Rest duration in minutes"
                       />
-                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-cloud">min</span>
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-cloud">
+                        min
+                      </span>
                     </span>
                   </label>
                 </div>
@@ -213,10 +256,12 @@ export default function CategoryList() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => (editingId !== null ? handleUpdate(editingId) : handleCreate())}
+                onClick={() =>
+                  editingId !== null ? handleUpdate(editingId) : handleCreate()
+                }
                 className="px-4 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud"
               >
-                {editingId !== null ? 'Update' : 'Create'}
+                {editingId !== null ? "Update" : "Create"}
               </button>
               <button
                 onClick={cancelEdit}
@@ -240,15 +285,25 @@ export default function CategoryList() {
               style={{ backgroundColor: category.color }}
             />
             <div className="min-w-0 flex-1">
-              <span className="block truncate text-snow font-medium">{category.name}</span>
+              <span className="block truncate text-snow font-medium">
+                {category.name}
+              </span>
               {category.pomodoro_config && (
                 <span className="mt-1 block font-mono text-sm tabular-nums text-cloud">
-                  Pomodoro {category.pomodoro_config.work_duration / 60}/{category.pomodoro_config.rest_duration / 60} min
+                  Pomodoro {category.pomodoro_config.work_duration / 60}/
+                  {category.pomodoro_config.rest_duration / 60} min
                 </span>
               )}
             </div>
             <button
-              onClick={() => startEdit(category.id, category.name, category.color, category.pomodoro_config)}
+              onClick={() =>
+                startEdit(
+                  category.id,
+                  category.name,
+                  category.color,
+                  category.pomodoro_config,
+                )
+              }
               className="px-3 py-1 text-sm text-cloud hover:text-snow transition-colors duration-micro"
               disabled={isCreating || editingId !== null}
             >
@@ -264,7 +319,9 @@ export default function CategoryList() {
           </div>
         ))}
         {categories.length === 0 && !isCreating && (
-          <p className="text-center text-cloud py-8">No categories yet. Create one to get started.</p>
+          <p className="text-center text-cloud py-8">
+            No categories yet. Create one to get started.
+          </p>
         )}
       </div>
     </div>

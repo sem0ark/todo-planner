@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 export interface PomodoroConfig {
   work_duration: number;
@@ -23,47 +23,54 @@ export interface CategoryInput {
 export async function getCategories(token: string): Promise<Category[]> {
   const response = await fetch(`${API_URL}/categories`, {
     headers: {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch categories');
+    throw new Error("Failed to fetch categories");
   }
 
   const data = await response.json();
   return data.categories;
 }
 
-export async function createCategory(token: string, input: CategoryInput): Promise<Category> {
+export async function createCategory(
+  token: string,
+  input: CategoryInput,
+): Promise<Category> {
   const response = await fetch(`${API_URL}/categories`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to create category');
+    throw new Error("Failed to create category");
   }
 
   return response.json();
 }
 
-export async function updateCategory(token: string, id: number, input: CategoryInput): Promise<Category> {
+export async function updateCategory(
+  token: string,
+  id: number,
+  input: CategoryInput,
+): Promise<Category> {
   const response = await fetch(`${API_URL}/categories/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(input),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to update category');
+    throw new Error("Failed to update category");
   }
 
   return response.json();
@@ -71,13 +78,13 @@ export async function updateCategory(token: string, id: number, input: CategoryI
 
 export async function deleteCategory(token: string, id: number): Promise<void> {
   const response = await fetch(`${API_URL}/categories/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
   if (!response.ok) {
-    throw new Error('Failed to delete category');
+    throw new Error("Failed to delete category");
   }
 }

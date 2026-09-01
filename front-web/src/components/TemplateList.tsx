@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
-import { useAuthStore } from '../store/authStore';
-import { useTemplateStore } from '../store/templateStore';
-import { getTemplates, deleteTemplate } from '../services/templates';
+import { useEffect } from "react";
+import { useAuthStore } from "../store/authStore";
+import { useTemplateStore } from "../store/templateStore";
+import { getTemplates, deleteTemplate } from "../services/templates";
 
 interface TemplateListProps {
   onEdit: (id: number) => void;
@@ -24,18 +24,23 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
       const data = await getTemplates(token);
       setTemplates(data);
     } catch (err) {
-      console.error('Failed to load templates:', err);
+      console.error("Failed to load templates:", err);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!token) return;
-    if (!confirm('Delete this template? It will be removed from view but historical data will remain.')) return;
+    if (
+      !confirm(
+        "Delete this template? It will be removed from view but historical data will remain.",
+      )
+    )
+      return;
     try {
       await deleteTemplate(token, id);
       removeTemplate(id);
     } catch (err) {
-      console.error('Failed to delete template:', err);
+      console.error("Failed to delete template:", err);
     }
   };
 
@@ -78,7 +83,9 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
           </div>
         ))}
         {templates.length === 0 && (
-          <p className="text-center text-cloud py-8">No templates yet. Create one to get started.</p>
+          <p className="text-center text-cloud py-8">
+            No templates yet. Create one to get started.
+          </p>
         )}
       </div>
     </div>
