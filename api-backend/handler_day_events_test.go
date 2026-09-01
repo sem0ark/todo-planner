@@ -56,19 +56,18 @@ func TestPostDayEventsHandler_Success(t *testing.T) {
 		Events: []DayEventInput{
 			{
 				EventType:  "confirmation",
+				CategoryID: &cat1ID,
 				OccurredAt: now.Add(-2 * time.Hour),
 			},
 			{
-				EventType:          "transition",
-				OutgoingCategoryID: &cat1ID,
-				IncomingCategoryID: &cat1ID,
-				OccurredAt:         now.Add(-1 * time.Hour),
+				EventType:  "transition",
+				CategoryID: &cat1ID,
+				OccurredAt: now.Add(-1 * time.Hour),
 			},
 			{
-				EventType:          "transition",
-				OutgoingCategoryID: &cat1ID,
-				IncomingCategoryID: &cat2ID,
-				OccurredAt:         now.Add(-30 * time.Minute),
+				EventType:  "transition",
+				CategoryID: &cat2ID,
+				OccurredAt: now.Add(-30 * time.Minute),
 			},
 		},
 	}
@@ -295,14 +294,14 @@ func TestPostDayEventsHandler_NotChronological(t *testing.T) {
 	reqBody := DayEventsInput{
 		Events: []DayEventInput{
 			{
-				EventType:          "transition",
-				IncomingCategoryID: &catID,
-				OccurredAt:         now,
+				EventType:  "transition",
+				CategoryID: &catID,
+				OccurredAt: now,
 			},
 			{
-				EventType:          "transition",
-				IncomingCategoryID: &catID,
-				OccurredAt:         now.Add(-1 * time.Hour), // Earlier than first
+				EventType:  "transition",
+				CategoryID: &catID,
+				OccurredAt: now.Add(-1 * time.Hour), // Earlier than first
 			},
 		},
 	}
@@ -402,9 +401,8 @@ func TestPostDayEventsHandler_ConfirmationWithCategories(t *testing.T) {
 	reqBody := DayEventsInput{
 		Events: []DayEventInput{
 			{
-				EventType:          "confirmation",
-				IncomingCategoryID: &catID, // Should not have categories
-				OccurredAt:         time.Now(),
+				EventType:  "confirmation",
+				OccurredAt: time.Now(),
 			},
 		},
 	}

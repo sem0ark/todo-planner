@@ -64,8 +64,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         local_id INTEGER PRIMARY KEY AUTOINCREMENT,
         day_record_id INTEGER NOT NULL,
         event_type TEXT NOT NULL,
-        outgoing_category_id INTEGER,
-        incoming_category_id INTEGER,
+        category_id INTEGER,
         occurred_at TEXT NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (day_record_id) REFERENCES day_records(id) ON DELETE CASCADE
@@ -332,7 +331,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
     let actualBlocks = try query(actualBlocksSql, params: [record.id]) { stmt in
       return ActualBlock(
         id: columnInt(stmt, index: 0),
-        categoryId: columnIntOptional(stmt, index: 2),
+        categoryId: columnInt(stmt, index: 2),
         blockType: columnString(stmt, index: 3),
         startTime: columnString(stmt, index: 4),
         durationMinutes: columnInt(stmt, index: 5)
@@ -425,8 +424,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
             CreatedEvent(
               id: -1,  // Temporary ID
               eventType: event.eventType,
-              outgoingCategoryId: event.outgoingCategoryId,
-              incomingCategoryId: event.incomingCategoryId,
+              categoryId: event.categoryId,
               occurredAt: event.occurredAt
             )
           },
@@ -441,8 +439,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         CreatedEvent(
           id: -1,
           eventType: event.eventType,
-          outgoingCategoryId: event.outgoingCategoryId,
-          incomingCategoryId: event.incomingCategoryId,
+          categoryId: event.categoryId,
           occurredAt: event.occurredAt
         )
       },
@@ -455,16 +452,15 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
     for event in events {
       let sql = """
-        INSERT INTO pending_events (day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at, synced)
-        VALUES (?, ?, ?, ?, ?, 0)
+        INSERT INTO pending_events (day_record_id, event_type, category_id, occurred_at, synced)
+        VALUES (?, ?, ?, ?, 0)
         """
       try execute(
         sql,
         params: [
           dayRecordId,
           event.eventType,
-          event.outgoingCategoryId as Any,
-          event.incomingCategoryId as Any,
+          event.categoryId as Any,
           iso8601.string(from: event.occurredAt),
         ])
     }
@@ -537,7 +533,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
     // Get all unsynced events grouped by day record
     let sql = """
-      SELECT day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at
+      SELECT day_record_id, event_type, category_id, occurred_at
       FROM pending_events
       WHERE synced = 0
       ORDER BY day_record_id, occurred_at ASC
@@ -549,9 +545,8 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         dayRecordId: columnInt(stmt, index: 0),
         event: DayEvent(
           eventType: columnString(stmt, index: 1),
-          outgoingCategoryId: columnIntOptional(stmt, index: 2),
-          incomingCategoryId: columnIntOptional(stmt, index: 3),
-          occurredAt: iso8601.date(from: columnString(stmt, index: 4)) ?? Date()
+          categoryId: columnInt(stmt, index: 2),
+          occurredAt: iso8601.date(from: columnString(stmt, index: 3)) ?? Date()
         )
       )
     }

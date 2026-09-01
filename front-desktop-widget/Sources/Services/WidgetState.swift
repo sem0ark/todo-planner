@@ -248,11 +248,11 @@ func logEvent(
   repo: TodoPlannerRepository
 ) async -> [ActualBlock] {
   guard let recordId = recordId else { return [] }
+  guard let categoryId = category?.id else { return [] }
 
   let event = DayEvent(
     eventType: type.rawValue,
-    outgoingCategoryId: type == .transition ? category?.id : nil,
-    incomingCategoryId: category?.id,
+    categoryId: categoryId,
     occurredAt: occurredAt ?? Date()
   )
 

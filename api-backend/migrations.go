@@ -317,5 +317,23 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   5,
+			Name: "simplify_day_event_category",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					DO $$
+					BEGIN
+						IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'day_events' AND column_name = 'incoming_category_id') THEN
+							ALTER TABLE day_events ADD COLUMN category_id INTEGER REFERENCES block_categories(id) ON DELETE CASCADE;
+							UPDATE day_events SET category_id = incoming_category_id;
+							ALTER TABLE day_events DROP COLUMN outgoing_category_id;
+							ALTER TABLE day_events DROP COLUMN incoming_category_id;
+						END IF;
+					END $$;
+				`)
+				return err
+			},
+		},
 	}
 }

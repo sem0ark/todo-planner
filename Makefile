@@ -39,4 +39,4 @@ railway:
 	railway up ./api-backend/ --path-as-root
 
 test: test-prepare
-	export TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db?sslmode=disable" && cd api-backend && go test ./... -v
+	export TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db?sslmode=disable" && cd api-backend && go test ./...

@@ -87,7 +87,7 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
         // 2. Start the new block
         let newBlock = ActualBlock(
           id: Int.random(in: 1000...9999),
-          categoryId: event.incomingCategoryId,
+          categoryId: event.categoryId,
           blockType: "actual",
           startTime: timeStr,
           durationMinutes: 0  // Active block
@@ -98,8 +98,7 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
           CreatedEvent(
             id: eventId,
             eventType: event.eventType,
-            outgoingCategoryId: event.outgoingCategoryId,
-            incomingCategoryId: event.incomingCategoryId,
+            categoryId: event.categoryId,
             occurredAt: event.occurredAt
           ))
       } else if event.eventType == "confirmation" {
@@ -110,8 +109,7 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
           CreatedEvent(
             id: eventId,
             eventType: event.eventType,
-            outgoingCategoryId: event.outgoingCategoryId,
-            incomingCategoryId: event.incomingCategoryId,
+            categoryId: event.categoryId,
             occurredAt: event.occurredAt
           ))
       }

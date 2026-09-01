@@ -149,20 +149,18 @@ enum Fixtures {
 
   static func record(
     id: Int = 1,
-    snapshotBlocks: [PlannedBlock] = [],
     actualBlocks: [ActualBlock] = []
   ) -> DayRecord {
     DayRecord(
-      id: id, snapshotId: 1, calendarDate: today,
+      id: id, calendarDate: today,
       reviewStatus: "Unreviewed",
-      snapshotBlocks: snapshotBlocks,
       actualBlocks: actualBlocks,
       createdAt: Date(), updatedAt: Date()
     )
   }
 
   static func recordWithCurrentBlock(categoryId: Int = 1) -> DayRecord {
-    record(snapshotBlocks: [blockCoveringNow(categoryId: categoryId)])
+    record(actualBlocks: [actualBlock(categoryId: categoryId)])
   }
 
   static func eventsResponse(blocks: [ActualBlock] = []) -> DayEventsResponse {
@@ -224,7 +222,6 @@ final class WidgetTestHarness {
     index: Int,
     expectedType: String,
     expectedIncomingId: Int?,
-    expectedOutgoingId: Int? = nil,
     dayRecordId: Int? = nil
   ) throws {
     let calls = mock.submitEventsCalls
@@ -238,8 +235,7 @@ final class WidgetTestHarness {
     }
 
     try assertEqual(event.eventType, expectedType)
-    try assertEqual(event.incomingCategoryId, expectedIncomingId)
-    try assertEqual(event.outgoingCategoryId, expectedOutgoingId)
+    try assertEqual(event.categoryId, expectedIncomingId)
 
     if let expectedRecordId = dayRecordId {
       try assertEqual(recordId, expectedRecordId)
@@ -278,7 +274,6 @@ final class WidgetStateStoreTests {
       index: 0,
       expectedType: "transition",
       expectedIncomingId: Fixtures.categoryA.id,
-      expectedOutgoingId: Fixtures.categoryA.id
     )
   }
 
@@ -326,7 +321,6 @@ final class WidgetStateStoreTests {
       index: 0,
       expectedType: "transition",
       expectedIncomingId: Fixtures.categoryA.id,
-      expectedOutgoingId: Fixtures.categoryA.id
     )
     let expectedTime = beforeAdjust.addingTimeInterval(-5 * 60)
     try assert(abs(h.store.lastEventTime.timeIntervalSince(expectedTime)) < 2, "Offset time should be retroactive")
@@ -354,13 +348,13 @@ final class WidgetStateStoreTests {
     await h.store.dispatch(.adjustOffset(5))
 
     try h.assertSubmitEventsCount(2)
-    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id, expectedOutgoingId: Fixtures.categoryA.id)
-    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id, expectedOutgoingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
     try assert(h.store.offsetMinutes == 10, "Offset should accumulate to 10")
   }
 
   func test_adjustOffset_noCurrentCategory_noSubmit() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.record(snapshotBlocks: []))
+     let h = WidgetTestHarness(existingRecord: Fixtures.record())
     await h.initializeAndResetCalls()
 
     await h.store.dispatch(.adjustOffset(5))
@@ -402,7 +396,7 @@ final class WidgetStateStoreTests {
   }
 
   func test_returnToPlan_noPlannedCategory_noSubmit() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.record(snapshotBlocks: []))
+     let h = WidgetTestHarness(existingRecord: Fixtures.record())
     await h.initializeAndResetCalls()
 
     await h.store.dispatch(.returnToPlan)
@@ -423,9 +417,9 @@ final class WidgetStateStoreTests {
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
 
     try h.assertSubmitEventsCount(3)
-    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id, expectedOutgoingId: Fixtures.categoryA.id)
-    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id, expectedOutgoingId: Fixtures.categoryB.id)
-    try h.assertSubmitEventDetails(index: 2, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id, expectedOutgoingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
+    try h.assertSubmitEventDetails(index: 2, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
   }
 
   func test_flow_offsetThenSelectCategory() async throws {
@@ -438,8 +432,8 @@ final class WidgetStateStoreTests {
     await h.store.dispatch(.selectCategory(Fixtures.categoryB))
 
     try h.assertSubmitEventsCount(2)
-    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id, expectedOutgoingId: Fixtures.categoryA.id)
-    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id, expectedOutgoingId: Fixtures.categoryB.id)
+    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -484,7 +478,7 @@ final class WidgetStateStoreTests {
 
   func test_submitEvents_useCorrectDayRecordId() async throws {
     let recordId = 42
-    let record = Fixtures.record(id: recordId, snapshotBlocks: [Fixtures.blockCoveringNow()])
+    let record = Fixtures.record(id: recordId, actualBlocks: [Fixtures.actualBlock()])
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
 
@@ -496,7 +490,7 @@ final class WidgetStateStoreTests {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Group 10: Event Validation — outgoingCategoryId (Known Bug)
+  // Group 10: Event Validation — categoryId (Known Bug)
   // ─────────────────────────────────────────────────────────────
 
   func test_transitionEvent_populatesEventFields() async throws {
@@ -510,8 +504,7 @@ final class WidgetStateStoreTests {
     let calls = h.mock.submitEventsCalls
     let event = calls[0].events[0]
     try assertEqual(event.eventType, "transition")
-    try assertEqual(event.incomingCategoryId, Fixtures.categoryB.id)
-    try assertEqual(event.outgoingCategoryId, Fixtures.categoryB.id)
+    try assertEqual(event.categoryId, Fixtures.categoryB.id)
   }
 
   func test_confirmationEvent_populatesEventFields() async throws {
@@ -534,7 +527,7 @@ final class WidgetStateStoreTests {
 
   func test_submitEventsCall_usesCorrectRecordIdAndEventSequence() async throws {
     let recordId = 123
-    let record = Fixtures.record(id: recordId, snapshotBlocks: [Fixtures.blockCoveringNow(categoryId: Fixtures.categoryA.id)])
+    let record = Fixtures.record(id: recordId, actualBlocks: [Fixtures.actualBlock(categoryId: Fixtures.categoryA.id)])
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
 
@@ -548,15 +541,13 @@ final class WidgetStateStoreTests {
     let (id1, events1) = calls[0]
     try assertEqual(id1, recordId)
     try assertEqual(events1.count, 1)
-    try assertEqual(events1[0].incomingCategoryId, Fixtures.categoryA.id)
-    try assertEqual(events1[0].outgoingCategoryId, Fixtures.categoryA.id)
+    try assertEqual(events1[0].categoryId, Fixtures.categoryA.id)
 
     // Verify second call
     let (id2, events2) = calls[1]
     try assertEqual(id2, recordId)
     try assertEqual(events2.count, 1)
-    try assertEqual(events2[0].incomingCategoryId, Fixtures.categoryB.id)
-    try assertEqual(events2[0].outgoingCategoryId, Fixtures.categoryB.id)
+    try assertEqual(events2[0].categoryId, Fixtures.categoryB.id)
   }
 }
 

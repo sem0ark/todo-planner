@@ -257,14 +257,14 @@ func validateDayEvents(events []DayEventInput) error {
 		}
 
 		if event.EventType == "confirmation" {
-			if event.OutgoingCategoryID != nil || event.IncomingCategoryID != nil {
-				return &ValidationError{Message: "confirmation events must not have category IDs"}
+			if event.CategoryID == nil {
+				return &ValidationError{Message: "category_id is required for all events"}
 			}
 		}
 
 		if event.EventType == "transition" {
-			if event.OutgoingCategoryID == nil || event.IncomingCategoryID == nil {
-				return &ValidationError{Message: "transition events must have both outgoing_category_id and incoming_category_id"}
+			if event.CategoryID == nil {
+				return &ValidationError{Message: "category_id is required for all events"}
 			}
 		}
 

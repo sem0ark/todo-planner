@@ -508,10 +508,10 @@ func TestComputeActualBlocks_SingleTransition(t *testing.T) {
 
 	events := []DayEvent{
 		{
-			ID:                 1,
-			EventType:          "transition",
-			OccurredAt:         startTime,
-			IncomingCategoryID: &categoryID,
+			ID:         1,
+			EventType:  "transition",
+			OccurredAt: startTime,
+			CategoryID: &categoryID,
 		},
 	}
 
@@ -538,22 +538,22 @@ func TestComputeActualBlocks_MultipleTransitions(t *testing.T) {
 
 	events := []DayEvent{
 		{
-			ID:                 1,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
-			IncomingCategoryID: &category1,
+			ID:         1,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
+			CategoryID: &category1,
 		},
 		{
-			ID:                 2,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T12:00:00Z"),
-			IncomingCategoryID: &category2,
+			ID:         2,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T12:00:00Z"),
+			CategoryID: &category2,
 		},
 		{
-			ID:                 3,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T13:00:00Z"),
-			IncomingCategoryID: &category1,
+			ID:         3,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T13:00:00Z"),
+			CategoryID: &category1,
 		},
 	}
 
@@ -598,10 +598,10 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 
 	events := []DayEvent{
 		{
-			ID:                 1,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
-			IncomingCategoryID: &category1,
+			ID:         1,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
+			CategoryID: &category1,
 		},
 		{
 			ID:         2,
@@ -609,10 +609,10 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 			OccurredAt: parseTime("2026-07-20T10:30:00Z"),
 		},
 		{
-			ID:                 3,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T12:00:00Z"),
-			IncomingCategoryID: &category2,
+			ID:         3,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T12:00:00Z"),
+			CategoryID: &category2,
 		},
 		{
 			ID:         4,
@@ -647,16 +647,16 @@ func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 
 	events := []DayEvent{
 		{
-			ID:                 1,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
-			IncomingCategoryID: &category1,
+			ID:         1,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
+			CategoryID: &category1,
 		},
 		{
-			ID:                 2,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
-			IncomingCategoryID: &category1,
+			ID:         2,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
+			CategoryID: &category1,
 		},
 	}
 
@@ -672,22 +672,23 @@ func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 	}
 }
 
-func TestComputeActualBlocks_NilCategoryID(t *testing.T) {
-	// Arrange - transitions can have nil category_id
+func TestComputeActualBlocks_CategoryID(t *testing.T) {
 	referenceTime := parseTime("2026-07-20T17:00:00Z")
+	category1 := 1
+	category2 := 2
 
 	events := []DayEvent{
 		{
-			ID:                 1,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T09:00:00Z"),
-			IncomingCategoryID: nil,
+			ID:         1,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
+			CategoryID: &category1,
 		},
 		{
-			ID:                 2,
-			EventType:          "transition",
-			OccurredAt:         parseTime("2026-07-20T12:00:00Z"),
-			IncomingCategoryID: nil,
+			ID:         2,
+			EventType:  "transition",
+			OccurredAt: parseTime("2026-07-20T12:00:00Z"),
+			CategoryID: &category2,
 		},
 	}
 
@@ -698,8 +699,8 @@ func TestComputeActualBlocks_NilCategoryID(t *testing.T) {
 	if len(blocks) != 2 {
 		t.Fatalf("Expected 2 blocks, got %d", len(blocks))
 	}
-	if blocks[0].CategoryID != nil {
-		t.Errorf("Expected nil category_id, got %v", blocks[0].CategoryID)
+	if blocks[0].CategoryID == nil {
+		t.Errorf("Expected category_id, got nil")
 	}
 }
 
