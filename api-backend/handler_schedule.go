@@ -28,6 +28,13 @@ type WeeklyScheduleResponse struct {
 	WeeklySchedule []WeeklySchedule `json:"weekly_schedule"`
 }
 
+// TodayScheduleResponse contains the template currently assigned to today.
+type TodayScheduleResponse struct {
+	CalendarDate  string       `json:"calendar_date"`
+	DayTemplateID *int         `json:"day_template_id"`
+	Template      *DayTemplate `json:"template"`
+}
+
 // getScheduleHandler returns the full weekly schedule and all future overrides
 func (api *API) getScheduleHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -58,6 +65,45 @@ func (api *API) getScheduleHandler(w http.ResponseWriter, r *http.Request) {
 	response := ScheduleResponse{
 		WeeklySchedule: weeklySchedule,
 		Overrides:      overrides,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// getTodayScheduleHandler returns today's resolved template without reading a day record.
+func (api *API) getTodayScheduleHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := getUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	today := time.Now().Format("2006-01-02")
+	templateID, err := api.scheduleRepo.GetTemplateForDate(r.Context(), userID, today)
+	if err != nil {
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to resolve today's schedule", err, map[string]interface{}{"user_id": userID, "date": today})
+		return
+	}
+
+	var template *DayTemplate
+	if templateID != nil {
+		template, err = api.dayTemplateRepo.FindByID(r.Context(), *templateID, userID)
+		if err != nil {
+			HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to fetch today's template", err, map[string]interface{}{"user_id": userID, "template_id": *templateID})
+			return
+		}
+	}
+
+	response := TodayScheduleResponse{
+		CalendarDate:  today,
+		DayTemplateID: templateID,
+		Template:      template,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -160,6 +206,12 @@ func (api *API) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	if path == "" || path == "/" {
 		// GET /schedule
 		api.getScheduleHandler(w, r)
+		return
+	}
+
+	if path == "/today" {
+		// GET /schedule/today
+		api.getTodayScheduleHandler(w, r)
 		return
 	}
 

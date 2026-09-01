@@ -69,3 +69,21 @@ _______________________________________
 - **Pulse Duration:** 1500ms (State 1), 800ms (State 3).
 - **Panel Swap:** 180ms `ease-out`.
 - **Offset Feedback:** The timestamp text flashes `Cyan` (#00FFFF) for 100ms upon button press to confirm the background sync.
+
+## Unit Testing
+
+Tests are built directly with `swiftc` and run as a standalone binary due to problems with configuring the xcode + it is heavy, just a script should be enough for now.
+
+Running Tests:
+```bash
+make test
+```
+
+This builds a test runner and executes all WidgetStateStore tests. All 19 tests currently pass.
+
+Test file example: `Tests/WidgetTests/WidgetStateStoreTests.swift`
+
+Adding New Tests:
+1. Add a test method to `WidgetStateStoreTests` class
+2. Register it in the `testMethods` array at the bottom of `TestRunner.main()`
+3. Run `make test` — passes and failures are printed immediately

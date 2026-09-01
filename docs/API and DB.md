@@ -35,8 +35,9 @@
   - `PUT /templates/{id}` - replace template metadata and full block list; server creates a new snapshot automatically
   - `DELETE /templates/{id}` - soft delete
 
-- **Schedule**
+ - **Schedule**
   - `GET /schedule` - get full weekly schedule and all future overrides
+  - `GET /schedule/today` - resolve today's schedule assignment and return its template with planned blocks
   - `PUT /schedule/weekly` - replace all 7 day-of-week assignments
   - `PUT /schedule/overrides/{date}` - set or remove override for a specific date
 
@@ -759,6 +760,25 @@ Returns the complete weekly schedule (all 7 slots, including unassigned days) an
   ]
 }
 ```
+
+### `GET /schedule/today`
+Returns the template assignment resolved for the current calendar date. A date-specific override takes precedence over the weekly schedule. This endpoint is intended for live clients that need the current planned template and does not require a day record to exist.
+
+**Output `200`:**
+```json
+{
+  "calendar_date": "string (YYYY-MM-DD)",
+  "day_template_id": "integer | null",
+  "template": {
+    "id": "integer",
+    "name": "string",
+    "template_group_id": "integer | null",
+    "planned_blocks": []
+  }
+}
+```
+
+When no template is assigned, `day_template_id` and `template` are `null`.
 
 ### `PUT /schedule/weekly`
 Replaces the full weekly schedule. All 7 days of the week must be included. Days with no template assigned should have `day_template_id: null`. Changes apply to future dates only — past day records are unaffected.

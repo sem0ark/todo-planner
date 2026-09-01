@@ -32,34 +32,28 @@ struct ActualBlock: Identifiable, Codable {
 
 struct DayRecord: Identifiable, Codable {
   let id: Int
-  let snapshotId: Int?
   let calendarDate: String  // YYYY-MM-DD
   let reviewStatus: String  // "Unreviewed" | "Reviewed" | "Ignored"
-  let snapshotBlocks: [PlannedBlock]
   let actualBlocks: [ActualBlock]
   let createdAt: Date
   let updatedAt: Date
 
   enum CodingKeys: String, CodingKey {
     case id
-    case snapshotId = "snapshot_id"
     case calendarDate = "calendar_date"
     case reviewStatus = "review_status"
-    case snapshotBlocks = "snapshot_blocks"
     case actualBlocks = "actual_blocks"
     case createdAt = "created_at"
     case updatedAt = "updated_at"
   }
 
   init(
-    id: Int, snapshotId: Int?, calendarDate: String, reviewStatus: String,
-    snapshotBlocks: [PlannedBlock], actualBlocks: [ActualBlock], createdAt: Date, updatedAt: Date
+    id: Int, calendarDate: String, reviewStatus: String,
+    actualBlocks: [ActualBlock], createdAt: Date, updatedAt: Date
   ) {
     self.id = id
-    self.snapshotId = snapshotId
     self.calendarDate = calendarDate
     self.reviewStatus = reviewStatus
-    self.snapshotBlocks = snapshotBlocks
     self.actualBlocks = actualBlocks
     self.createdAt = createdAt
     self.updatedAt = updatedAt
@@ -68,11 +62,8 @@ struct DayRecord: Identifiable, Codable {
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(Int.self, forKey: .id)
-    snapshotId = try container.decodeIfPresent(Int.self, forKey: .snapshotId)
     calendarDate = try container.decode(String.self, forKey: .calendarDate)
     reviewStatus = try container.decode(String.self, forKey: .reviewStatus)
-    snapshotBlocks =
-      try container.decodeIfPresent([PlannedBlock].self, forKey: .snapshotBlocks) ?? []
     actualBlocks = try container.decodeIfPresent([ActualBlock].self, forKey: .actualBlocks) ?? []
     createdAt = try container.decode(Date.self, forKey: .createdAt)
     updatedAt = try container.decode(Date.self, forKey: .updatedAt)
