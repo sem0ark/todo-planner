@@ -1,12 +1,12 @@
 import type {
   Category,
   PlannedBlock,
-  ActualBlock,
   DayRecord,
   Repository,
   DayEvent,
 } from "./models";
 import { todayString, formatTime, minutesBetween } from "./time";
+
 const categories: Category[] = [
   {
     id: 1,
@@ -24,6 +24,7 @@ const categories: Category[] = [
   },
   { id: 5, name: "Housework", color: "#e9a663", pomodoroConfig: null },
 ];
+
 const schedule = [
   ["00:00:00", 3],
   ["06:00:00", 2],
@@ -35,7 +36,9 @@ const schedule = [
   ["18:30:00", 5],
   ["19:30:00", 3],
 ] as const;
+
 let nextId = 5000;
+
 function plannedBlocks(): PlannedBlock[] {
   return schedule.map(([time, categoryId], index) => ({
     id: 100 + index,
@@ -47,6 +50,7 @@ function plannedBlocks(): PlannedBlock[] {
     ),
   }));
 }
+
 export function createMockRepository(): Repository {
   let day: DayRecord = {
     id: nextId++,

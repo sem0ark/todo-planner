@@ -102,3 +102,9 @@ temp
 # Exported sessions
 2026-*
 session-ses*
+
+*node_modules*
+.expo
+dist
+web-build
+*.tsbuildinfo

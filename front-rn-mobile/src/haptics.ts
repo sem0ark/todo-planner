@@ -1,12 +1,19 @@
-import * as Haptics from "expo-haptics";
+import {
+  impactAsync,
+  ImpactFeedbackStyle,
+  notificationAsync,
+  NotificationFeedbackType,
+} from "expo-haptics";
+
 export async function haptic(
   pattern: "success" | "tap" | "prompt" | "pomodoro",
 ) {
   if (pattern === "prompt")
-    return Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-  return Haptics.impactAsync(
+    return notificationAsync(NotificationFeedbackType.Warning);
+
+  return impactAsync(
     pattern === "pomodoro"
-      ? Haptics.ImpactFeedbackStyle.Medium
-      : Haptics.ImpactFeedbackStyle.Light,
+      ? ImpactFeedbackStyle.Medium
+      : ImpactFeedbackStyle.Light,
   );
 }

@@ -15,7 +15,13 @@ export function CategoryList() {
             state.currentCategoryId === category.id && styles.active,
           ]}
         >
-          <View style={[styles.dot, { backgroundColor: category.color }]} />
+          <View
+            style={[
+              styles.dot,
+              { backgroundColor: category.color },
+              state.currentCategoryId === category.id && styles.activeDot,
+            ]}
+          />
           <Text style={styles.name}>{category.name.toUpperCase()}</Text>
           <Text style={styles.index}>{index + 1}</Text>
         </Pressable>
@@ -35,6 +41,7 @@ const styles = StyleSheet.create({
   },
   active: { backgroundColor: "rgba(145,166,190,.2)" },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: Space.md },
+  activeDot: { shadowColor: Color.primaryText, shadowOpacity: 0.8, shadowRadius: 4, elevation: 4 },
   name: {
     flex: 1,
     color: Color.secondaryText,

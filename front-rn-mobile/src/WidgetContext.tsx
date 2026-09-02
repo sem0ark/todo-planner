@@ -23,6 +23,7 @@ import {
 } from "./time";
 import { haptic } from "./haptics";
 import { fireImmediateNotification } from "./notifications";
+
 export interface Widget {
   state: WidgetState;
   currentCategory: Category | null;
@@ -37,12 +38,15 @@ export interface Widget {
   offset(minutes: number): void;
   returnToPlan(): void;
 }
+
 const Context = createContext<Widget | null>(null);
+
 export function useWidget() {
   const value = useContext(Context);
   if (!value) throw new Error("useWidget must be inside WidgetProvider");
   return value;
 }
+
 export function WidgetProvider({
   repo,
   children,
@@ -53,6 +57,7 @@ export function WidgetProvider({
   const [state, setState] = useState(INITIAL_STATE);
   const stateRef = useRef(INITIAL_STATE);
   const [, rerender] = useState(0);
+
   const apply = async (step: { state: WidgetState; effects: Effect[] }) => {
     stateRef.current = step.state;
     setState(step.state);
@@ -65,8 +70,9 @@ export function WidgetProvider({
       }
     }
   };
-  const dispatch = (action: Action) =>
-    void apply(reduce(stateRef.current, action));
+
+  const dispatch = (action: Action) => apply(reduce(stateRef.current, action));
+
   useEffect(() => {
     Promise.all([
       repo.fetchCategories(),
@@ -83,14 +89,19 @@ export function WidgetProvider({
       }),
     );
   }, [repo]);
+
   useEffect(() => {
     const timer = setInterval(() => {
+      console.log("Tick at", Date.now());
+
       rerender((value) => value + 1);
       apply(reduce(stateRef.current, { type: "TICK", now: Date.now() }));
     }, 1000);
+
     const sub = AppState.addEventListener("change", () =>
       rerender((value) => value + 1),
     );
+
     return () => {
       clearInterval(timer);
       sub.remove();
@@ -139,6 +150,7 @@ export function WidgetProvider({
     </Context.Provider>
   );
 }
+
 async function execute(
   effect: Effect,
   repo: Repository,

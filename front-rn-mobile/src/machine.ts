@@ -34,6 +34,7 @@ export const INITIAL_STATE: WidgetState = {
   pomElapsed: 0,
   lastPromptedBlockId: null,
 };
+
 export type Action =
   | {
       type: "INITIALIZED";
@@ -48,23 +49,28 @@ export type Action =
   | { type: "OFFSET"; minutes: number; now: number }
   | { type: "TICK"; now: number }
   | { type: "SYNC_BLOCKS"; blocks: ActualBlock[] };
+
 export type Effect =
   | { type: "LOG_TRANSITION"; categoryId: number; occurredAt: number | null }
   | { type: "LOG_CONFIRMATION"; categoryId: number }
   | { type: "NOTIFY_BOUNDARY"; categoryName: string }
   | { type: "NOTIFY_POMODORO" }
   | { type: "HAPTIC"; pattern: "success" | "tap" | "prompt" | "pomodoro" };
+
 export interface Step {
   state: WidgetState;
   effects: Effect[];
 }
+
 const category = (s: WidgetState, id: number | null) =>
   id == null ? null : (s.categories.find((c) => c.id === id) ?? null);
+
 const plannedCategory = (s: WidgetState, now: number) =>
   (
     findCurrentBlock(s.plannedBlocks, secondsOfDay(now)) ??
     findNextBlock(s.plannedBlocks, secondsOfDay(now))
   )?.categoryId ?? null;
+
 const promptBlock = (s: WidgetState, now: number) => {
   const block = findCurrentBlock(s.plannedBlocks, secondsOfDay(now));
   return block &&
@@ -73,6 +79,7 @@ const promptBlock = (s: WidgetState, now: number) => {
     ? block
     : null;
 };
+
 const transition = (s: WidgetState, id: number, now: number): Step => ({
   state: {
     ...s,
@@ -88,6 +95,7 @@ const transition = (s: WidgetState, id: number, now: number): Step => ({
     { type: "HAPTIC", pattern: "success" },
   ],
 });
+
 export function reduce(s: WidgetState, a: Action): Step {
   if (a.type === "INITIALIZED") {
     const actual = findCurrentActualBlock(a.actualBlocks, secondsOfDay(a.now));
@@ -110,8 +118,10 @@ export function reduce(s: WidgetState, a: Action): Step {
       effects: [],
     };
   }
+
   if (a.type === "SYNC_BLOCKS")
     return { state: { ...s, actualBlocks: a.blocks }, effects: [] };
+
   if (a.type === "SELECT") return transition(s, a.categoryId, a.now);
   if (
     a.type === "OFFSET" &&
@@ -134,12 +144,14 @@ export function reduce(s: WidgetState, a: Action): Step {
       ],
     };
   }
+
   if (a.type === "RETURN" && s.phase === "active") {
     const id = plannedCategory(s, a.now);
     return id != null && id !== s.currentCategoryId
       ? transition(s, id, a.now)
       : { state: s, effects: [] };
   }
+
   if (a.type === "CONFIRM") {
     if (s.phase === "prompted") {
       const id = plannedCategory(s, a.now) ?? s.currentCategoryId;
@@ -174,6 +186,7 @@ export function reduce(s: WidgetState, a: Action): Step {
         effects: [{ type: "HAPTIC", pattern: "pomodoro" }],
       };
   }
+
   if (a.type === "TICK" && s.phase === "active") {
     const prompt = promptBlock(s, a.now);
     if (prompt) {

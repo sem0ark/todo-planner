@@ -8,6 +8,7 @@ export const Color = {
   offsetGreen: "#10b981",
   dashedBorder: "#dee2ef",
 } as const;
+
 export const Opacity = {
   subtleLine: 0.05,
   overlay: 0.1,
@@ -20,6 +21,7 @@ export const Opacity = {
   label: 0.7,
   breatheMin: 0.65,
 } as const;
+
 export const Font = {
   ui: "Inter_400Regular",
   uiBold: "Inter_700Bold",
@@ -27,6 +29,7 @@ export const Font = {
   data: "JetBrainsMono_400Regular",
   dataBold: "JetBrainsMono_700Bold",
 } as const;
+
 export const Size = {
   categoryLarge: 28,
   body: 16,
@@ -34,7 +37,9 @@ export const Size = {
   mono: 12,
   categoryRow: 14,
 } as const;
+
 export const Space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
+
 export const Touch = { categoryRow: 56 } as const;
 
 export function complementaryColor(hex: string): string {

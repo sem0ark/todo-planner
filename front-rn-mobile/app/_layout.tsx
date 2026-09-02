@@ -15,7 +15,9 @@ import { Color } from "../src/tokens";
 import { WidgetProvider } from "../src/WidgetContext";
 import { createMockRepository } from "../src/mock-repo";
 import { setupNotifications } from "../src/notifications";
+
 const repo = createMockRepository();
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -40,6 +42,7 @@ export default function RootLayout() {
     </WidgetProvider>
   );
 }
+
 const styles = StyleSheet.create({
   loading: {
     flex: 1,

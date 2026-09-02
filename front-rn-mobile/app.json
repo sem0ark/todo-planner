@@ -15,12 +15,6 @@
       "package": "com.tempo.mobile",
       "permissions": ["VIBRATE", "SCHEDULE_EXACT_ALARM"]
     },
-    "plugins": [
-      "expo-font",
-      "expo-haptics",
-      "expo-notifications",
-      "expo-router",
-      "react-native-reanimated"
-    ]
+    "plugins": ["expo-font", "expo-notifications", "expo-router"]
   }
 }
