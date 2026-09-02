@@ -35,6 +35,7 @@ struct ScheduleDeviation {
 struct WidgetContext {
   var categories: [Category] = []
   var currentDayRecord: DayRecord?
+  var currentPlannedBlocks: [PlannedBlock] = []
   var currentCategory: Category?
   var plannedCategory: Category?
   var lastEventTime = Date()
@@ -229,10 +230,8 @@ func updateDayRecord(_ context: inout WidgetContext, with blocks: [ActualBlock])
   guard let record = context.currentDayRecord else { return }
   context.currentDayRecord = DayRecord(
     id: record.id,
-    snapshotId: record.snapshotId,
     calendarDate: record.calendarDate,
     reviewStatus: record.reviewStatus,
-    snapshotBlocks: record.snapshotBlocks,
     actualBlocks: blocks,
     createdAt: record.createdAt,
     updatedAt: Date()
@@ -249,11 +248,11 @@ func logEvent(
   repo: TodoPlannerRepository
 ) async -> [ActualBlock] {
   guard let recordId = recordId else { return [] }
+  guard let categoryId = category?.id else { return [] }
 
   let event = DayEvent(
     eventType: type.rawValue,
-    outgoingCategoryId: type == .transition ? category?.id : nil,
-    incomingCategoryId: category?.id,
+    categoryId: categoryId,
     occurredAt: occurredAt ?? Date()
   )
 
@@ -288,17 +287,13 @@ final class InitializingState: WidgetStateLogic {
     var ctx = context
     let now = Date()
 
-    guard let record = ctx.currentDayRecord else {
-      print("[INIT] Complete: no record available")
-      let nextState = ActiveState()
-      return StateResult(nextState: nextState, updatedContext: ctx, effects: [])
-    }
-
-    let currentPlanned = TimeLogic.getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
+    let currentPlanned = TimeLogic.getCurrentPlannedBlock(at: now, from: ctx.currentPlannedBlocks)
     let planned =
-      currentPlanned ?? TimeLogic.getNextPlannedBlock(at: now, from: record.snapshotBlocks)
+      currentPlanned ?? TimeLogic.getNextPlannedBlock(at: now, from: ctx.currentPlannedBlocks)
     ctx.plannedCategory = ctx.categories.first { $0.id == planned?.categoryId }
-    if let actual = TimeLogic.getCurrentActualBlock(at: now, from: record.actualBlocks),
+
+    if let record = ctx.currentDayRecord,
+      let actual = TimeLogic.getCurrentActualBlock(at: now, from: record.actualBlocks),
       let actualId = actual.categoryId
     {
       ctx.currentCategory = ctx.categories.first { $0.id == actualId }
@@ -413,10 +408,10 @@ final class PromptedState: WidgetStateLogic {
 
 @Observable
 @MainActor
-final class WidgetStateStore {
+class WidgetStateStore {
   // --- Source of Truth ---
-  private var currentState: WidgetStateLogic = InitializingState()
-  private var context = WidgetContext()
+  var currentState: WidgetStateLogic = InitializingState()
+  var context = WidgetContext()
   private let repository: TodoPlannerRepository
   private var tick = 0
 
@@ -436,20 +431,18 @@ final class WidgetStateStore {
     return ScheduleDeviation(expected: planned, actual: actual, deviatedAt: context.lastEventTime)
   }
   var plannedCategory: Category? {
-    guard let record = context.currentDayRecord else { return nil }
     let block =
-      TimeLogic.getCurrentPlannedBlock(at: Date(), from: record.snapshotBlocks)
-      ?? TimeLogic.getNextPlannedBlock(at: Date(), from: record.snapshotBlocks)
+      TimeLogic.getCurrentPlannedBlock(at: Date(), from: context.currentPlannedBlocks)
+      ?? TimeLogic.getNextPlannedBlock(at: Date(), from: context.currentPlannedBlocks)
     return context.categories.first { $0.id == block?.categoryId }
   }
   var lastEventTime: Date { context.lastEventTime }
   var offsetMinutes: Int { context.offsetMinutes }
   var currentPlannedBlock: PlannedBlock? {
     _ = tick
-    guard let record = context.currentDayRecord else { return nil }
     let now = Date()
-    return TimeLogic.getCurrentPlannedBlock(at: now, from: record.snapshotBlocks)
-      ?? TimeLogic.getNextPlannedBlock(at: now, from: record.snapshotBlocks)
+    return TimeLogic.getCurrentPlannedBlock(at: now, from: context.currentPlannedBlocks)
+      ?? TimeLogic.getNextPlannedBlock(at: now, from: context.currentPlannedBlocks)
   }
   var plannedDurationMinutes: Int { currentPlannedBlock?.durationMinutes ?? 0 }
   var progressPercentage: Double {
@@ -511,6 +504,10 @@ final class WidgetStateStore {
     do {
       context.categories = try await repository.fetchCategories()
       let today = DateFormatter.yyyyMMdd.string(from: Date())
+
+      let todaySchedule = try await repository.fetchTodaySchedule()
+      context.currentPlannedBlocks = todaySchedule.template?.plannedBlocks ?? []
+
       if let record = try await repository.fetchDayRecord(date: today) {
         context.currentDayRecord = record
       } else {
@@ -529,7 +526,7 @@ final class WidgetStateStore {
 
   // MARK: - State Application & Projection
 
-  private func apply(_ result: StateResult) async {
+  func apply(_ result: StateResult) async {
     self.context = result.updatedContext
 
     self.currentState = result.nextState
@@ -632,7 +629,7 @@ final class WidgetStateStore {
 
   // MARK: - System Integration
 
-  private func updateMenuBarIcon() {
+  func updateMenuBarIcon() {
     let icon: MenuBarManager.IconState =
       switch displayState {
       case .initializing: .active

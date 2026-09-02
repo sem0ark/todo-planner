@@ -1,7 +1,10 @@
-import { useEffect } from 'react';
-import { useAuthStore } from '../store/authStore';
-import { useTemplateStore } from '../store/templateStore';
-import { getTemplates, deleteTemplate } from '../services/templates';
+import { useEffect } from "react";
+import { useAuthStore } from "../store/authStore";
+import { useTemplateStore } from "../store/templateStore";
+import { useCategoryStore } from "../store/categoryStore";
+import { getTemplates, deleteTemplate } from "../services/templates";
+import { getCategories } from "../services/categories";
+import TemplateSummary from "./TemplateSummary";
 
 interface TemplateListProps {
   onEdit: (id: number) => void;
@@ -11,6 +14,7 @@ interface TemplateListProps {
 export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
   const { token } = useAuthStore();
   const { templates, setTemplates, removeTemplate } = useTemplateStore();
+  const { categories, setCategories } = useCategoryStore();
 
   useEffect(() => {
     if (token) {
@@ -18,31 +22,44 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
     }
   }, [token]);
 
+  useEffect(() => {
+    if (!token || categories.length > 0) return;
+
+    getCategories(token)
+      .then(setCategories)
+      .catch((err) => console.error("Failed to load categories:", err));
+  }, [token, categories.length, setCategories]);
+
   const loadTemplates = async () => {
     if (!token) return;
     try {
       const data = await getTemplates(token);
       setTemplates(data);
     } catch (err) {
-      console.error('Failed to load templates:', err);
+      console.error("Failed to load templates:", err);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!token) return;
-    if (!confirm('Delete this template? It will be removed from view but historical data will remain.')) return;
+    if (
+      !confirm(
+        "Delete this template? It will be removed from view but historical data will remain.",
+      )
+    )
+      return;
     try {
       await deleteTemplate(token, id);
       removeTemplate(id);
     } catch (err) {
-      console.error('Failed to delete template:', err);
+      console.error("Failed to delete template:", err);
     }
   };
 
   return (
     <div className="w-full max-w-3xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-snow">Templates</h2>
+        <h2 className="text-xl font-semibold text-snow">Templates</h2>
         <button
           onClick={onCreate}
           className="px-4 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud"
@@ -55,13 +72,17 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
         {templates.map((template) => (
           <div
             key={template.id}
-            className="flex items-center gap-4 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg"
+            className="group flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
           >
             <div className="flex-1">
               <h3 className="text-snow font-medium">{template.name}</h3>
               <p className="text-sm text-cloud">
                 {template.planned_blocks.length} blocks
               </p>
+              <TemplateSummary
+                plannedBlocks={template.planned_blocks}
+                categories={categories}
+              />
             </div>
             <button
               onClick={() => onEdit(template.id)}
@@ -78,7 +99,9 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
           </div>
         ))}
         {templates.length === 0 && (
-          <p className="text-center text-cloud py-8">No templates yet. Create one to get started.</p>
+          <p className="text-center text-cloud py-8">
+            No templates yet. Create one to get started.
+          </p>
         )}
       </div>
     </div>

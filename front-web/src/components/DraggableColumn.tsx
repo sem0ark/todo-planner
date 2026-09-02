@@ -257,7 +257,10 @@ export function DraggableColumn({
 
       if (dragMode === "resize-bottom") {
         // Bottom resize: Only size changes
-        return { ...item, size: Math.max(snapToInterval, item.size + deltaUnits) };
+        return {
+          ...item,
+          size: Math.max(snapToInterval, item.size + deltaUnits),
+        };
       }
 
       // Default: Move
@@ -281,7 +284,7 @@ export function DraggableColumn({
 
   return (
     <div
-      className={`relative bg-white ${containerClassName}`}
+      className={`relative bg-app-void ${containerClassName}`}
       style={{
         width: baseWidth,
         height: "100%",

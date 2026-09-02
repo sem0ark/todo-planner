@@ -24,6 +24,9 @@ protocol TodoPlannerRepository: Sendable {
   func fetchDayRecord(date: String) async throws -> DayRecord?
   func createDayRecord(date: String) async throws -> DayRecord
 
+  // MARK: - Schedule
+  func fetchTodaySchedule() async throws -> TodaySchedule
+
   // MARK: - Events & Reality Logging
   /// Submits events and returns the updated state of actual blocks.
   func submitEvents(dayRecordId: Int, events: [DayEvent]) async throws -> DayEventsResponse

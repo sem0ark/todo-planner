@@ -2,6 +2,7 @@
 
 @theme {
   /* Colors */
+  --color-app-void: #001a24;
   --color-navy: #003448;
   --color-slate-blue: #91a6be;
   --color-slate-grey: #afb6cf;
@@ -21,4 +22,13 @@
 
   /* Transition Duration */
   --duration-micro: 120ms;
+}
+
+body {
+  background: #001a24;
+  color: #f0f0f0;
+}
+
+.font-mono {
+  font-variant-numeric: tabular-nums;
 }

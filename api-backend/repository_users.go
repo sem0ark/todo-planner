@@ -10,10 +10,16 @@ import (
 
 // UserRepository handles all database operations for users
 type UserRepository struct {
-	db *pgxpool.Pool
+	db                            *pgxpool.Pool
+	setupDefaultUserConfiguration bool
 }
 
 func NewUserRepository(db *pgxpool.Pool) *UserRepository {
+	return &UserRepository{db: db, setupDefaultUserConfiguration: true}
+}
+
+// Creates a repository suitable for tests that need to create users without seeded application data.
+func NewUserRepositoryEmptyDefault(db *pgxpool.Pool) *UserRepository {
 	return &UserRepository{db: db}
 }
 
@@ -41,8 +47,10 @@ func (r *UserRepository) Create(ctx context.Context, username, password string) 
 		return nil, err
 	}
 
-	if err := createDefaultUserConfiguration(ctx, tx, user.ID); err != nil {
-		return nil, err
+	if r.setupDefaultUserConfiguration {
+		if err := createDefaultUserConfiguration(ctx, tx, user.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

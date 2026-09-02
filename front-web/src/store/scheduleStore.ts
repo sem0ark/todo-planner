@@ -1,5 +1,8 @@
-import { create } from 'zustand';
-import type { WeeklyScheduleSlot, ScheduleOverride } from '../services/schedule';
+import { create } from "zustand";
+import type {
+  WeeklyScheduleSlot,
+  ScheduleOverride,
+} from "../services/schedule";
 
 interface ScheduleState {
   weeklySchedule: WeeklyScheduleSlot[];
@@ -27,18 +30,18 @@ export const useScheduleStore = create<ScheduleState>((set) => ({
       weeklySchedule: state.weeklySchedule.map((slot) =>
         slot.day_of_week === dayOfWeek
           ? { ...slot, day_template_id: templateId }
-          : slot
+          : slot,
       ),
     })),
   addOrUpdateOverride: (override) =>
     set((state) => {
       const existing = state.overrides.find(
-        (o) => o.calendar_date === override.calendar_date
+        (o) => o.calendar_date === override.calendar_date,
       );
       if (existing) {
         return {
           overrides: state.overrides.map((o) =>
-            o.calendar_date === override.calendar_date ? override : o
+            o.calendar_date === override.calendar_date ? override : o,
           ),
         };
       }

@@ -36,6 +36,10 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
     return try await api.postDayEvents(dayRecordId: dayRecordId, events: events)
   }
 
+  func fetchTodaySchedule() async throws -> TodaySchedule {
+    return try await api.fetchTodaySchedule()
+  }
+
   func hasPendingSync() async -> Bool { return false }  // Remote is always "synced"
   func synchronize() async throws {}
 }

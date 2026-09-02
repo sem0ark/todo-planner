@@ -238,4 +238,8 @@ final class APIClient: @unchecked Sendable {
       body: request
     )
   }
+
+  func fetchTodaySchedule() async throws -> TodaySchedule {
+    return try await makeRequest(endpoint: "/schedule/today")
+  }
 }

@@ -1,14 +1,14 @@
-import { useAuthStore } from './store/authStore';
-import { Route, Switch, Link, Router } from 'wouter';
-import { useHashLocation } from 'wouter/use-hash-location';
-import LoginForm from './components/LoginForm';
-import Home from './components/Home';
-import TokenDisplay from './components/TokenDisplay';
-import CategoryList from './components/CategoryList';
-import TemplateList from './components/TemplateList';
-import TemplateEditor from './components/TemplateEditor';
-import WeeklySchedule from './components/WeeklySchedule';
-import ScheduleOverrides from './components/ScheduleOverrides';
+import { useAuthStore } from "./store/authStore";
+import { Route, Switch, Link, Router } from "wouter";
+import { useHashLocation } from "wouter/use-hash-location";
+import LoginForm from "./components/LoginForm";
+import Home from "./components/Home";
+import TokenDisplay from "./components/TokenDisplay";
+import CategoryList from "./components/CategoryList";
+import TemplateList from "./components/TemplateList";
+import TemplateEditor from "./components/TemplateEditor";
+import WeeklySchedule from "./components/WeeklySchedule";
+import ScheduleOverrides from "./components/ScheduleOverrides";
 
 function App() {
   const { token, clearAuth } = useAuthStore();
@@ -16,7 +16,7 @@ function App() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-navy">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-app-void">
         <LoginForm />
       </div>
     );
@@ -27,33 +27,47 @@ function App() {
   };
 
   const handleCreateTemplate = () => {
-    setLocation('/templates/new');
+    setLocation("/templates/new");
   };
 
   const handleCloseEditor = () => {
-    setLocation('/templates');
+    setLocation("/templates");
   };
 
   return (
     <Router hook={useHashLocation}>
-      <div className="min-h-screen bg-navy">
-        <nav className="border-b border-slate-grey bg-navy/80 backdrop-blur">
+      <div className="min-h-screen bg-app-void">
+        <nav className="border-b border-slate-grey/20 bg-app-void backdrop-blur">
           <div className="max-w-6xl mx-auto px-6 py-4">
             <div className="flex items-center gap-6">
-              <h1 className="text-xl font-semibold text-snow">Todo Planner</h1>
+              <h1 className="text-lg font-semibold text-snow">Todo Planner</h1>
               <div className="flex gap-4">
                 <Link
                   href="/"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location === '/' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location === "/"
+                      ? "text-snow font-semibold"
+                      : "text-slate-blue hover:text-cloud"
                   }`}
                 >
                   Home
                 </Link>
                 <Link
+                  href="/review"
+                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
+                    location === "/review"
+                      ? "text-snow font-semibold"
+                      : "text-slate-blue hover:text-cloud"
+                  }`}
+                >
+                  Review
+                </Link>
+                <Link
                   href="/categories"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location === '/categories' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location === "/categories"
+                      ? "text-snow font-semibold"
+                      : "text-slate-blue hover:text-cloud"
                   }`}
                 >
                   Categories
@@ -61,7 +75,9 @@ function App() {
                 <Link
                   href="/templates"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location.startsWith('/templates') ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location.startsWith("/templates")
+                      ? "text-snow font-semibold"
+                      : "text-slate-blue hover:text-cloud"
                   }`}
                 >
                   Templates
@@ -69,7 +85,9 @@ function App() {
                 <Link
                   href="/schedule"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location === '/schedule' ? 'text-snow font-semibold' : 'text-cloud hover:text-snow'
+                    location === "/schedule"
+                      ? "text-snow font-semibold"
+                      : "text-slate-blue hover:text-cloud"
                   }`}
                 >
                   Schedule
@@ -77,7 +95,7 @@ function App() {
               </div>
               <button
                 onClick={clearAuth}
-                className="ml-auto px-3 py-1 text-sm text-cloud hover:text-snow transition-colors duration-micro"
+                className="ml-auto px-3 py-1 text-sm text-slate-blue hover:text-cloud transition-colors duration-micro"
               >
                 Logout
               </button>
@@ -90,8 +108,14 @@ function App() {
             <Route path="/" component={Home} />
             <Route path="/token" component={TokenDisplay} />
             <Route path="/categories" component={CategoryList} />
+            <Route path="/review">
+              <div className="text-snow">Review is coming soon.</div>
+            </Route>
             <Route path="/templates">
-              <TemplateList onEdit={handleEditTemplate} onCreate={handleCreateTemplate} />
+              <TemplateList
+                onEdit={handleEditTemplate}
+                onCreate={handleCreateTemplate}
+              />
             </Route>
             <Route path="/templates/new">
               <TemplateEditor templateId={null} onClose={handleCloseEditor} />

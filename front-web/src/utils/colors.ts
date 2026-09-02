@@ -6,7 +6,7 @@ function hslToHex(h: number, s: number, l: number): string {
     const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
     return Math.round(255 * color)
       .toString(16)
-      .padStart(2, '0');
+      .padStart(2, "0");
   };
   return `#${f(0)}${f(8)}${f(4)}`;
 }
@@ -44,12 +44,12 @@ function getLuminance(r: number, g: number, b: number): number {
 
 export function getContrastTextColor(backgroundColor: string): string {
   const rgb = hexToRgb(backgroundColor);
-  if (!rgb) return '#000000';
+  if (!rgb) return "#000000";
 
   const luminance = getLuminance(rgb.r, rgb.g, rgb.b);
 
   // Use white text for dark backgrounds, black text for light backgrounds
-  return luminance > 0.5 ? '#000000' : '#ffffff';
+  return luminance > 0.5 ? "#000000" : "#ffffff";
 }
 
 export const DEFAULT_PASTEL_COLORS = generatePastelPalette(12);

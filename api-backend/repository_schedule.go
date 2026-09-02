@@ -153,6 +153,43 @@ func (r *ScheduleRepository) GetFutureOverrides(ctx context.Context, userID int)
 	return overrides, nil
 }
 
+// GetTemplateForDate resolves the template assigned to a calendar date.
+// A date-specific override takes precedence over the weekly schedule.
+func (r *ScheduleRepository) GetTemplateForDate(ctx context.Context, userID int, calendarDate string) (*int, error) {
+	var templateID *int
+	err := r.db.QueryRow(ctx, `
+		SELECT day_template_id
+		FROM schedule_overrides
+		WHERE user_id = $1 AND calendar_date = $2
+	`, userID, calendarDate).Scan(&templateID)
+	if err == nil {
+		return templateID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return nil, err
+	}
+
+	parsedDate, err := time.Parse("2006-01-02", calendarDate)
+	if err != nil {
+		return nil, err
+	}
+	dayOfWeek := (int(parsedDate.Weekday()) + 6) % 7
+
+	err = r.db.QueryRow(ctx, `
+		SELECT day_template_id
+		FROM weekly_schedule
+		WHERE user_id = $1 AND day_of_week = $2
+	`, userID, dayOfWeek).Scan(&templateID)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return templateID, nil
+}
+
 // SetOverride creates or updates a schedule override. If dayTemplateID is nil, removes the override.
 func (r *ScheduleRepository) SetOverride(ctx context.Context, userID int, calendarDate string, dayTemplateID *int) (*ScheduleOverride, error) {
 	// If dayTemplateID is nil, delete the override

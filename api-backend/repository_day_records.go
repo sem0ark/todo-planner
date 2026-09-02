@@ -41,19 +41,17 @@ type DayRecord struct {
 }
 
 type DayEventInput struct {
-	EventType          string    `json:"event_type"` // confirmation | transition
-	OutgoingCategoryID *int      `json:"outgoing_category_id"`
-	IncomingCategoryID *int      `json:"incoming_category_id"`
-	OccurredAt         time.Time `json:"occurred_at"`
+	EventType  string    `json:"event_type"` // confirmation | transition
+	CategoryID *int      `json:"category_id"`
+	OccurredAt time.Time `json:"occurred_at"`
 }
 
 type DayEvent struct {
-	ID                 int       `json:"id"`
-	DayRecordID        int       `json:"day_record_id"`
-	EventType          string    `json:"event_type"` // confirmation | transition
-	OutgoingCategoryID *int      `json:"outgoing_category_id"`
-	IncomingCategoryID *int      `json:"incoming_category_id"`
-	OccurredAt         time.Time `json:"occurred_at"`
+	ID          int       `json:"id"`
+	DayRecordID int       `json:"day_record_id"`
+	EventType   string    `json:"event_type"` // confirmation | transition
+	CategoryID  *int      `json:"category_id"`
+	OccurredAt  time.Time `json:"occurred_at"`
 }
 
 type ActualBlock struct {
@@ -382,11 +380,11 @@ func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, use
 	for _, input := range inputs {
 		var event DayEvent
 		err := r.db.QueryRow(ctx, `
-			INSERT INTO day_events (day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id, day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at
-		`, dayRecordID, input.EventType, input.OutgoingCategoryID, input.IncomingCategoryID, input.OccurredAt).Scan(
-			&event.ID, &event.DayRecordID, &event.EventType, &event.OutgoingCategoryID, &event.IncomingCategoryID, &event.OccurredAt,
+		INSERT INTO day_events (day_record_id, event_type, category_id, occurred_at)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, day_record_id, event_type, category_id, occurred_at
+	`, dayRecordID, input.EventType, input.CategoryID, input.OccurredAt).Scan(
+			&event.ID, &event.DayRecordID, &event.EventType, &event.CategoryID, &event.OccurredAt,
 		)
 		if err != nil {
 			return nil, nil, err
@@ -444,7 +442,7 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, dayReco
 
 func (r *DayRecordRepository) getDayEvents(ctx context.Context, dayRecordID int) ([]DayEvent, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at
+		SELECT id, day_record_id, event_type, category_id, occurred_at
 		FROM day_events
 		WHERE day_record_id = $1
 		ORDER BY occurred_at ASC
@@ -457,7 +455,7 @@ func (r *DayRecordRepository) getDayEvents(ctx context.Context, dayRecordID int)
 	events := make([]DayEvent, 0)
 	for rows.Next() {
 		var event DayEvent
-		if err := rows.Scan(&event.ID, &event.DayRecordID, &event.EventType, &event.OutgoingCategoryID, &event.IncomingCategoryID, &event.OccurredAt); err != nil {
+		if err := rows.Scan(&event.ID, &event.DayRecordID, &event.EventType, &event.CategoryID, &event.OccurredAt); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -490,7 +488,7 @@ func computeActualBlocks(events []DayEvent, referenceTime time.Time) []ComputedB
 		// For transition events, create a block
 		if event.EventType == "transition" {
 			startTime := event.OccurredAt
-			categoryID := event.IncomingCategoryID
+			categoryID := event.CategoryID
 
 			// Find next transition to determine end time
 			var endTime time.Time

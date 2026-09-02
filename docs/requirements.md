@@ -136,7 +136,7 @@ Two types for now:
   - Does not create a new block - extends the current one.
 - **Transition**
   - The user confirms moving from one category to the next.
-  - Logs: timestamp, outgoing category, incoming category.
+  - Logs: timestamp and category.
   - Creates a boundary between two consecutive Actual Blocks.
   - Note that may signal transition both between planned categories and plan overrides, for example, when user takes an unexpected break or records a time region when they got distracted.
 

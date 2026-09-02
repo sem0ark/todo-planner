@@ -42,23 +42,11 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
       CREATE TABLE IF NOT EXISTS day_records (
         id INTEGER PRIMARY KEY,
-        snapshot_id INTEGER,
         calendar_date TEXT NOT NULL UNIQUE,
         review_status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-
-      CREATE TABLE IF NOT EXISTS snapshot_blocks (
-        id INTEGER PRIMARY KEY,
-        day_record_id INTEGER NOT NULL,
-        category_id INTEGER NOT NULL,
-        start_time TEXT NOT NULL,
-        duration_minutes INTEGER NOT NULL,
-        FOREIGN KEY (day_record_id) REFERENCES day_records(id) ON DELETE CASCADE
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_snapshot_blocks_day_record ON snapshot_blocks(day_record_id);
 
       CREATE TABLE IF NOT EXISTS actual_blocks (
         id INTEGER PRIMARY KEY,
@@ -76,8 +64,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         local_id INTEGER PRIMARY KEY AUTOINCREMENT,
         day_record_id INTEGER NOT NULL,
         event_type TEXT NOT NULL,
-        outgoing_category_id INTEGER,
-        incoming_category_id INTEGER,
+        category_id INTEGER,
         occurred_at TEXT NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (day_record_id) REFERENCES day_records(id) ON DELETE CASCADE
@@ -320,7 +307,8 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
   }
 
   private func loadDayRecordFromCache(date: String) throws -> DayRecord? {
-    let sql = "SELECT * FROM day_records WHERE calendar_date = ?"
+    let sql =
+      "SELECT id, calendar_date, review_status, created_at, updated_at FROM day_records WHERE calendar_date = ?"
 
     guard
       let record = try queryOne(
@@ -328,26 +316,14 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         mapper: { stmt in
           return (
             id: columnInt(stmt, index: 0),
-            snapshotId: columnIntOptional(stmt, index: 1),
-            calendarDate: columnString(stmt, index: 2),
-            reviewStatus: columnString(stmt, index: 3),
-            createdAt: columnDate(stmt, index: 4),
-            updatedAt: columnDate(stmt, index: 5)
+            calendarDate: columnString(stmt, index: 1),
+            reviewStatus: columnString(stmt, index: 2),
+            createdAt: columnDate(stmt, index: 3),
+            updatedAt: columnDate(stmt, index: 4)
           )
         })
     else {
       return nil
-    }
-
-    // Load snapshot blocks
-    let snapshotBlocksSql = "SELECT * FROM snapshot_blocks WHERE day_record_id = ? ORDER BY id"
-    let snapshotBlocks = try query(snapshotBlocksSql, params: [record.id]) { stmt in
-      return PlannedBlock(
-        id: columnInt(stmt, index: 0),
-        categoryId: columnInt(stmt, index: 2),
-        startTime: columnString(stmt, index: 3),
-        durationMinutes: columnInt(stmt, index: 4)
-      )
     }
 
     // Load actual blocks
@@ -355,7 +331,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
     let actualBlocks = try query(actualBlocksSql, params: [record.id]) { stmt in
       return ActualBlock(
         id: columnInt(stmt, index: 0),
-        categoryId: columnIntOptional(stmt, index: 2),
+        categoryId: columnInt(stmt, index: 2),
         blockType: columnString(stmt, index: 3),
         startTime: columnString(stmt, index: 4),
         durationMinutes: columnInt(stmt, index: 5)
@@ -364,10 +340,8 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
     return DayRecord(
       id: record.id,
-      snapshotId: record.snapshotId,
       calendarDate: record.calendarDate,
       reviewStatus: record.reviewStatus,
-      snapshotBlocks: snapshotBlocks,
       actualBlocks: actualBlocks,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt
@@ -381,10 +355,9 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
       // Upsert day record
       let upsertSql = """
-        INSERT INTO day_records (id, snapshot_id, calendar_date, review_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO day_records (id, calendar_date, review_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-          snapshot_id = excluded.snapshot_id,
           calendar_date = excluded.calendar_date,
           review_status = excluded.review_status,
           created_at = excluded.created_at,
@@ -394,28 +367,11 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         upsertSql,
         params: [
           record.id,
-          record.snapshotId as Any,
           record.calendarDate,
           record.reviewStatus,
           iso8601.string(from: record.createdAt),
           iso8601.string(from: record.updatedAt),
         ])
-
-      // Delete existing snapshot blocks
-      try execute("DELETE FROM snapshot_blocks WHERE day_record_id = ?", params: [record.id])
-
-      // Insert snapshot blocks
-      for block in record.snapshotBlocks {
-        let insertSql = """
-          INSERT INTO snapshot_blocks (id, day_record_id, category_id, start_time, duration_minutes)
-          VALUES (?, ?, ?, ?, ?)
-          """
-        try execute(
-          insertSql,
-          params: [
-            block.id, record.id, block.categoryId, block.startTime, block.durationMinutes,
-          ])
-      }
 
       // Delete existing actual blocks
       try execute("DELETE FROM actual_blocks WHERE day_record_id = ?", params: [record.id])
@@ -468,8 +424,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
             CreatedEvent(
               id: -1,  // Temporary ID
               eventType: event.eventType,
-              outgoingCategoryId: event.outgoingCategoryId,
-              incomingCategoryId: event.incomingCategoryId,
+              categoryId: event.categoryId,
               occurredAt: event.occurredAt
             )
           },
@@ -484,8 +439,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         CreatedEvent(
           id: -1,
           eventType: event.eventType,
-          outgoingCategoryId: event.outgoingCategoryId,
-          incomingCategoryId: event.incomingCategoryId,
+          categoryId: event.categoryId,
           occurredAt: event.occurredAt
         )
       },
@@ -498,16 +452,15 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
     for event in events {
       let sql = """
-        INSERT INTO pending_events (day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at, synced)
-        VALUES (?, ?, ?, ?, ?, 0)
+        INSERT INTO pending_events (day_record_id, event_type, category_id, occurred_at, synced)
+        VALUES (?, ?, ?, ?, 0)
         """
       try execute(
         sql,
         params: [
           dayRecordId,
           event.eventType,
-          event.outgoingCategoryId as Any,
-          event.incomingCategoryId as Any,
+          event.categoryId as Any,
           iso8601.string(from: event.occurredAt),
         ])
     }
@@ -548,6 +501,12 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
     }
   }
 
+  // MARK: - Schedule
+
+  func fetchTodaySchedule() async throws -> TodaySchedule {
+    return try await remoteAPI.fetchTodaySchedule()
+  }
+
   // MARK: - Sync & Persistence
 
   func hasPendingSync() async -> Bool {
@@ -574,7 +533,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
     // Get all unsynced events grouped by day record
     let sql = """
-      SELECT day_record_id, event_type, outgoing_category_id, incoming_category_id, occurred_at
+      SELECT day_record_id, event_type, category_id, occurred_at
       FROM pending_events
       WHERE synced = 0
       ORDER BY day_record_id, occurred_at ASC
@@ -586,9 +545,8 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         dayRecordId: columnInt(stmt, index: 0),
         event: DayEvent(
           eventType: columnString(stmt, index: 1),
-          outgoingCategoryId: columnIntOptional(stmt, index: 2),
-          incomingCategoryId: columnIntOptional(stmt, index: 3),
-          occurredAt: iso8601.date(from: columnString(stmt, index: 4)) ?? Date()
+          categoryId: columnInt(stmt, index: 2),
+          occurredAt: iso8601.date(from: columnString(stmt, index: 3)) ?? Date()
         )
       )
     }
@@ -632,7 +590,6 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
       try execute("DELETE FROM categories")
       try execute("DELETE FROM pending_events")
       try execute("DELETE FROM actual_blocks")
-      try execute("DELETE FROM snapshot_blocks")
       try execute("DELETE FROM day_records")
       try execute("COMMIT")
       print("[SQLite] Cleared all local data")

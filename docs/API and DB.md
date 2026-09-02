@@ -35,8 +35,9 @@
   - `PUT /templates/{id}` - replace template metadata and full block list; server creates a new snapshot automatically
   - `DELETE /templates/{id}` - soft delete
 
-- **Schedule**
+ - **Schedule**
   - `GET /schedule` - get full weekly schedule and all future overrides
+  - `GET /schedule/today` - resolve today's schedule assignment and return its template with planned blocks
   - `PUT /schedule/weekly` - replace all 7 day-of-week assignments
   - `PUT /schedule/overrides/{date}` - set or remove override for a specific date
 
@@ -173,8 +174,7 @@ erDiagram
         integer id PK
         integer day_record_id FK
         string event_type
-        integer outgoing_category_id FK
-        integer incoming_category_id FK
+        integer category_id FK
         timestamp occurred_at
     }
 
@@ -214,8 +214,7 @@ erDiagram
     USER ||--o{ DAY_RECORD : "owns"
     DAY_RECORD }o--|| TEMPLATE_SNAPSHOT : "pinned to"
     DAY_RECORD ||--o{ DAY_EVENT : "contains"
-    DAY_EVENT }o--o| BLOCK_CATEGORY : "outgoing category"
-    DAY_EVENT }o--o| BLOCK_CATEGORY : "incoming category"
+    DAY_EVENT }o--o| BLOCK_CATEGORY : "category"
     DAY_RECORD ||--o{ ACTUAL_BLOCK : "has derived"
     ACTUAL_BLOCK }o--|| BLOCK_CATEGORY : "classified by"
 ```
@@ -760,6 +759,25 @@ Returns the complete weekly schedule (all 7 slots, including unassigned days) an
 }
 ```
 
+### `GET /schedule/today`
+Returns the template assignment resolved for the current calendar date. A date-specific override takes precedence over the weekly schedule. This endpoint is intended for live clients that need the current planned template and does not require a day record to exist.
+
+**Output `200`:**
+```json
+{
+  "calendar_date": "string (YYYY-MM-DD)",
+  "day_template_id": "integer | null",
+  "template": {
+    "id": "integer",
+    "name": "string",
+    "template_group_id": "integer | null",
+    "planned_blocks": []
+  }
+}
+```
+
+When no template is assigned, `day_template_id` and `template` are `null`.
+
 ### `PUT /schedule/weekly`
 Replaces the full weekly schedule. All 7 days of the week must be included. Days with no template assigned should have `day_template_id: null`. Changes apply to future dates only — past day records are unaffected.
 
@@ -929,15 +947,13 @@ Only valid for records with status `Unreviewed`.
   "events": [
     {
       "event_type": "string (confirmation | transition)",
-      "outgoing_category_id": "integer | null",
-      "incoming_category_id": "integer | null",
+      "category_id": "integer | null",
       "occurred_at": "timestamp (ISO 8601)"
     }
   ]
 }
 ```
-- `outgoing_category_id` — required for `transition`, null for `confirmation`
-- `incoming_category_id` — required for `transition`, null for `confirmation`
+- `category_id` — required for all events
 
 **Output `200`:**
 ```json
@@ -946,8 +962,7 @@ Only valid for records with status `Unreviewed`.
     {
       "id": "integer",
       "event_type": "string",
-      "outgoing_category_id": "integer | null",
-      "incoming_category_id": "integer | null",
+      "category_id": "integer | null",
       "occurred_at": "timestamp (ISO 8601)"
     }
   ],

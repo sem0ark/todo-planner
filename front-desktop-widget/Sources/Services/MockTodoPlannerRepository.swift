@@ -87,7 +87,7 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
         // 2. Start the new block
         let newBlock = ActualBlock(
           id: Int.random(in: 1000...9999),
-          categoryId: event.incomingCategoryId,
+          categoryId: event.categoryId,
           blockType: "actual",
           startTime: timeStr,
           durationMinutes: 0  // Active block
@@ -98,8 +98,7 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
           CreatedEvent(
             id: eventId,
             eventType: event.eventType,
-            outgoingCategoryId: event.outgoingCategoryId,
-            incomingCategoryId: event.incomingCategoryId,
+            categoryId: event.categoryId,
             occurredAt: event.occurredAt
           ))
       } else if event.eventType == "confirmation" {
@@ -110,8 +109,7 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
           CreatedEvent(
             id: eventId,
             eventType: event.eventType,
-            outgoingCategoryId: event.outgoingCategoryId,
-            incomingCategoryId: event.incomingCategoryId,
+            categoryId: event.categoryId,
             occurredAt: event.occurredAt
           ))
       }
@@ -120,10 +118,8 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
     // Update local state - create a new record with updated blocks
     let updatedRecord = DayRecord(
       id: currentRecord.id,
-      snapshotId: currentRecord.snapshotId,
       calendarDate: currentRecord.calendarDate,
       reviewStatus: currentRecord.reviewStatus,
-      snapshotBlocks: currentRecord.snapshotBlocks,
       actualBlocks: updatedActuals,
       createdAt: currentRecord.createdAt,
       updatedAt: Date()
@@ -131,6 +127,21 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
     self.dayRecord = updatedRecord
 
     return DayEventsResponse(createdEvents: createdEvents, actualBlocks: updatedActuals)
+  }
+
+  func fetchTodaySchedule() async throws -> TodaySchedule {
+    let blocks = makeScheduleBlocks()
+    let template = DayTemplate(
+      id: 200,
+      name: "Mock Daily Template",
+      templateGroupId: nil,
+      plannedBlocks: blocks
+    )
+    return TodaySchedule(
+      calendarDate: todayString(),
+      dayTemplateId: 200,
+      template: template
+    )
   }
 
   func hasPendingSync() async -> Bool { return false }
@@ -160,19 +171,15 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
       Category(
         id: 5, name: "Housework", color: "#e9a663",
         pomodoroConfig: nil,
-        createdAt: now, updatedAt: now)
+        createdAt: now, updatedAt: now),
     ]
   }
 
   func seedDayRecord(for date: String) -> DayRecord {
-    let snapshot = makeScheduleBlocks()
-
     return DayRecord(
       id: 5001,
-      snapshotId: 200,
       calendarDate: date,
       reviewStatus: "unreviewed",
-      snapshotBlocks: snapshot,
       actualBlocks: [],  // Starts empty for testing initialization
       createdAt: Date(),
       updatedAt: Date()
@@ -188,7 +195,8 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
         return (String(fields[0]), categoryId)
       }
 
-    let entries = configuredEntries.isEmpty
+    let entries =
+      configuredEntries.isEmpty
       ? (0..<24 * 60).map { minute in
         (String(format: "%02d:%02d:00", minute / 60, minute % 60), (minute % 5) + 1)
       }

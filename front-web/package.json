@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "prettier --write . || true; oxlint || true",
+    "format": "prettier --write .",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui"

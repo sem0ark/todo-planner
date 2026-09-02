@@ -1,4 +1,4 @@
-.PHONY: local railway lint build format
+.PHONY: local railway lint lint-backend lint-frontend format
 
 local:
 	-colima start
@@ -17,16 +17,18 @@ local-fe:
 lint: format lint-backend lint-frontend
 
 lint-backend:
-	cd api-backend && gofmt -l .
-	cd api-backend && go vet ./...
+	-cd api-backend && gofmt -l .
+	-cd api-backend && go vet ./...
 
 lint-frontend:
-	cd front-web && pnpm lint
+	-cd front-web && pnpm lint
+	-cd front-rn-mobile && pnpm lint
 
 format:
-	cd api-backend && gofmt -w .
-	cd web-front && pnpm exec prettier --write . --ignore-unknown || true
-	cd front-desktop-widget && swift format --in-place --recursive Sources/ || true
+	-cd api-backend && gofmt -w .
+	-cd front-web && pnpm exec prettier --write . --ignore-unknown
+	-cd front-rn-mobile && pnpm exec prettier --write . --ignore-unknown
+	-cd front-desktop-widget && swift format --in-place --recursive Sources/
 	@echo "Code formatted"
 
 test-prepare:
@@ -39,4 +41,4 @@ railway:
 	railway up ./api-backend/ --path-as-root
 
 test: test-prepare
-	export TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db?sslmode=disable" && cd api-backend && go test ./... -v
+	export TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db?sslmode=disable" && cd api-backend && go test ./...

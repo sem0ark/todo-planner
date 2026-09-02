@@ -40,11 +40,21 @@ func cleanupTestDB(t *testing.T, db *pgxpool.Pool) {
 
 	ctx := context.Background()
 	tables := []string{
-		"actual_blocks", "day_events", "day_records",
-		"schedule_overrides", "weekly_schedule", "snapshot_blocks",
-		"template_snapshots", "planned_blocks", "day_templates",
-		"template_groups", "block_categories", "change_log", "devices",
-		"user_settings", "users",
+		"users",
+		"user_settings",
+		"devices",
+		"change_log",
+		"block_categories",
+		"template_groups",
+		"day_templates",
+		"planned_blocks",
+		"template_snapshots",
+		"snapshot_blocks",
+		"weekly_schedule",
+		"schedule_overrides",
+		"day_records",
+		"day_events",
+		"actual_blocks",
 	}
 
 	for _, table := range tables {
@@ -58,7 +68,7 @@ func cleanupTestDB(t *testing.T, db *pgxpool.Pool) {
 func createTestUser(t *testing.T, db *pgxpool.Pool, username, password string) *User {
 	t.Helper()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepositoryEmptyDefault(db)
 	_, err := repo.Create(context.Background(), username, password)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)

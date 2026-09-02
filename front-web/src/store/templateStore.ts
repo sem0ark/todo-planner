@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import type { Template } from '../services/templates';
+import { create } from "zustand";
+import type { Template } from "../services/templates";
 
 interface TemplateState {
   templates: Template[];

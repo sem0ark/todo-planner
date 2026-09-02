@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { useAuthStore } from '../store/authStore';
-import { useCategoryStore } from '../store/categoryStore';
-import { useTemplateStore } from '../store/templateStore';
-import { createTemplate, updateTemplate, getTemplates } from '../services/templates';
-import type { PlannedBlock } from '../services/templates';
-import { getCategories } from '../services/categories';
-import TimelineEditor from './TimelineEditor';
+import { useEffect, useRef, useState } from "react";
+import { useAuthStore } from "../store/authStore";
+import { useCategoryStore } from "../store/categoryStore";
+import { useTemplateStore } from "../store/templateStore";
+import {
+  createTemplate,
+  updateTemplate,
+  getTemplates,
+} from "../services/templates";
+import type { PlannedBlock } from "../services/templates";
+import { getCategories } from "../services/categories";
+import TimelineEditor from "./TimelineEditor";
 
 interface TemplateEditorProps {
   templateId: number | null;
@@ -39,13 +43,27 @@ function useUndoStack<T>(initial: T, maxHistory = 20) {
   return { state, push, undo, reset, canUndo: history.current.length > 0 };
 }
 
-export default function TemplateEditor({ templateId, onClose }: TemplateEditorProps) {
+export default function TemplateEditor({
+  templateId,
+  onClose,
+}: TemplateEditorProps) {
   const { token } = useAuthStore();
   const { categories, setCategories } = useCategoryStore();
-  const { templates, addTemplate, updateTemplate: updateTemplateStore, setTemplates } = useTemplateStore();
+  const {
+    templates,
+    addTemplate,
+    updateTemplate: updateTemplateStore,
+    setTemplates,
+  } = useTemplateStore();
 
-  const [name, setName] = useState('');
-  const { state: blocks, push: pushBlocks, undo: undoBlocks, reset: resetBlocks, canUndo } = useUndoStack<PlannedBlock[]>([]);
+  const [name, setName] = useState("");
+  const {
+    state: blocks,
+    push: pushBlocks,
+    undo: undoBlocks,
+    reset: resetBlocks,
+    canUndo,
+  } = useUndoStack<PlannedBlock[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -63,7 +81,7 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
         resetBlocks(template.planned_blocks);
       }
     } else {
-      setName('');
+      setName("");
       resetBlocks([]);
     }
   }, [templateId, templates]);
@@ -71,14 +89,22 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      const isEditingField = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && canUndo && !isEditingField) {
+      const isEditingField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable;
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "z" &&
+        canUndo &&
+        !isEditingField
+      ) {
         event.preventDefault();
         undoBlocks();
       }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [canUndo, undoBlocks]);
 
   const loadData = async () => {
@@ -91,13 +117,13 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
       setCategories(categoriesData);
       setTemplates(templatesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      setError(err instanceof Error ? err.message : "Failed to load data");
     }
   };
 
   const handleSave = async () => {
     if (!token || !name.trim()) {
-      setError('Template name is required');
+      setError("Template name is required");
       return;
     }
 
@@ -121,7 +147,7 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
 
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save template');
+      setError(err instanceof Error ? err.message : "Failed to save template");
     } finally {
       setIsSaving(false);
     }
@@ -130,8 +156,8 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-snow">
-          {templateId ? 'Edit Template' : 'New Template'}
+        <h2 className="text-xl font-semibold text-snow">
+          {templateId ? "Edit Template" : "New Template"}
         </h2>
         <button
           onClick={onClose}
@@ -149,7 +175,9 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
 
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-cloud mb-2">Template Name</label>
+          <label className="block text-sm font-medium text-cloud mb-2">
+            Template Name
+          </label>
           <input
             type="text"
             value={name}
@@ -160,7 +188,11 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
           />
         </div>
 
-        <TimelineEditor blocks={blocks} categories={categories} onChange={pushBlocks} />
+        <TimelineEditor
+          blocks={blocks}
+          categories={categories}
+          onChange={pushBlocks}
+        />
 
         <div className="flex gap-3 pt-4">
           <button
@@ -168,11 +200,11 @@ export default function TemplateEditor({ templateId, onClose }: TemplateEditorPr
             disabled={isSaving || !name.trim()}
             className="px-6 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
           >
-            {isSaving ? 'Saving...' : templateId ? 'Update' : 'Create'}
+            {isSaving ? "Saving..." : templateId ? "Update" : "Create"}
           </button>
           <button
             onClick={onClose}
-            className="px-6 py-2 text-sm font-semibold text-snow bg-navy/60 border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/20"
+            className="h-9 px-6 text-sm font-semibold text-cloud bg-transparent border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/10"
           >
             Cancel
           </button>

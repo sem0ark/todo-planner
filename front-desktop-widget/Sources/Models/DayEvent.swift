@@ -2,14 +2,12 @@ import Foundation
 
 struct DayEvent: Codable {
   let eventType: String  // "confirmation" | "transition"
-  let outgoingCategoryId: Int?
-  let incomingCategoryId: Int?
+  let categoryId: Int
   let occurredAt: Date
 
   enum CodingKeys: String, CodingKey {
     case eventType = "event_type"
-    case outgoingCategoryId = "outgoing_category_id"
-    case incomingCategoryId = "incoming_category_id"
+    case categoryId = "category_id"
     case occurredAt = "occurred_at"
   }
 }
@@ -31,15 +29,13 @@ struct DayEventsResponse: Codable {
 struct CreatedEvent: Codable {
   let id: Int
   let eventType: String
-  let outgoingCategoryId: Int?
-  let incomingCategoryId: Int?
+  let categoryId: Int
   let occurredAt: Date
 
   enum CodingKeys: String, CodingKey {
     case id
     case eventType = "event_type"
-    case outgoingCategoryId = "outgoing_category_id"
-    case incomingCategoryId = "incoming_category_id"
+    case categoryId = "category_id"
     case occurredAt = "occurred_at"
   }
 }
