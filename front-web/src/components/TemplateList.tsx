@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useTemplateStore } from "../store/templateStore";
+import { useCategoryStore } from "../store/categoryStore";
 import { getTemplates, deleteTemplate } from "../services/templates";
+import { getCategories } from "../services/categories";
+import TemplateSummary from "./TemplateSummary";
 
 interface TemplateListProps {
   onEdit: (id: number) => void;
@@ -11,12 +14,21 @@ interface TemplateListProps {
 export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
   const { token } = useAuthStore();
   const { templates, setTemplates, removeTemplate } = useTemplateStore();
+  const { categories, setCategories } = useCategoryStore();
 
   useEffect(() => {
     if (token) {
       loadTemplates();
     }
   }, [token]);
+
+  useEffect(() => {
+    if (!token || categories.length > 0) return;
+
+    getCategories(token)
+      .then(setCategories)
+      .catch((err) => console.error("Failed to load categories:", err));
+  }, [token, categories.length, setCategories]);
 
   const loadTemplates = async () => {
     if (!token) return;
@@ -60,13 +72,17 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
         {templates.map((template) => (
           <div
             key={template.id}
-            className="flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
+            className="group flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
           >
             <div className="flex-1">
               <h3 className="text-snow font-medium">{template.name}</h3>
               <p className="text-sm text-cloud">
                 {template.planned_blocks.length} blocks
               </p>
+              <TemplateSummary
+                plannedBlocks={template.planned_blocks}
+                categories={categories}
+              />
             </div>
             <button
               onClick={() => onEdit(template.id)}
