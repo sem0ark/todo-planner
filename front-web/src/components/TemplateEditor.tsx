@@ -156,7 +156,7 @@ export default function TemplateEditor({
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-snow">
+        <h2 className="text-xl font-semibold text-snow">
           {templateId ? "Edit Template" : "New Template"}
         </h2>
         <button
@@ -204,7 +204,7 @@ export default function TemplateEditor({
           </button>
           <button
             onClick={onClose}
-            className="px-6 py-2 text-sm font-semibold text-snow bg-navy/60 border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/20"
+            className="h-9 px-6 text-sm font-semibold text-cloud bg-transparent border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/10"
           >
             Cancel
           </button>

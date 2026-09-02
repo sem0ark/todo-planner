@@ -284,7 +284,7 @@ export function DraggableColumn({
 
   return (
     <div
-      className={`relative bg-white ${containerClassName}`}
+      className={`relative bg-app-void ${containerClassName}`}
       style={{
         width: baseWidth,
         height: "100%",

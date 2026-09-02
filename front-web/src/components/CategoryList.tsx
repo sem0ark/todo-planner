@@ -145,7 +145,7 @@ export default function CategoryList() {
   return (
     <div className="w-full max-w-3xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-snow">Categories</h2>
+        <h2 className="text-xl font-semibold text-snow">Categories</h2>
         <button
           onClick={() => setIsCreating(true)}
           className="px-4 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud"
@@ -162,7 +162,7 @@ export default function CategoryList() {
       )}
 
       {(isCreating || editingId !== null) && (
-        <div className="mb-4 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg">
+        <div className="mb-4 p-4 bg-navy border border-slate-grey/20 rounded-lg">
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-cloud mb-2">
@@ -265,7 +265,7 @@ export default function CategoryList() {
               </button>
               <button
                 onClick={cancelEdit}
-                className="px-4 py-2 text-sm font-semibold text-snow bg-navy/60 border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/20"
+                className="h-9 px-4 text-sm font-semibold text-cloud bg-transparent border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/10"
               >
                 Cancel
               </button>
@@ -278,7 +278,7 @@ export default function CategoryList() {
         {categories.map((category) => (
           <div
             key={category.id}
-            className="flex items-center gap-4 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg"
+            className="flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
           >
             <div
               className="w-8 h-8 rounded-lg border-2 border-slate-grey"

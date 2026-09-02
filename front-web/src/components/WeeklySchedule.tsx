@@ -102,12 +102,12 @@ export default function WeeklySchedule() {
   return (
     <div className="w-full max-w-3xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-snow">Weekly Schedule</h2>
+        <h2 className="text-xl font-semibold text-snow">Weekly Schedule</h2>
         {hasChanges && (
           <div className="flex gap-2">
             <button
               onClick={handleReset}
-              className="px-4 py-2 text-sm font-semibold text-snow bg-navy/60 border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/20"
+              className="h-9 px-4 text-sm font-semibold text-cloud bg-transparent border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/10"
             >
               Reset
             </button>
@@ -132,7 +132,7 @@ export default function WeeklySchedule() {
         {DAYS.map((day, index) => (
           <div
             key={index}
-            className="flex items-center gap-4 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg"
+            className="flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
           >
             <span className="w-28 text-snow font-medium">{day}</span>
             <select

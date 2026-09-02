@@ -17,7 +17,7 @@ export default function Home() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
         <Link href="/categories">
-          <div className="p-8 bg-slate-blue/10 border border-slate-grey rounded-lg hover:bg-slate-blue/20 transition-colors cursor-pointer">
+          <div className="p-8 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10 transition-colors cursor-pointer">
             <div className="text-4xl mb-4">📋</div>
             <h3 className="text-xl font-semibold text-snow mb-2">Categories</h3>
             <p className="text-cloud text-sm">
@@ -27,7 +27,7 @@ export default function Home() {
         </Link>
 
         <Link href="/templates">
-          <div className="p-8 bg-slate-blue/10 border border-slate-grey rounded-lg hover:bg-slate-blue/20 transition-colors cursor-pointer">
+          <div className="p-8 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10 transition-colors cursor-pointer">
             <div className="text-4xl mb-4">📝</div>
             <h3 className="text-xl font-semibold text-snow mb-2">Templates</h3>
             <p className="text-cloud text-sm">
@@ -37,7 +37,7 @@ export default function Home() {
         </Link>
 
         <Link href="/schedule">
-          <div className="p-8 bg-slate-blue/10 border border-slate-grey rounded-lg hover:bg-slate-blue/20 transition-colors cursor-pointer">
+          <div className="p-8 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10 transition-colors cursor-pointer">
             <div className="text-4xl mb-4">📅</div>
             <h3 className="text-xl font-semibold text-snow mb-2">Schedule</h3>
             <p className="text-cloud text-sm">
@@ -47,7 +47,7 @@ export default function Home() {
         </Link>
 
         <Link href="/token">
-          <div className="p-8 bg-slate-blue/10 border border-slate-grey rounded-lg hover:bg-slate-blue/20 transition-colors cursor-pointer">
+          <div className="p-8 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10 transition-colors cursor-pointer">
             <div className="text-4xl mb-4">🖥️</div>
             <h3 className="text-xl font-semibold text-snow mb-2">
               Desktop Widget

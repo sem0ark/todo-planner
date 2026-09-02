@@ -75,7 +75,7 @@ export default function ScheduleOverrides() {
 
   return (
     <div className="w-full max-w-3xl">
-      <h2 className="text-2xl font-semibold text-snow mb-6">
+      <h2 className="text-xl font-semibold text-snow mb-6">
         Schedule Overrides
       </h2>
 
@@ -85,7 +85,7 @@ export default function ScheduleOverrides() {
         </div>
       )}
 
-      <div className="mb-6 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg">
+      <div className="mb-6 p-4 bg-navy border border-slate-grey/20 rounded-lg">
         <h3 className="text-lg font-semibold text-snow mb-4">Add Override</h3>
         <div className="space-y-4">
           <div>
@@ -140,7 +140,7 @@ export default function ScheduleOverrides() {
             {futureOverrides.map((override) => (
               <div
                 key={override.id}
-                className="flex items-center gap-4 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg"
+                className="flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
               >
                 <span className="w-32 text-snow font-mono">
                   {override.calendar_date}

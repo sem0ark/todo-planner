@@ -38,12 +38,12 @@ export default function TokenDisplay() {
 
   return (
     <div className="w-full max-w-2xl">
-      <div className="bg-slate-blue/10 border border-slate-grey rounded-outer p-8 backdrop-blur">
+      <div className="bg-navy border border-slate-grey/20 rounded-outer p-8 backdrop-blur">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 text-3xl text-navy bg-success rounded-full mb-4">
             ✓
           </div>
-          <h2 className="text-2xl font-semibold text-snow mb-2">
+          <h2 className="text-xl font-semibold text-snow mb-2">
             Authentication Successful
           </h2>
           <p className="text-cloud">Welcome, {user.username}</p>
@@ -60,13 +60,13 @@ export default function TokenDisplay() {
 
           <button
             onClick={handleCopy}
-            className="w-full px-6 py-3 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud hover:-translate-y-0.5 active:translate-y-0.5"
+            className="w-full h-9 px-6 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud hover:-translate-y-0.5 active:translate-y-0.5"
             aria-label="Copy token to clipboard"
           >
             {copied ? "Copied!" : "Copy to Clipboard"}
           </button>
 
-          <div className="p-4 bg-slate-blue/10 border border-slate-grey rounded-lg">
+          <div className="p-4 bg-navy border border-slate-grey/20 rounded-lg">
             <p className="text-sm font-semibold text-cloud mb-2">
               Manual Setup:
             </p>

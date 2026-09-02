@@ -47,7 +47,7 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
   return (
     <div className="w-full max-w-3xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-snow">Templates</h2>
+        <h2 className="text-xl font-semibold text-snow">Templates</h2>
         <button
           onClick={onCreate}
           className="px-4 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud"
@@ -60,7 +60,7 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
         {templates.map((template) => (
           <div
             key={template.id}
-            className="flex items-center gap-4 p-4 bg-slate-blue/10 border border-slate-grey rounded-lg"
+            className="flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
           >
             <div className="flex-1">
               <h3 className="text-snow font-medium">{template.name}</h3>

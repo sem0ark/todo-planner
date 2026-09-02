@@ -316,7 +316,7 @@ export default function TimelineEditor({
         <button
           onClick={addBlock}
           disabled={categories.length === 0}
-          className="px-4 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
+          className="h-9 px-4 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
         >
           + Add Block
         </button>
@@ -329,17 +329,17 @@ export default function TimelineEditor({
 
       <div
         ref={containerRef}
-        className="bg-navy/20 rounded-lg border border-slate-grey overflow-y-auto max-h-[70vh]"
+        className="bg-navy rounded-lg border border-slate-grey/20 overflow-y-auto max-h-[70vh]"
       >
         <div className="flex">
           <div className="flex-shrink-0 w-16 sticky left-0 bg-navy/60 z-10">
-            {timeLabels.map(({ hour }) => (
+            {timeLabels.map(({ hour }, index) => (
               <div
                 key={hour}
-                className="text-sm font-mono text-cloud text-right pr-2 border-b border-slate-grey/20 tabular-nums"
+                className="text-sm font-mono text-cloud text-right pr-2 tabular-nums"
                 style={{ height: HOUR_HEIGHT }}
               >
-                <span className="relative -top-2">
+                <span className={index === 0 ? "relative": "relative -top-2.5"}>
                   {String(hour).padStart(2, "0")}:00
                 </span>
               </div>

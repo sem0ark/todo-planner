@@ -28,7 +28,7 @@ export default function LoginForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="bg-slate-blue/10 border border-slate-grey rounded-outer p-8 backdrop-blur">
+      <div className="bg-navy border border-slate-grey/20 rounded-outer p-8 backdrop-blur">
         <h1 className="text-3xl font-semibold text-snow mb-6 text-center">
           {isRegisterMode ? "Create Account" : "Sign In"}
         </h1>
@@ -83,7 +83,7 @@ export default function LoginForm() {
 
           <button
             type="submit"
-            className="w-full px-6 py-3 text-base font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud hover:-translate-y-0.5 active:translate-y-0.5 disabled:opacity-50 disabled:transform-none"
+            className="w-full h-9 px-6 text-base font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud hover:-translate-y-0.5 active:translate-y-0.5 disabled:opacity-50 disabled:transform-none"
             disabled={isLoading}
           >
             {isLoading
