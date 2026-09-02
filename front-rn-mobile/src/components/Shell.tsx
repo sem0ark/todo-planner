@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Color.deepVoid },
   root: { flex: 1, backgroundColor: Color.baseVoid },
   rootHorizontal: { flexDirection: "row" },
-  top: { minHeight: 200 },
+  top: { minHeight: 200, aspectRatio: 1 },
   topHorizontal: { height: "100%", aspectRatio: 1 },
   divider: {
     height: 1,

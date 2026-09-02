@@ -126,8 +126,8 @@ export function Active() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  block: { width: "100%", aspectRatio: 1, padding: Space.lg },
-  blockHorizontal: { flex: 1, aspectRatio: undefined },
+  block: { flex: 1, width: "100%", padding: Space.lg },
+  blockHorizontal: {},
   name: {
     fontFamily: Font.uiBlack,
     fontSize: Size.categoryLarge,
