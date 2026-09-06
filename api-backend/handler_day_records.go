@@ -405,6 +405,9 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 		if block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 {
 			return &ValidationError{Message: "duration_minutes must be at least 30 and a multiple of 15"}
 		}
+		if blockExceedsDay(block.StartTime, block.DurationMinutes) {
+			return &ValidationError{Message: "block must end by 24:00"}
+		}
 		if index > 0 && minuteOfDay < previousEnd {
 			return &ValidationError{Message: "actual blocks must not overlap"}
 		}

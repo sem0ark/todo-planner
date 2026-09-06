@@ -522,6 +522,37 @@ func TestPutDayRecordHandler_DurationTooShort(t *testing.T) {
 	}
 }
 
+func TestPutDayRecordHandler_BlockExtendsPastMidnight(t *testing.T) {
+	// Arrange
+	db := setupTestDB(t)
+	api := NewAPI(db, "test-secret", NewLogger("test"))
+	user := createTestUser(t, db, "testuser", "password123")
+	category, _ := api.categoryRepo.Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
+
+	record, _ := api.dayRecordRepo.Create(context.Background(), user.ID, "2026-07-07")
+
+	reqBody := DayRecordBlocksInput{
+		ActualBlocks: []ActualBlockInput{
+			{CategoryID: &category.ID, BlockType: "actual", StartTime: "23:30:00", DurationMinutes: 60},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPut, "/day-records/"+strconv.Itoa(record.ID), bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	ctx := withUserID(context.Background(), user.ID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	// Act
+	api.putDayRecordHandler(w, req)
+
+	// Assert
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
 func TestPutDayRecordHandler_InvalidCategoryID(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)

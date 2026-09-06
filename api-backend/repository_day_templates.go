@@ -53,7 +53,8 @@ func NewDayTemplateRepository(db *pgxpool.Pool) *DayTemplateRepository {
 func (r *DayTemplateRepository) validateInput(ctx context.Context, input DayTemplateInput, userID int) error {
 	for _, block := range input.SnapshotBlocks {
 		if !templateTimePattern.MatchString(block.StartTime) ||
-			block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 {
+			block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 ||
+			blockExceedsDay(block.StartTime, block.DurationMinutes) {
 			return ErrInvalidTemplateBlock
 		}
 
