@@ -45,13 +45,13 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 		startTime    string
 		duration     int
 	}{
-		{categoryName: "Rest", startTime: "00:00:00", duration: 480},
+		{categoryName: "Rest", startTime: "06:00:00", duration: 120},
 		{categoryName: "Learning", startTime: "08:00:00", duration: 60},
 		{categoryName: "Working", startTime: "09:00:00", duration: 180},
 		{categoryName: "Rest", startTime: "12:00:00", duration: 60},
 		{categoryName: "Working", startTime: "13:00:00", duration: 300},
 		{categoryName: "Exercise", startTime: "18:00:00", duration: 60},
-		{categoryName: "Rest", startTime: "19:00:00", duration: 360},
+		{categoryName: "Rest", startTime: "19:00:00", duration: 180},
 	}
 
 	var snapshotID int
