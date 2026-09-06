@@ -77,7 +77,9 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
             <div className="flex-1">
               <h3 className="text-snow font-medium">{template.name}</h3>
               <TemplateSummary
-                plannedBlocks={template.planned_blocks}
+                snapshotBlocks={
+                  template.current_snapshot?.snapshot_blocks ?? []
+                }
                 categories={categories}
               />
             </div>

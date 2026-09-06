@@ -37,11 +37,7 @@ function minutes(time: string) {
 interface ReviewDay {
   date: string;
   record: DayRecord | null;
-  plannedBlocks: {
-    category_id: number;
-    start_time: string;
-    duration_minutes: number;
-  }[];
+  snapshotBlocks: DayRecord["snapshot_blocks"];
   actualBlocks: NonNullable<DayRecord>["actual_blocks"];
 }
 
@@ -114,8 +110,10 @@ export default function ReviewPage() {
         return {
           date,
           record,
-          plannedBlocks:
-            record?.snapshot_blocks ?? template?.planned_blocks ?? [],
+          snapshotBlocks:
+            record?.snapshot_blocks ??
+            template?.current_snapshot?.snapshot_blocks ??
+            [],
           actualBlocks: record?.actual_blocks ?? [],
         };
       }),
@@ -123,7 +121,7 @@ export default function ReviewPage() {
   );
 
   const toItems = (
-    blocks: ReviewDay["plannedBlocks"] | ReviewDay["actualBlocks"],
+    blocks: ReviewDay["snapshotBlocks"] | ReviewDay["actualBlocks"],
   ): LayoutItem[] =>
     blocks.map((block, index) => ({
       id: `${block.start_time}-${index}`,
@@ -208,7 +206,7 @@ export default function ReviewPage() {
             ) : (
               <>
                 <DraggableColumn
-                  items={toItems(day.plannedBlocks)}
+                  items={toItems(day.snapshotBlocks)}
                   gridUnit={GRID_UNIT}
                   baseWidth="100%"
                   onChange={() => undefined}

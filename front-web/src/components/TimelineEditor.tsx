@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, type MouseEvent } from "react";
-import type { PlannedBlock } from "../services/templates";
+import type { SnapshotBlock } from "../services/templates";
 import type { Category } from "../services/categories";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { getContrastTextColor } from "../utils/colors";
@@ -36,11 +36,11 @@ function BlockEditPopover({
   onDelete,
   onClose,
 }: {
-  block: PlannedBlock;
+  block: SnapshotBlock;
   blockIndex: number;
   categories: Category[];
   anchorRect: DOMRect | null;
-  onUpdate: (index: number, updates: Partial<PlannedBlock>) => void;
+  onUpdate: (index: number, updates: Partial<SnapshotBlock>) => void;
   onDelete: (index: number) => void;
   onClose: () => void;
 }) {
@@ -142,12 +142,12 @@ function BlockEditPopover({
           value={block.duration_minutes}
           onChange={(event) => {
             const value = Math.max(
-              15,
-              Math.round((parseInt(event.target.value) || 15) / 15) * 15,
+              30,
+              Math.round((parseInt(event.target.value) || 30) / 15) * 15,
             );
             onUpdate(blockIndex, { duration_minutes: value });
           }}
-          min={15}
+          min={30}
           step={15}
           className="w-full px-3 py-2 text-sm text-snow font-mono bg-navy/80 border border-slate-grey rounded-lg outline-none focus:border-cloud transition-colors duration-micro"
         />
@@ -177,9 +177,9 @@ export default function TimelineEditor({
   categories,
   onChange,
 }: {
-  blocks: PlannedBlock[];
+  blocks: SnapshotBlock[];
   categories: Category[];
-  onChange: (blocks: PlannedBlock[]) => void;
+  onChange: (blocks: SnapshotBlock[]) => void;
 }) {
   const { token } = useAuthStore();
   const { settings, setSettings } = useSettingsStore();
@@ -257,7 +257,7 @@ export default function TimelineEditor({
     );
   };
 
-  const updateBlock = (index: number, updates: Partial<PlannedBlock>) => {
+  const updateBlock = (index: number, updates: Partial<SnapshotBlock>) => {
     onChange(
       blocks.map((block, blockIndex) =>
         blockIndex === index ? { ...block, ...updates } : block,
@@ -312,7 +312,7 @@ export default function TimelineEditor({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-snow">Planned Blocks</h3>
+        <h3 className="text-lg font-semibold text-snow">Snapshot Blocks</h3>
         <button
           onClick={addBlock}
           disabled={categories.length === 0}

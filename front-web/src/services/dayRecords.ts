@@ -1,15 +1,8 @@
+import type { SnapshotBlock } from "./templates";
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
-export type ReviewStatus = "Unreviewed" | "Reviewed" | "Ignored";
 export type ActualBlockType = "actual" | "blank" | "untracked";
-
-export interface SnapshotBlock {
-  id: number;
-  snapshot_id: number;
-  category_id: number;
-  start_time: string;
-  duration_minutes: number;
-}
 
 export interface ActualBlock {
   id: number;
@@ -24,9 +17,9 @@ export interface ActualBlock {
 export interface DayRecord {
   id: number;
   user_id: number;
+  day_template_id: number | null;
   snapshot_id: number | null;
   calendar_date: string;
-  review_status: ReviewStatus;
   snapshot_blocks: SnapshotBlock[];
   actual_blocks: ActualBlock[];
   created_at: string;
@@ -74,13 +67,40 @@ export function createDayRecord(
   });
 }
 
-export function updateDayRecordStatus(
+export interface ActualBlockInput {
+  category_id: number | null;
+  block_type: ActualBlockType;
+  start_time: string;
+  duration_minutes: number;
+}
+
+export interface UpdateDayRecordInput {
+  actual_blocks: ActualBlockInput[];
+}
+
+export interface UpdateDayRecordResponse {
+  actual_blocks: ActualBlock[];
+  updated_at: string;
+}
+
+export function updateDayRecord(
   token: string,
   id: number,
-  status: Exclude<ReviewStatus, "Unreviewed">,
-): Promise<DayRecord> {
-  return request<DayRecord>(token, `/day-records/${id}/status`, {
+  input: UpdateDayRecordInput,
+): Promise<UpdateDayRecordResponse> {
+  return request<UpdateDayRecordResponse>(token, `/day-records/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ review_status: status }),
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateDayRecordTemplate(
+  token: string,
+  id: number,
+  dayTemplateId: number | null,
+): Promise<DayRecord> {
+  return request<DayRecord>(token, `/day-records/${id}/template`, {
+    method: "PUT",
+    body: JSON.stringify({ day_template_id: dayTemplateId }),
   });
 }

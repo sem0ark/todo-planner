@@ -7,7 +7,7 @@ import {
   updateTemplate,
   getTemplates,
 } from "../services/templates";
-import type { PlannedBlock } from "../services/templates";
+import type { SnapshotBlock } from "../services/templates";
 import { getCategories } from "../services/categories";
 import TimelineEditor from "./TimelineEditor";
 
@@ -63,7 +63,7 @@ export default function TemplateEditor({
     undo: undoBlocks,
     reset: resetBlocks,
     canUndo,
-  } = useUndoStack<PlannedBlock[]>([]);
+  } = useUndoStack<SnapshotBlock[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -78,7 +78,7 @@ export default function TemplateEditor({
       const template = templates.find((t) => t.id === templateId);
       if (template) {
         setName(template.name);
-        resetBlocks(template.planned_blocks);
+        resetBlocks(template.current_snapshot?.snapshot_blocks ?? []);
       }
     } else {
       setName("");
@@ -134,7 +134,7 @@ export default function TemplateEditor({
       const input = {
         name: name.trim(),
         template_group_id: null,
-        planned_blocks: blocks.map(({ id, ...block }) => block),
+        snapshot_blocks: blocks.map(({ id, snapshot_id, ...block }) => block),
       };
 
       if (templateId) {
