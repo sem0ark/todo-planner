@@ -21,13 +21,13 @@ export type LayoutItem = {
 } & Record<string, any>; // Allow additional properties like color, etc.
 
 export interface ItemPosition {
-  width: number;
-  left: number;
+  width: number | string;
+  left: number | string;
 }
 
 function calculateItemPositions(
   items: LayoutItem[],
-  baseWidth: number,
+  baseWidth: number | string,
 ): Record<string, ItemPosition> {
   const sorted = [...items].sort((a, b) => a.offset - b.offset);
   const columns: LayoutItem[][] = [];
@@ -48,10 +48,17 @@ function calculateItemPositions(
   const positions: Record<string, ItemPosition> = {};
   columns.forEach((col, colIndex) => {
     col.forEach((item) => {
-      const width = baseWidth / columns.length;
+      const width =
+        typeof baseWidth === "number"
+          ? baseWidth / columns.length
+          : 100 / columns.length;
       positions[item.id] = {
-        width: width - 2, // Small gap for aesthetics
-        left: colIndex * width,
+        width:
+          typeof baseWidth === "number" ? width - 2 : `calc(${width}% - 2px)`,
+        left:
+          typeof baseWidth === "number"
+            ? colIndex * width
+            : `${colIndex * width}%`,
       };
     });
   });
@@ -61,7 +68,7 @@ function calculateItemPositions(
 interface DraggableColumnProps {
   items: LayoutItem[];
   gridUnit: number;
-  baseWidth: number;
+  baseWidth: number | string;
   onChange: (newItems: LayoutItem[]) => void;
   renderItem: (
     item: LayoutItem,
@@ -70,6 +77,7 @@ interface DraggableColumnProps {
   containerClassName?: string;
   itemClassName?: string;
   snapToInterval?: number; // Snap to multiples of this value (in grid units)
+  editable?: boolean;
 }
 
 function DragOverlayContent({
@@ -213,6 +221,7 @@ export function DraggableColumn({
   containerClassName = "",
   itemClassName = "",
   snapToInterval = 1,
+  editable = true,
 }: DraggableColumnProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragMode, setDragMode] = useState<DragMode>("move");
@@ -292,39 +301,59 @@ export function DraggableColumn({
         backgroundSize: `100% ${gridUnit * 60}px`, // Grid line every hour
       }}
     >
-      <DndContext
-        sensors={sensors}
-        modifiers={[restrictToVerticalAxis, snapModifier]}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        {items.map((item) => (
-          <DraggableItemWrapper
-            key={item.id}
-            item={item}
-            position={itemPositions[item.id]}
-            gridUnit={gridUnit}
-            isDragging={activeId === item.id}
-            renderItem={renderItem}
-            className={itemClassName}
-            onDragModeChange={handleDragModeChange}
-            dragMode={dragMode}
-          />
-        ))}
-
-        <DragOverlay dropAnimation={null}>
-          {activeItem ? (
-            <DragOverlayContent
-              item={activeItem}
-              position={itemPositions[activeItem.id]}
+      {editable ? (
+        <DndContext
+          sensors={sensors}
+          modifiers={[restrictToVerticalAxis, snapModifier]}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          {items.map((item) => (
+            <DraggableItemWrapper
+              key={item.id}
+              item={item}
+              position={itemPositions[item.id]}
               gridUnit={gridUnit}
+              isDragging={activeId === item.id}
               renderItem={renderItem}
               className={itemClassName}
+              onDragModeChange={handleDragModeChange}
               dragMode={dragMode}
             />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+          ))}
+
+          <DragOverlay dropAnimation={null}>
+            {activeItem ? (
+              <DragOverlayContent
+                item={activeItem}
+                position={itemPositions[activeItem.id]}
+                gridUnit={gridUnit}
+                renderItem={renderItem}
+                className={itemClassName}
+                dragMode={dragMode}
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      ) : (
+        <>
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className={itemClassName}
+              style={{
+                position: "absolute",
+                top: item.offset * gridUnit,
+                left: itemPositions[item.id].left,
+                width: itemPositions[item.id].width,
+                height: item.size * gridUnit,
+              }}
+            >
+              {renderItem(item, "idle")}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

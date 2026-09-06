@@ -43,7 +43,6 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
       CREATE TABLE IF NOT EXISTS day_records (
         id INTEGER PRIMARY KEY,
         calendar_date TEXT NOT NULL UNIQUE,
-        review_status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -308,7 +307,7 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
   private func loadDayRecordFromCache(date: String) throws -> DayRecord? {
     let sql =
-      "SELECT id, calendar_date, review_status, created_at, updated_at FROM day_records WHERE calendar_date = ?"
+      "SELECT id, calendar_date, created_at, updated_at FROM day_records WHERE calendar_date = ?"
 
     guard
       let record = try queryOne(
@@ -317,9 +316,8 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
           return (
             id: columnInt(stmt, index: 0),
             calendarDate: columnString(stmt, index: 1),
-            reviewStatus: columnString(stmt, index: 2),
-            createdAt: columnDate(stmt, index: 3),
-            updatedAt: columnDate(stmt, index: 4)
+            createdAt: columnDate(stmt, index: 2),
+            updatedAt: columnDate(stmt, index: 3)
           )
         })
     else {
@@ -341,7 +339,6 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
     return DayRecord(
       id: record.id,
       calendarDate: record.calendarDate,
-      reviewStatus: record.reviewStatus,
       actualBlocks: actualBlocks,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt
@@ -355,11 +352,10 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
 
       // Upsert day record
       let upsertSql = """
-        INSERT INTO day_records (id, calendar_date, review_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO day_records (id, calendar_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           calendar_date = excluded.calendar_date,
-          review_status = excluded.review_status,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at
         """
@@ -368,7 +364,6 @@ final class LocalTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposito
         params: [
           record.id,
           record.calendarDate,
-          record.reviewStatus,
           iso8601.string(from: record.createdAt),
           iso8601.string(from: record.updatedAt),
         ])

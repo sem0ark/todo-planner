@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
-	"strings"
 )
 
 type TemplateGroupsResponse struct {
@@ -14,37 +12,6 @@ type TemplateGroupsResponse struct {
 type TemplateGroupDeleteResponse struct {
 	Deleted bool `json:"deleted"`
 	ID      int  `json:"id"`
-}
-
-func (api *API) templateGroupsHandler(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/template-groups")
-
-	if path == "" || path == "/" {
-		switch r.Method {
-		case http.MethodGet:
-			api.getTemplateGroupsHandler(w, r)
-		case http.MethodPost:
-			api.createTemplateGroupHandler(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	id, err := strconv.Atoi(strings.Trim(path, "/"))
-	if err != nil {
-		http.Error(w, "invalid template group id", http.StatusBadRequest)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodPut:
-		api.updateTemplateGroupHandler(w, r, id)
-	case http.MethodDelete:
-		api.deleteTemplateGroupHandler(w, r, id)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
 }
 
 func (api *API) getTemplateGroupsHandler(w http.ResponseWriter, r *http.Request) {

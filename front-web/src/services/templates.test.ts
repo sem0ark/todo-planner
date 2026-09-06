@@ -14,9 +14,13 @@ describe("templates service", () => {
     id: 1,
     name: "Weekday Schedule",
     template_group_id: null,
-    planned_blocks: [
-      { id: 1, category_id: 1, start_time: "09:00:00", duration_minutes: 60 },
-    ],
+    current_snapshot: {
+      id: 1,
+      snapshot_blocks: [
+        { id: 1, category_id: 1, start_time: "09:00", duration_minutes: 60 },
+      ],
+      snapshotted_at: "2024-01-01T00:00:00Z",
+    },
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   };
@@ -50,11 +54,35 @@ describe("templates service", () => {
   });
 
   describe("createTemplate", () => {
+    it("sends schedule times without adding seconds", async () => {
+      const input = {
+        name: "Weekday Schedule",
+        template_group_id: null,
+        snapshot_blocks: [
+          {
+            category_id: 1,
+            start_time: "06:00",
+            duration_minutes: 120,
+          },
+        ],
+      };
+      (fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockTemplate,
+      });
+
+      await createTemplate(token, input);
+
+      expect(JSON.parse((fetch as any).mock.calls[0][1].body)).toEqual({
+        ...input,
+      });
+    });
+
     it("should create template successfully", async () => {
       const input = {
         name: "Weekday Schedule",
         template_group_id: null,
-        planned_blocks: [
+        snapshot_blocks: [
           { category_id: 1, start_time: "09:00:00", duration_minutes: 60 },
         ],
       };
@@ -83,7 +111,7 @@ describe("templates service", () => {
         createTemplate(token, {
           name: "Test",
           template_group_id: null,
-          planned_blocks: [],
+          snapshot_blocks: [],
         }),
       ).rejects.toThrow("Failed to create template");
     });
@@ -94,7 +122,7 @@ describe("templates service", () => {
       const input = {
         name: "Updated Schedule",
         template_group_id: null,
-        planned_blocks: [
+        snapshot_blocks: [
           { category_id: 1, start_time: "09:00:00", duration_minutes: 90 },
         ],
       };
@@ -123,7 +151,7 @@ describe("templates service", () => {
         updateTemplate(token, 1, {
           name: "Test",
           template_group_id: null,
-          planned_blocks: [],
+          snapshot_blocks: [],
         }),
       ).rejects.toThrow("Failed to update template");
     });

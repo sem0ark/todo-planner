@@ -472,6 +472,7 @@ struct DashedLine: Shape {
 struct RightRailView: View {
   var widgetState: WidgetStateStore
   var authController: AuthController
+  @State private var isMenuExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -484,53 +485,58 @@ struct RightRailView: View {
       }
       .frame(maxHeight: .infinity)
 
-      // Open Web App button
-      Button(action: {
-        openWebApp()
-      }) {
-        HStack(spacing: 6) {
-          Image(systemName: "safari")
-            .font(.system(size: Typography.labelBold))
-          Text("Open Web")
-            .font(.system(size: Typography.labelBold))
+      if isMenuExpanded {
+        actionButton(title: "Reload", systemImage: "arrow.clockwise") {
+          isMenuExpanded = false
+          Task { await widgetState.reload() }
         }
-        .foregroundColor(StyleTokens.secondaryText)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-      }
-      .buttonStyle(PlainButtonStyle())
-      .background(StyleTokens.baseVoid)
-      .overlay(
-        Rectangle()
-          .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
-          .frame(height: 1),
-        alignment: .top
-      )
 
-      // Logout button at the bottom
-      Button(action: {
-        logout()
-      }) {
-        HStack(spacing: 6) {
-          Image(systemName: "rectangle.portrait.and.arrow.right")
-            .font(.system(size: Typography.labelBold))
-          Text("Logout")
-            .font(.system(size: Typography.labelBold))
+        actionButton(title: "Open Web", systemImage: "safari") {
+          isMenuExpanded = false
+          openWebApp()
         }
-        .foregroundColor(StyleTokens.secondaryText)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+
+        actionButton(title: "Logout", systemImage: "rectangle.portrait.and.arrow.right") {
+          isMenuExpanded = false
+          logout()
+        }
+
+        actionButton(title: "Menu", systemImage: "line.3.horizontal") {
+          isMenuExpanded = false
+        }
+      } else {
+        actionButton(title: "Menu", systemImage: "line.3.horizontal") {
+          isMenuExpanded = true
+        }
       }
-      .buttonStyle(PlainButtonStyle())
-      .background(StyleTokens.baseVoid)
-      .overlay(
-        Rectangle()
-          .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
-          .frame(height: 1),
-        alignment: .top
-      )
     }
     .background(StyleTokens.baseVoid)
+  }
+
+  private func actionButton(
+    title: String,
+    systemImage: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      HStack(spacing: 6) {
+        Image(systemName: systemImage)
+          .font(.system(size: Typography.labelBold))
+        Text(title)
+          .font(.system(size: Typography.labelBold))
+      }
+      .foregroundColor(StyleTokens.secondaryText)
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, 8)
+    }
+    .buttonStyle(PlainButtonStyle())
+    .background(StyleTokens.baseVoid)
+    .overlay(
+      Rectangle()
+        .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
+        .frame(height: 1),
+      alignment: .top
+    )
   }
 
   private func openWebApp() {

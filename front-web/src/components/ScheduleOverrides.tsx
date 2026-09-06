@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useScheduleStore } from "../store/scheduleStore";
 import { useTemplateStore } from "../store/templateStore";
-import { updateScheduleOverride } from "../services/schedule";
+import {
+  deleteScheduleOverride,
+  updateScheduleOverride,
+} from "../services/schedule";
 
 export default function ScheduleOverrides() {
   const { token } = useAuthStore();
@@ -33,16 +36,15 @@ export default function ScheduleOverrides() {
     setError(null);
 
     try {
-      const id = templateId === "" ? null : parseInt(templateId);
+      if (templateId === "") {
+        setError("Select a template before adding an override");
+        return;
+      }
       const result = await updateScheduleOverride(token, date, {
-        day_template_id: id,
+        day_template_id: parseInt(templateId, 10),
       });
 
-      if (result) {
-        addOrUpdateOverride(result);
-      } else {
-        removeOverride(date);
-      }
+      addOrUpdateOverride(result);
 
       setDate(getTodayDate());
       setTemplateId("");
@@ -58,9 +60,7 @@ export default function ScheduleOverrides() {
     if (!confirm("Remove this schedule override?")) return;
 
     try {
-      await updateScheduleOverride(token, overrideDate, {
-        day_template_id: null,
-      });
+      await deleteScheduleOverride(token, overrideDate);
       removeOverride(overrideDate);
     } catch (err) {
       setError(
@@ -109,7 +109,7 @@ export default function ScheduleOverrides() {
               onChange={(e) => setTemplateId(e.target.value)}
               className="w-full px-4 py-2 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro focus:border-cloud"
             >
-              <option value="">Unassigned</option>
+              <option value="">Select a template</option>
               {templates.map((template) => (
                 <option key={template.id} value={template.id}>
                   {template.name}

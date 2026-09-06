@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrInvalidWeeklySchedule = errors.New("invalid weekly schedule")
+var ErrScheduleOverrideNotFound = errors.New("schedule override not found")
 
 type ScheduleRepository struct {
 	db *pgxpool.Pool
@@ -84,18 +88,26 @@ func (r *ScheduleRepository) GetWeeklySchedule(ctx context.Context, userID int) 
 func (r *ScheduleRepository) ReplaceWeeklySchedule(ctx context.Context, userID int, entries []WeeklyScheduleEntry) ([]WeeklySchedule, error) {
 	// Validate input: must have exactly 7 entries, one per day
 	if len(entries) != 7 {
-		return nil, fmt.Errorf("exactly 7 days required, got %d", len(entries))
+		return nil, fmt.Errorf("%w: exactly 7 days required, got %d", ErrInvalidWeeklySchedule, len(entries))
 	}
 
 	seen := make(map[int]bool)
 	for _, entry := range entries {
 		if entry.DayOfWeek < 0 || entry.DayOfWeek > 6 {
-			return nil, fmt.Errorf("invalid day_of_week: %d", entry.DayOfWeek)
+			return nil, fmt.Errorf("%w: invalid day_of_week: %d", ErrInvalidWeeklySchedule, entry.DayOfWeek)
 		}
 		if seen[entry.DayOfWeek] {
-			return nil, fmt.Errorf("duplicate day_of_week: %d", entry.DayOfWeek)
+			return nil, fmt.Errorf("%w: duplicate day_of_week: %d", ErrInvalidWeeklySchedule, entry.DayOfWeek)
 		}
 		seen[entry.DayOfWeek] = true
+	}
+	for _, entry := range entries {
+		if entry.DayTemplateID == nil {
+			continue
+		}
+		if err := r.ensureTemplateBelongsToUser(ctx, userID, *entry.DayTemplateID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Start transaction
@@ -116,6 +128,9 @@ func (r *ScheduleRepository) ReplaceWeeklySchedule(ctx context.Context, userID i
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err := r.repinActiveAndFutureRecords(ctx, tx, userID); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -192,53 +207,193 @@ func (r *ScheduleRepository) GetTemplateForDate(ctx context.Context, userID int,
 
 // SetOverride creates or updates a schedule override. If dayTemplateID is nil, removes the override.
 func (r *ScheduleRepository) SetOverride(ctx context.Context, userID int, calendarDate string, dayTemplateID *int) (*ScheduleOverride, error) {
+	if dayTemplateID != nil {
+		if err := r.ensureTemplateBelongsToUser(ctx, userID, *dayTemplateID); err != nil {
+			return nil, err
+		}
+	}
+	transaction, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer transaction.Rollback(ctx)
+
 	// If dayTemplateID is nil, delete the override
 	if dayTemplateID == nil {
-		result, err := r.db.Exec(ctx, `
+		_, err := transaction.Exec(ctx, `
 			DELETE FROM schedule_overrides
 			WHERE user_id = $1 AND calendar_date = $2
 		`, userID, calendarDate)
 		if err != nil {
 			return nil, err
 		}
-
-		if result.RowsAffected() == 0 {
-			// No override existed, return empty response
-			return &ScheduleOverride{
-				UserID:        userID,
-				CalendarDate:  calendarDate,
-				DayTemplateID: nil,
-			}, nil
-		}
-
-		return &ScheduleOverride{
-			UserID:        userID,
-			CalendarDate:  calendarDate,
-			DayTemplateID: nil,
-		}, nil
-	}
-
-	// Otherwise, upsert the override
-	var id int
-	var createdAt time.Time
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO schedule_overrides (user_id, calendar_date, day_template_id, created_at)
+	} else {
+		_, err = transaction.Exec(ctx, `
+			INSERT INTO schedule_overrides (user_id, calendar_date, day_template_id, created_at)
 		VALUES ($1, $2, $3, now())
 		ON CONFLICT (user_id, calendar_date)
 		DO UPDATE SET day_template_id = EXCLUDED.day_template_id
-		RETURNING id, created_at
-	`, userID, calendarDate, dayTemplateID).Scan(&id, &createdAt)
+		`, userID, calendarDate, dayTemplateID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := r.repinDate(ctx, transaction, userID, calendarDate); err != nil {
+		return nil, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return nil, err
+	}
+	override, err := r.GetOverride(ctx, userID, calendarDate)
 	if err != nil {
 		return nil, err
 	}
+	if override != nil {
+		return override, nil
+	}
 
 	return &ScheduleOverride{
-		ID:            id,
 		UserID:        userID,
 		CalendarDate:  calendarDate,
 		DayTemplateID: dayTemplateID,
-		CreatedAt:     &createdAt,
 	}, nil
+}
+
+// DeleteOverride removes a date override and re-pins the date to the weekly schedule.
+func (r *ScheduleRepository) DeleteOverride(ctx context.Context, userID int, calendarDate string) error {
+	transaction, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer transaction.Rollback(ctx)
+	commandTag, err := transaction.Exec(ctx, `DELETE FROM schedule_overrides WHERE user_id = $1 AND calendar_date = $2`, userID, calendarDate)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ErrScheduleOverrideNotFound
+	}
+	if err := r.repinDate(ctx, transaction, userID, calendarDate); err != nil {
+		return err
+	}
+	return transaction.Commit(ctx)
+}
+
+func (r *ScheduleRepository) ensureTemplateBelongsToUser(ctx context.Context, userID, templateID int) error {
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM day_templates WHERE id = $1 AND user_id = $2 AND is_deleted = FALSE)
+	`, templateID, userID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrDayTemplateNotFound
+	}
+	return nil
+}
+
+func (r *ScheduleRepository) repinActiveAndFutureRecords(ctx context.Context, transaction pgx.Tx, userID int) error {
+	rows, err := transaction.Query(ctx, `
+		SELECT id, calendar_date::text
+		FROM day_records
+		WHERE user_id = $1 AND calendar_date >= CURRENT_DATE
+	`, userID)
+	if err != nil {
+		return err
+	}
+	type recordDate struct {
+		id   int
+		date string
+	}
+	recordDates := make([]recordDate, 0)
+	for rows.Next() {
+		var record recordDate
+		if err := rows.Scan(&record.id, &record.date); err != nil {
+			return err
+		}
+		recordDates = append(recordDates, record)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	for _, record := range recordDates {
+		if err := r.repinRecord(ctx, transaction, userID, record.id, record.date); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ScheduleRepository) repinDate(ctx context.Context, transaction pgx.Tx, userID int, calendarDate string) error {
+	var recordID int
+	err := transaction.QueryRow(ctx, `
+		SELECT id FROM day_records
+		WHERE user_id = $1 AND calendar_date = $2 AND calendar_date >= CURRENT_DATE
+	`, userID, calendarDate).Scan(&recordID)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return r.repinRecord(ctx, transaction, userID, recordID, calendarDate)
+}
+
+func (r *ScheduleRepository) repinRecord(ctx context.Context, transaction pgx.Tx, userID, recordID int, calendarDate string) error {
+	templateID, err := resolveTemplateForDateTx(ctx, transaction, userID, calendarDate)
+	if err != nil {
+		return err
+	}
+	var snapshotID *int
+	if templateID != nil {
+		var currentSnapshotID int
+		err = transaction.QueryRow(ctx, `
+			SELECT id FROM template_snapshots
+			WHERE day_template_id = $1
+			ORDER BY snapshotted_at DESC, id DESC LIMIT 1
+		`, *templateID).Scan(&currentSnapshotID)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+		if err == nil {
+			snapshotID = &currentSnapshotID
+		}
+	}
+	_, err = transaction.Exec(ctx, `
+		UPDATE day_records
+		SET day_template_id = $1, snapshot_id = $2, updated_at = NOW()
+		WHERE id = $3 AND user_id = $4 AND calendar_date >= CURRENT_DATE
+	`, templateID, snapshotID, recordID, userID)
+	return err
+}
+
+func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID int, calendarDate string) (*int, error) {
+	var templateID *int
+	err := transaction.QueryRow(ctx, `
+		SELECT day_template_id FROM schedule_overrides
+		WHERE user_id = $1 AND calendar_date = $2
+	`, userID, calendarDate).Scan(&templateID)
+	if err == nil {
+		return templateID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return nil, err
+	}
+	parsedDate, err := time.Parse("2006-01-02", calendarDate)
+	if err != nil {
+		return nil, err
+	}
+	dayOfWeek := (int(parsedDate.Weekday()) + 6) % 7
+	err = transaction.QueryRow(ctx, `
+		SELECT day_template_id FROM weekly_schedule
+		WHERE user_id = $1 AND day_of_week = $2
+	`, userID, dayOfWeek).Scan(&templateID)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	return templateID, err
 }
 
 // GetOverride retrieves a specific override by date

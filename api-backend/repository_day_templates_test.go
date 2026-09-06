@@ -17,7 +17,7 @@ func TestDayTemplateRepository_Create(t *testing.T) {
 
 	input := DayTemplateInput{
 		Name: "Weekday",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
 			{CategoryID: category.ID, StartTime: "13:00:00", DurationMinutes: 180},
 		},
@@ -36,8 +36,8 @@ func TestDayTemplateRepository_Create(t *testing.T) {
 	if template.Name != input.Name {
 		t.Errorf("Expected name '%s', got '%s'", input.Name, template.Name)
 	}
-	if len(template.PlannedBlocks) != 2 {
-		t.Errorf("Expected 2 planned blocks, got %d", len(template.PlannedBlocks))
+	if len(template.CurrentSnapshot.SnapshotBlocks) != 2 {
+		t.Errorf("Expected 2 planned blocks, got %d", len(template.CurrentSnapshot.SnapshotBlocks))
 	}
 }
 
@@ -56,7 +56,7 @@ func TestDayTemplateRepository_Create_WithTemplateGroup(t *testing.T) {
 	input := DayTemplateInput{
 		Name:            "Weekday",
 		TemplateGroupID: &group.ID,
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 480},
 		},
 	}
@@ -80,8 +80,8 @@ func TestDayTemplateRepository_FindByUser(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	repo.Create(ctx, DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
-	repo.Create(ctx, DayTemplateInput{Name: "Weekend", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
+	repo.Create(ctx, DayTemplateInput{Name: "Weekday", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
+	repo.Create(ctx, DayTemplateInput{Name: "Weekend", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
 
 	// Act
 	templates, err := repo.FindByUser(ctx, user.ID)
@@ -102,8 +102,8 @@ func TestDayTemplateRepository_FindByUser_ExcludesDeleted(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	template1, _ := repo.Create(ctx, DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
-	repo.Create(ctx, DayTemplateInput{Name: "Weekend", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
+	template1, _ := repo.Create(ctx, DayTemplateInput{Name: "Weekday", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
+	repo.Create(ctx, DayTemplateInput{Name: "Weekend", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
 	repo.Delete(ctx, template1.ID, user.ID)
 
 	// Act
@@ -133,7 +133,7 @@ func TestDayTemplateRepository_FindByUser_IncludesBlocks(t *testing.T) {
 
 	input := DayTemplateInput{
 		Name: "Weekday",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 480},
 		},
 	}
@@ -149,8 +149,8 @@ func TestDayTemplateRepository_FindByUser_IncludesBlocks(t *testing.T) {
 	if len(templates) != 1 {
 		t.Fatalf("Expected 1 template, got %d", len(templates))
 	}
-	if len(templates[0].PlannedBlocks) != 1 {
-		t.Errorf("Expected 1 planned block, got %d", len(templates[0].PlannedBlocks))
+	if len(templates[0].CurrentSnapshot.SnapshotBlocks) != 1 {
+		t.Errorf("Expected 1 planned block, got %d", len(templates[0].CurrentSnapshot.SnapshotBlocks))
 	}
 }
 
@@ -162,8 +162,8 @@ func TestDayTemplateRepository_FindByUser_MultipleUsers(t *testing.T) {
 	user2 := createTestUser(t, db, "user2", "password123")
 	ctx := context.Background()
 
-	repo.Create(ctx, DayTemplateInput{Name: "User1 Template", PlannedBlocks: []PlannedBlockInput{}}, user1.ID)
-	repo.Create(ctx, DayTemplateInput{Name: "User2 Template", PlannedBlocks: []PlannedBlockInput{}}, user2.ID)
+	repo.Create(ctx, DayTemplateInput{Name: "User1 Template", SnapshotBlocks: []SnapshotBlockInput{}}, user1.ID)
+	repo.Create(ctx, DayTemplateInput{Name: "User2 Template", SnapshotBlocks: []SnapshotBlockInput{}}, user2.ID)
 
 	// Act
 	templates1, _ := repo.FindByUser(ctx, user1.ID)
@@ -194,14 +194,14 @@ func TestDayTemplateRepository_Update(t *testing.T) {
 
 	template, _ := templateRepo.Create(ctx, DayTemplateInput{
 		Name: "Original",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category1.ID, StartTime: "09:00:00", DurationMinutes: 480},
 		},
 	}, user.ID)
 
 	newInput := DayTemplateInput{
 		Name: "Updated",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category2.ID, StartTime: "10:00:00", DurationMinutes: 240},
 			{CategoryID: category1.ID, StartTime: "14:00:00", DurationMinutes: 120},
 		},
@@ -217,8 +217,8 @@ func TestDayTemplateRepository_Update(t *testing.T) {
 	if updated.Name != newInput.Name {
 		t.Errorf("Expected name '%s', got '%s'", newInput.Name, updated.Name)
 	}
-	if len(updated.PlannedBlocks) != 2 {
-		t.Errorf("Expected 2 planned blocks, got %d", len(updated.PlannedBlocks))
+	if len(updated.CurrentSnapshot.SnapshotBlocks) != 2 {
+		t.Errorf("Expected 2 planned blocks, got %d", len(updated.CurrentSnapshot.SnapshotBlocks))
 	}
 	if updated.ID != template.ID {
 		t.Error("Template ID should not change")
@@ -233,10 +233,10 @@ func TestDayTemplateRepository_Update_WrongUser(t *testing.T) {
 	user2 := createTestUser(t, db, "user2", "password123")
 	ctx := context.Background()
 
-	template, _ := repo.Create(ctx, DayTemplateInput{Name: "Original", PlannedBlocks: []PlannedBlockInput{}}, user1.ID)
+	template, _ := repo.Create(ctx, DayTemplateInput{Name: "Original", SnapshotBlocks: []SnapshotBlockInput{}}, user1.ID)
 
 	// Act
-	_, err := repo.Update(ctx, template.ID, DayTemplateInput{Name: "Hacked", PlannedBlocks: []PlannedBlockInput{}}, user2.ID)
+	_, err := repo.Update(ctx, template.ID, DayTemplateInput{Name: "Hacked", SnapshotBlocks: []SnapshotBlockInput{}}, user2.ID)
 
 	// Assert
 	if err == nil {
@@ -251,7 +251,7 @@ func TestDayTemplateRepository_Delete(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	template, _ := repo.Create(ctx, DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
+	template, _ := repo.Create(ctx, DayTemplateInput{Name: "Weekday", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
 
 	// Act
 	err := repo.Delete(ctx, template.ID, user.ID)
@@ -296,7 +296,7 @@ func TestDayTemplateRepository_Delete_WrongUser(t *testing.T) {
 	user2 := createTestUser(t, db, "user2", "password123")
 	ctx := context.Background()
 
-	template, _ := repo.Create(ctx, DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user1.ID)
+	template, _ := repo.Create(ctx, DayTemplateInput{Name: "Weekday", SnapshotBlocks: []SnapshotBlockInput{}}, user1.ID)
 
 	// Act
 	err := repo.Delete(ctx, template.ID, user2.ID)

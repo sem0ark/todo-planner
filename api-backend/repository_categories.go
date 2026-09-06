@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,6 +23,10 @@ type BlockCategory struct {
 type CategoryRepository struct {
 	db *pgxpool.Pool
 }
+
+var (
+	ErrCategoryNotFound = fmt.Errorf("category not found")
+)
 
 func NewCategoryRepository(db *pgxpool.Pool) *CategoryRepository {
 	return &CategoryRepository{db: db}
@@ -129,14 +134,4 @@ func (r *CategoryRepository) Delete(ctx context.Context, id, userID int) error {
 	}
 
 	return nil
-}
-
-var (
-	ErrCategoryNotFound = &CategoryNotFoundError{}
-)
-
-type CategoryNotFoundError struct{}
-
-func (e *CategoryNotFoundError) Error() string {
-	return "category not found"
 }

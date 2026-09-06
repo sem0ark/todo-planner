@@ -18,11 +18,11 @@ type API struct {
 	dayTemplateRepo   *DayTemplateRepository
 	scheduleRepo      *ScheduleRepository
 	dayRecordRepo     *DayRecordRepository
-	changeLogRepo     *ChangeLogRepository
+	dayService        *DayService
 }
 
 func NewAPI(db *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
-	return &API{
+	api := &API{
 		db:                db,
 		jwtSecret:         jwtSecret,
 		logger:            logger,
@@ -34,8 +34,9 @@ func NewAPI(db *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
 		dayTemplateRepo:   NewDayTemplateRepository(db),
 		scheduleRepo:      NewScheduleRepository(db),
 		dayRecordRepo:     NewDayRecordRepository(db),
-		changeLogRepo:     NewChangeLogRepository(db),
 	}
+	api.dayService = NewDayService(api.dayRecordRepo, api.categoryRepo)
+	return api
 }
 
 func NewCORSMiddleware(allowedOrigins []string) func(http.HandlerFunc) http.HandlerFunc {

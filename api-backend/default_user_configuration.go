@@ -45,23 +45,13 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 		startTime    string
 		duration     int
 	}{
-		{categoryName: "Rest", startTime: "00:00:00", duration: 480},
+		{categoryName: "Rest", startTime: "06:00:00", duration: 120},
 		{categoryName: "Learning", startTime: "08:00:00", duration: 60},
 		{categoryName: "Working", startTime: "09:00:00", duration: 180},
 		{categoryName: "Rest", startTime: "12:00:00", duration: 60},
 		{categoryName: "Working", startTime: "13:00:00", duration: 300},
 		{categoryName: "Exercise", startTime: "18:00:00", duration: 60},
-		{categoryName: "Rest", startTime: "19:00:00", duration: 360},
-	}
-
-	for _, block := range blocks {
-		_, err = tx.Exec(ctx, `
-			INSERT INTO planned_blocks (day_template_id, category_id, start_time, duration_minutes)
-			VALUES ($1, $2, $3, $4)
-		`, templateID, categoryIDs[block.categoryName], block.startTime, block.duration)
-		if err != nil {
-			return err
-		}
+		{categoryName: "Rest", startTime: "19:00:00", duration: 180},
 	}
 
 	var snapshotID int
@@ -74,14 +64,14 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 		return err
 	}
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO snapshot_blocks (snapshot_id, category_id, start_time, duration_minutes)
-		SELECT $1, category_id, start_time, duration_minutes
-		FROM planned_blocks
-		WHERE day_template_id = $2
-	`, snapshotID, templateID)
-	if err != nil {
-		return err
+	for _, block := range blocks {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO snapshot_blocks (snapshot_id, category_id, start_time, duration_minutes)
+			VALUES ($1, $2, $3, $4)
+		`, snapshotID, categoryIDs[block.categoryName], block.startTime, block.duration)
+		if err != nil {
+			return err
+		}
 	}
 
 	_, err = tx.Exec(ctx, `

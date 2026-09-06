@@ -162,7 +162,7 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := api.userRepo.Create(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if _, ok := err.(*DuplicateUsernameError); ok {
+		if errors.Is(err, ErrDuplicateUsername) {
 			http.Error(w, "username already exists", http.StatusConflict)
 			return
 		}

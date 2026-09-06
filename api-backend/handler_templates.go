@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -14,37 +14,6 @@ type DayTemplatesResponse struct {
 type DayTemplateDeleteResponse struct {
 	Deleted bool `json:"deleted"`
 	ID      int  `json:"id"`
-}
-
-func (api *API) dayTemplatesHandler(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/templates")
-
-	if path == "" || path == "/" {
-		switch r.Method {
-		case http.MethodGet:
-			api.getDayTemplatesHandler(w, r)
-		case http.MethodPost:
-			api.createDayTemplateHandler(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	id, err := strconv.Atoi(strings.Trim(path, "/"))
-	if err != nil {
-		http.Error(w, "invalid template id", http.StatusBadRequest)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodPut:
-		api.updateDayTemplateHandler(w, r, id)
-	case http.MethodDelete:
-		api.deleteDayTemplateHandler(w, r, id)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
 }
 
 func (api *API) getDayTemplatesHandler(w http.ResponseWriter, r *http.Request) {
@@ -79,13 +48,21 @@ func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if input.Name == "" {
+	if strings.TrimSpace(input.Name) == "" {
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
 
 	template, err := api.dayTemplateRepo.Create(r.Context(), input, userID)
 	if err != nil {
+		if errors.Is(err, ErrInvalidTemplateBlock) || errors.Is(err, ErrTemplateCategoryNotFound) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrTemplateGroupNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create day template", err, map[string]interface{}{"user_id": userID, "name": input.Name})
 		return
 	}
@@ -110,7 +87,7 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	if input.Name == "" {
+	if strings.TrimSpace(input.Name) == "" {
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
@@ -121,6 +98,14 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err != nil {
+		if errors.Is(err, ErrInvalidTemplateBlock) || errors.Is(err, ErrTemplateCategoryNotFound) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrTemplateGroupNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update day template", err, map[string]interface{}{"user_id": userID, "template_id": id})
 		return
 	}

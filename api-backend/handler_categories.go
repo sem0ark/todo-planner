@@ -2,12 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
-	"strconv"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
+)
+
+var (
+	ErrCategoryNameRequired     = errors.New("name is required")
+	ErrInvalidCategoryColor     = errors.New("invalid color format")
+	ErrInvalidPomodoroDurations = errors.New("pomodoro durations must be positive")
 )
 
 type PomodoroConfig struct {
@@ -147,43 +152,12 @@ func (api *API) deleteCategoryHandler(w http.ResponseWriter, r *http.Request, id
 	json.NewEncoder(w).Encode(response)
 }
 
-func (api *API) categoriesHandler(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/categories")
-
-	if path == "" || path == "/" {
-		switch r.Method {
-		case http.MethodGet:
-			api.getCategoriesHandler(w, r)
-		case http.MethodPost:
-			api.createCategoryHandler(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	id, err := strconv.Atoi(strings.Trim(path, "/"))
-	if err != nil {
-		http.Error(w, "invalid category ID", http.StatusBadRequest)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodPut:
-		api.updateCategoryHandler(w, r, id)
-	case http.MethodDelete:
-		api.deleteCategoryHandler(w, r, id)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
 func validateCategoryInput(input CategoryInput) error {
 	if input.Name == "" {
-		return &ValidationError{Message: "name is required"}
+		return ErrCategoryNameRequired
 	}
 	if !isValidHexColor(input.Color) {
-		return &ValidationError{Message: "invalid color format"}
+		return ErrInvalidCategoryColor
 	}
 	return validatePomodoroConfig(input.PomodoroConfig)
 }
@@ -193,7 +167,7 @@ func validatePomodoroConfig(config *PomodoroConfig) error {
 		return nil
 	}
 	if config.WorkDuration <= 0 || config.RestDuration <= 0 {
-		return &ValidationError{Message: "pomodoro durations must be positive"}
+		return ErrInvalidPomodoroDurations
 	}
 	return nil
 }

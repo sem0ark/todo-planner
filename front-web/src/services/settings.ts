@@ -1,10 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 export interface UserSettings {
-  id: number;
-  user_id: number;
   day_boundary_time: string;
-  created_at: string;
   updated_at: string;
 }
 

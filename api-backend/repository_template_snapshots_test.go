@@ -15,7 +15,7 @@ func TestTemplateSnapshotCreation_OnCreate(t *testing.T) {
 	ctx := context.Background()
 	input := DayTemplateInput{
 		Name: "Morning Routine",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "08:00:00", DurationMinutes: 60},
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
 		},
@@ -65,7 +65,7 @@ func TestTemplateSnapshotCreation_OnUpdate(t *testing.T) {
 	ctx := context.Background()
 	createInput := DayTemplateInput{
 		Name: "Morning Routine",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "08:00:00", DurationMinutes: 60},
 		},
 	}
@@ -80,7 +80,7 @@ func TestTemplateSnapshotCreation_OnUpdate(t *testing.T) {
 	// Act - update the template
 	updateInput := DayTemplateInput{
 		Name: "Morning Routine Updated",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "08:00:00", DurationMinutes: 60},
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
 		},
@@ -140,7 +140,7 @@ func TestDayRecordCreation_WithTemplateSnapshot(t *testing.T) {
 	// Create a template
 	templateInput := DayTemplateInput{
 		Name: "Weekday Schedule",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
 			{CategoryID: category.ID, StartTime: "11:00:00", DurationMinutes: 60},
 		},

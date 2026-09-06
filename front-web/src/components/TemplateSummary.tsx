@@ -1,8 +1,8 @@
 import type { Category } from "../services/categories";
-import type { PlannedBlock } from "../services/templates";
+import type { SnapshotBlock } from "../services/templates";
 
 interface TemplateSummaryProps {
-  plannedBlocks: PlannedBlock[];
+  snapshotBlocks: SnapshotBlock[];
   categories: Category[];
 }
 
@@ -38,13 +38,15 @@ export function formatDuration(durationMinutes: number): string {
 }
 
 function buildCategoryTotals(
-  plannedBlocks: PlannedBlock[],
+  snapshotBlocks: SnapshotBlock[],
   categories: Category[],
 ): CategoryTotal[] {
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const categoryById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
   const totals = new Map<number, number>();
 
-  plannedBlocks.forEach((block) => {
+  snapshotBlocks.forEach((block) => {
     const blockStart = timeToMinutes(block.start_time);
     const visibleStart = Math.max(DAY_START_MINUTES, blockStart);
     const visibleEnd = Math.min(
@@ -62,7 +64,9 @@ function buildCategoryTotals(
   });
 
   return [...totals.entries()]
-    .sort(([, firstDuration], [, secondDuration]) => secondDuration - firstDuration)
+    .sort(
+      ([, firstDuration], [, secondDuration]) => secondDuration - firstDuration,
+    )
     .map(([categoryId, durationMinutes]) => {
       const category = categoryById.get(categoryId);
       return {
@@ -75,18 +79,24 @@ function buildCategoryTotals(
 }
 
 function buildBarSegments(
-  plannedBlocks: PlannedBlock[],
+  snapshotBlocks: SnapshotBlock[],
   categories: Category[],
 ): BarSegment[] {
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
-  const blocks = [...plannedBlocks].sort((first, second) =>
-    timeToMinutes(first.start_time) - timeToMinutes(second.start_time),
+  const categoryById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  const blocks = [...snapshotBlocks].sort(
+    (first, second) =>
+      timeToMinutes(first.start_time) - timeToMinutes(second.start_time),
   );
   const segments: BarSegment[] = [];
   let cursor = DAY_START_MINUTES;
 
   blocks.forEach((block, index) => {
-    const blockStart = Math.max(DAY_START_MINUTES, timeToMinutes(block.start_time));
+    const blockStart = Math.max(
+      DAY_START_MINUTES,
+      timeToMinutes(block.start_time),
+    );
     const blockEnd = Math.min(
       DAY_END_MINUTES,
       timeToMinutes(block.start_time) + block.duration_minutes,
@@ -127,10 +137,10 @@ function buildBarSegments(
 }
 
 export default function TemplateSummary({
-  plannedBlocks,
+  snapshotBlocks,
   categories,
 }: TemplateSummaryProps) {
-  if (plannedBlocks.length === 0) {
+  if (snapshotBlocks.length === 0) {
     return (
       <div className="mt-2">
         <div className="h-2 overflow-hidden rounded bg-slate-blue/15" />
@@ -141,8 +151,8 @@ export default function TemplateSummary({
     );
   }
 
-  const totals = buildCategoryTotals(plannedBlocks, categories);
-  const segments = buildBarSegments(plannedBlocks, categories);
+  const totals = buildCategoryTotals(snapshotBlocks, categories);
+  const segments = buildBarSegments(snapshotBlocks, categories);
 
   return (
     <div className="mt-2">
@@ -162,14 +172,24 @@ export default function TemplateSummary({
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
         {totals.slice(0, 5).map((total) => (
-          <span key={total.categoryId} className="flex items-center gap-1 text-sm text-cloud">
-            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: total.color }} />
-            <span className="font-mono">{formatDuration(total.durationMinutes)}</span>
+          <span
+            key={total.categoryId}
+            className="flex items-center gap-1 text-sm text-cloud"
+          >
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: total.color }}
+            />
+            <span className="font-mono">
+              {formatDuration(total.durationMinutes)}
+            </span>
             <span>{total.name}</span>
           </span>
         ))}
         {totals.length > 5 && (
-          <span className="text-sm text-slate-grey">+{totals.length - 5} more</span>
+          <span className="text-sm text-slate-grey">
+            +{totals.length - 5} more
+          </span>
         )}
       </div>
     </div>

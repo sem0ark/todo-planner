@@ -47,6 +47,7 @@ struct WidgetContext {
 
 enum WidgetAction {
   case initialize
+  case reload
   case selectCategory(Category)
   case adjustOffset(Int)
   case primaryAction
@@ -231,7 +232,6 @@ func updateDayRecord(_ context: inout WidgetContext, with blocks: [ActualBlock])
   context.currentDayRecord = DayRecord(
     id: record.id,
     calendarDate: record.calendarDate,
-    reviewStatus: record.reviewStatus,
     actualBlocks: blocks,
     createdAt: record.createdAt,
     updatedAt: Date()
@@ -247,7 +247,7 @@ func logEvent(
   recordId: Int?,
   repo: TodoPlannerRepository
 ) async -> [ActualBlock] {
-  guard let recordId = recordId else { return [] }
+  guard let recordId else { return [] }
   guard let categoryId = category?.id else { return [] }
 
   let event = DayEvent(
@@ -321,6 +321,9 @@ final class ActiveState: WidgetStateLogic {
     var ctx = context
 
     switch action {
+    case .reload:
+      return StateResult(nextState: InitializingState(), updatedContext: ctx, effects: [])
+
     case .primaryAction:
       if ctx.currentCategory?.hasPomodoroEnabled == true {
         togglePomodoro(&ctx)
@@ -388,6 +391,9 @@ final class PromptedState: WidgetStateLogic {
     let ctx = context
 
     switch action {
+    case .reload:
+      return StateResult(nextState: InitializingState(), updatedContext: ctx, effects: [])
+
     case .primaryAction:
       return confirmationResult(context: ctx, nextState: ActiveState())
 
@@ -502,22 +508,42 @@ class WidgetStateStore {
 
   func initialize() async {
     do {
-      context.categories = try await repository.fetchCategories()
-      let today = DateFormatter.yyyyMMdd.string(from: Date())
-
-      let todaySchedule = try await repository.fetchTodaySchedule()
-      context.currentPlannedBlocks = todaySchedule.template?.plannedBlocks ?? []
-
-      if let record = try await repository.fetchDayRecord(date: today) {
-        context.currentDayRecord = record
-      } else {
-        context.currentDayRecord = try await repository.createDayRecord(date: today)
-      }
+      try await loadData()
       await dispatch(.initialize)
     } catch {
       print("[ERROR] Initialization error: \(error)")
     }
   }
+
+  func reload() async {
+    await dispatch(.reload)
+
+    do {
+      try await loadData()
+      await dispatch(.initialize)
+    } catch {
+      print("[ERROR] Reload error: \(error)")
+      await dispatch(.initialize)
+    }
+  }
+
+  private func loadData() async throws {
+    let categories = try await repository.fetchCategories()
+    let today = DateFormatter.yyyyMMdd.string(from: Date())
+    let todaySchedule = try await repository.fetchTodaySchedule()
+    let dayRecord: DayRecord
+
+    if let record = try await repository.fetchDayRecord(date: today) {
+      dayRecord = record
+    } else {
+      dayRecord = try await repository.createDayRecord(date: today)
+    }
+
+    context.categories = categories
+    context.currentPlannedBlocks = todaySchedule.template?.currentSnapshot.snapshotBlocks ?? []
+    context.currentDayRecord = dayRecord
+  }
+
   func handleSelectCategory(_ category: Category) async {
     await dispatch(.selectCategory(category))
   }
@@ -654,6 +680,7 @@ class WidgetStateStore {
   private func actionDescription(_ action: WidgetAction) -> String {
     switch action {
     case .initialize: "initialize"
+    case .reload: "reload"
     case .selectCategory(let category): "selectCategory(\(category.name))"
     case .adjustOffset(let minutes): "adjustOffset(\(minutes)m)"
     case .primaryAction: "primaryAction"
