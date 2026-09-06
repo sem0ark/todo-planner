@@ -334,6 +334,18 @@ func GetMigrations() []Migration {
 				`)
 				return err
 			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE day_events
+					ADD COLUMN IF NOT EXISTS outgoing_category_id INTEGER REFERENCES block_categories(id) ON DELETE CASCADE,
+					ADD COLUMN IF NOT EXISTS incoming_category_id INTEGER REFERENCES block_categories(id) ON DELETE CASCADE;
+					
+					UPDATE day_events SET incoming_category_id = category_id WHERE category_id IS NOT NULL;
+					
+					ALTER TABLE day_events DROP COLUMN IF EXISTS category_id;
+				`)
+				return err
+			},
 		},
 		{
 			ID:   6,
@@ -357,6 +369,18 @@ func GetMigrations() []Migration {
 			Down: func(ctx context.Context, db *pgxpool.Pool) error {
 				_, err := db.Exec(ctx, `
 					ALTER TABLE day_records DROP COLUMN IF EXISTS day_template_id;
+
+					-- Recreate planned_blocks table
+					CREATE TABLE IF NOT EXISTS planned_blocks (
+						id SERIAL PRIMARY KEY,
+						day_template_id INTEGER NOT NULL REFERENCES day_templates(id) ON DELETE CASCADE,
+						category_id INTEGER NOT NULL REFERENCES block_categories(id) ON DELETE CASCADE,
+						start_time TIME NOT NULL,
+						duration_minutes INTEGER NOT NULL
+					);
+
+					-- Recreate planned_blocks index
+					CREATE INDEX IF NOT EXISTS idx_planned_blocks_template ON planned_blocks(day_template_id);
 				`)
 				return err
 			},
