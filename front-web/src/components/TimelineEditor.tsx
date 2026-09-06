@@ -339,7 +339,9 @@ export default function TimelineEditor({
                 className="text-sm font-mono text-cloud text-right pr-2 tabular-nums"
                 style={{ height: HOUR_HEIGHT }}
               >
-                <span className={index === 0 ? "relative": "relative -top-2.5"}>
+                <span
+                  className={index === 0 ? "relative" : "relative -top-2.5"}
+                >
                   {String(hour).padStart(2, "0")}:00
                 </span>
               </div>

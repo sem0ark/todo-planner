@@ -9,6 +9,7 @@ import TemplateList from "./components/TemplateList";
 import TemplateEditor from "./components/TemplateEditor";
 import WeeklySchedule from "./components/WeeklySchedule";
 import ScheduleOverrides from "./components/ScheduleOverrides";
+import ReviewPage from "./components/ReviewPage";
 
 function App() {
   const { token, clearAuth } = useAuthStore();
@@ -109,7 +110,7 @@ function App() {
             <Route path="/token" component={TokenDisplay} />
             <Route path="/categories" component={CategoryList} />
             <Route path="/review">
-              <div className="text-snow">Review is coming soon.</div>
+              <ReviewPage />
             </Route>
             <Route path="/templates">
               <TemplateList
