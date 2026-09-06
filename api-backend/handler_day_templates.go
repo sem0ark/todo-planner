@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -15,37 +14,6 @@ type DayTemplatesResponse struct {
 type DayTemplateDeleteResponse struct {
 	Deleted bool `json:"deleted"`
 	ID      int  `json:"id"`
-}
-
-func (api *API) dayTemplatesHandler(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/templates")
-
-	if path == "" || path == "/" {
-		switch r.Method {
-		case http.MethodGet:
-			api.getDayTemplatesHandler(w, r)
-		case http.MethodPost:
-			api.createDayTemplateHandler(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	id, err := strconv.Atoi(strings.Trim(path, "/"))
-	if err != nil {
-		http.Error(w, "invalid template id", http.StatusBadRequest)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodPut:
-		api.updateDayTemplateHandler(w, r, id)
-	case http.MethodDelete:
-		api.deleteDayTemplateHandler(w, r, id)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
 }
 
 func (api *API) getDayTemplatesHandler(w http.ResponseWriter, r *http.Request) {

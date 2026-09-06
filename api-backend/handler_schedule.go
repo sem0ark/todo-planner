@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -201,30 +200,3 @@ func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Req
 }
 
 // scheduleHandler routes to the appropriate schedule handler based on path
-func (api *API) scheduleHandler(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/schedule")
-
-	if path == "" || path == "/" {
-		// GET /schedule
-		api.getScheduleHandler(w, r)
-		return
-	}
-
-	if path == "/weekly" {
-		// PUT /schedule/weekly
-		api.putWeeklyScheduleHandler(w, r)
-		return
-	}
-
-	if strings.HasPrefix(path, "/overrides/") {
-		dateStr := strings.TrimPrefix(path, "/overrides/")
-		if r.Method == http.MethodDelete {
-			api.deleteScheduleOverrideHandler(w, r, dateStr)
-			return
-		}
-		api.putScheduleOverrideHandler(w, r, dateStr)
-		return
-	}
-
-	http.Error(w, "not found", http.StatusNotFound)
-}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -74,63 +73,6 @@ func shortClock(value string) string {
 		return value[:5]
 	}
 	return value
-}
-
-func (api *API) daysHandler(responseWriter http.ResponseWriter, request *http.Request) {
-	userID, authenticated := getUserID(request.Context())
-	if !authenticated {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	path := strings.TrimPrefix(request.URL.Path, "/days")
-	if path == "" || path == "/" {
-		if request.Method != http.MethodGet {
-			http.Error(responseWriter, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		api.getDays(responseWriter, request, userID)
-		return
-	}
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) == 1 {
-		if !isValidCalendarDate(parts[0]) {
-			http.Error(responseWriter, "invalid date", http.StatusBadRequest)
-			return
-		}
-		switch request.Method {
-		case http.MethodGet:
-			api.getDay(responseWriter, request, userID, parts[0])
-		case http.MethodPost:
-			api.createDay(responseWriter, request, userID, parts[0])
-		default:
-			http.Error(responseWriter, "method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-	if len(parts) == 2 {
-		if !isValidCalendarDate(parts[0]) {
-			http.Error(responseWriter, "invalid date", http.StatusBadRequest)
-			return
-		}
-		switch parts[1] {
-		case "events":
-			if request.Method == http.MethodPost {
-				api.postDateEvents(responseWriter, request, userID, parts[0])
-				return
-			}
-		case "blocks":
-			if request.Method == http.MethodPut {
-				api.putDateBlocks(responseWriter, request, userID, parts[0])
-				return
-			}
-		case "template":
-			if request.Method == http.MethodPut {
-				api.putDateTemplate(responseWriter, request, userID, parts[0])
-				return
-			}
-		}
-	}
-	http.Error(responseWriter, "not found", http.StatusNotFound)
 }
 
 func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Request, userID int) {

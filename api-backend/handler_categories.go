@@ -5,8 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
-	"strconv"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -152,37 +150,6 @@ func (api *API) deleteCategoryHandler(w http.ResponseWriter, r *http.Request, id
 	response := CategoryDeleteResponse{ID: id, Deleted: true}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}
-
-func (api *API) categoriesHandler(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/categories")
-
-	if path == "" || path == "/" {
-		switch r.Method {
-		case http.MethodGet:
-			api.getCategoriesHandler(w, r)
-		case http.MethodPost:
-			api.createCategoryHandler(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	id, err := strconv.Atoi(strings.Trim(path, "/"))
-	if err != nil {
-		http.Error(w, "invalid category ID", http.StatusBadRequest)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodPut:
-		api.updateCategoryHandler(w, r, id)
-	case http.MethodDelete:
-		api.deleteCategoryHandler(w, r, id)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
 }
 
 func validateCategoryInput(input CategoryInput) error {
