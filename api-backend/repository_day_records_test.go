@@ -2,9 +2,26 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
+
+func computeActualTimelineForTest(t *testing.T, events []DayEvent, referenceTime time.Time) []ComputedBlock {
+	t.Helper()
+	boundaryStart := time.Date(referenceTime.Year(), referenceTime.Month(), referenceTime.Day(), 0, 0, 0, 0, referenceTime.Location())
+	blocks, err := computeTimeline(events, boundaryStart, referenceTime, referenceTime, false)
+	if err != nil {
+		t.Fatalf("computeTimeline failed: %v", err)
+	}
+	actualBlocks := make([]ComputedBlock, 0, len(blocks))
+	for _, block := range blocks {
+		if block.BlockType == "actual" {
+			actualBlocks = append(actualBlocks, block)
+		}
+	}
+	return actualBlocks
+}
 
 func TestDayRecordRepository_Create(t *testing.T) {
 	// Arrange
@@ -319,7 +336,7 @@ func TestComputeActualBlocks_Empty(t *testing.T) {
 	referenceTime := parseTime("2026-07-20T17:00:00Z")
 
 	// Act
-	blocks := computeActualBlocks(events, referenceTime)
+	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
 	if len(blocks) != 0 {
@@ -344,7 +361,7 @@ func TestComputeActualBlocks_OnlyConfirmations(t *testing.T) {
 	referenceTime := parseTime("2026-07-20T17:00:00Z")
 
 	// Act
-	blocks := computeActualBlocks(events, referenceTime)
+	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert - confirmations should be skipped
 	if len(blocks) != 0 {
@@ -368,7 +385,7 @@ func TestComputeActualBlocks_SingleTransition(t *testing.T) {
 	}
 
 	// Act
-	blocks := computeActualBlocks(events, referenceTime)
+	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
 	if len(blocks) != 1 {
@@ -410,7 +427,7 @@ func TestComputeActualBlocks_MultipleTransitions(t *testing.T) {
 	}
 
 	// Act
-	blocks := computeActualBlocks(events, referenceTime)
+	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
 	if len(blocks) != 3 {
@@ -474,7 +491,7 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 	}
 
 	// Act
-	blocks := computeActualBlocks(events, referenceTime)
+	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
 	if len(blocks) != 2 {
@@ -493,7 +510,7 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 }
 
 func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
-	// Arrange - transitions at same time should be skipped
+	// Arrange - equal effective transition times are invalid, not silently skipped.
 	category1 := 5
 	referenceTime := parseTime("2026-07-20T17:00:00Z")
 
@@ -513,14 +530,13 @@ func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 	}
 
 	// Act
-	blocks := computeActualBlocks(events, referenceTime)
+	boundaryStart := parseTime("2026-07-20T04:00:00Z")
+	boundaryEnd := boundaryStart.Add(24 * time.Hour)
+	_, err := computeTimeline(events, boundaryStart, boundaryEnd, referenceTime, false)
 
-	// Assert - zero-duration completed blocks are skipped, but the current block remains open.
-	if len(blocks) != 1 {
-		t.Fatalf("Expected 1 block, got %d", len(blocks))
-	}
-	if blocks[0].DurationMinutes != 480 {
-		t.Errorf("Expected 480 minutes, got %d", blocks[0].DurationMinutes)
+	// Assert
+	if !errors.Is(err, ErrNonMonotonicTransitions) {
+		t.Fatalf("Expected non-monotonic transition error, got %v", err)
 	}
 }
 
@@ -545,7 +561,7 @@ func TestComputeActualBlocks_CategoryID(t *testing.T) {
 	}
 
 	// Act
-	blocks := computeActualBlocks(events, referenceTime)
+	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
 	if len(blocks) != 2 {
@@ -567,7 +583,7 @@ func TestComputeActualBlocks_ExcludesSubMinuteOngoingBlock(t *testing.T) {
 	}}
 
 	// Act
-	blocks := computeActualBlocks(events, startTime.Add(59*time.Second))
+	blocks := computeActualTimelineForTest(t, events, startTime.Add(59*time.Second))
 
 	// Assert
 	if len(blocks) != 1 {

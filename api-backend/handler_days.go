@@ -256,6 +256,10 @@ func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http
 		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if errors.Is(err, ErrNonMonotonicTransitions) {
+		http.Error(responseWriter, err.Error(), http.StatusConflict)
+		return
+	}
 	if err != nil {
 		HTTPError(responseWriter, request, api.logger, http.StatusInternalServerError, "failed to append day events", err, nil)
 		return

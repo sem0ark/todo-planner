@@ -648,15 +648,19 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 		return nil, err
 	}
 
-	_, err = transaction.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
+	boundaryStart, boundaryEnd, isPastDay, err := getDayResolutionWindow(ctx, transaction, dayRecordID, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
 
-	computedBlocks := computeActualBlocks(events, time.Now())
+	computedBlocks, err := computeTimeline(events, boundaryStart, boundaryEnd, time.Now().UTC(), isPastDay)
+	if err != nil {
+		return nil, err
+	}
 
-	if len(computedBlocks) == 0 {
-		return []ActualBlock{}, nil
+	// Resolve before deleting so amendment conflicts roll back the whole request.
+	if _, err = transaction.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID); err != nil {
+		return nil, err
 	}
 
 	// Persist computed blocks to database
@@ -667,9 +671,9 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 		var block ActualBlock
 		err := transaction.QueryRow(ctx, `
 			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open)
-			VALUES ($1, $2, 'actual', $3, $4, $5, $6)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
-		`, dayRecordID, computed.CategoryID, computed.StartTime.Format("15:04:05"), computed.DurationMinutes, now, computed.IsOpen).Scan(
+		`, dayRecordID, computed.CategoryID, computed.BlockType, computed.StartTime.Format("15:04:05"), computed.DurationMinutes, now, computed.IsOpen).Scan(
 			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt, &block.IsOpen,
 		)
 		if err != nil {
@@ -678,7 +682,46 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 		blocks = append(blocks, block)
 	}
 
-	return r.addUntrackedGaps(blocks), nil
+	return blocks, nil
+}
+
+func getDayResolutionWindow(ctx context.Context, transaction pgx.Tx, dayRecordID int, now time.Time) (time.Time, time.Time, bool, error) {
+	var calendarDate string
+	var userID int
+	if err := transaction.QueryRow(ctx, `
+		SELECT calendar_date::text, user_id
+		FROM day_records
+		WHERE day_records.id = $1
+	`, dayRecordID).Scan(&calendarDate, &userID); err != nil {
+		return time.Time{}, time.Time{}, false, err
+	}
+
+	boundaryClock := "04:00:00"
+	settingsError := transaction.QueryRow(ctx, `
+		SELECT day_boundary_time::text
+		FROM user_settings
+		WHERE user_id = $1
+	`, userID).Scan(&boundaryClock)
+	if settingsError != nil && settingsError != pgx.ErrNoRows {
+		return time.Time{}, time.Time{}, false, settingsError
+	}
+
+	date, err := time.ParseInLocation("2006-01-02", calendarDate, time.UTC)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
+	}
+	clock, err := time.Parse("15:04:05", boundaryClock)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
+	}
+	boundaryStart := time.Date(date.Year(), date.Month(), date.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
+	boundaryEnd := boundaryStart.AddDate(0, 0, 1)
+	currentTrackingDate := now.Format("2006-01-02")
+	currentDayBoundary := time.Date(now.Year(), now.Month(), now.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
+	if now.Before(currentDayBoundary) {
+		currentTrackingDate = now.AddDate(0, 0, -1).Format("2006-01-02")
+	}
+	return boundaryStart, boundaryEnd, calendarDate < currentTrackingDate, nil
 }
 
 func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.Tx, dayRecordID int) ([]DayEvent, error) {
@@ -686,7 +729,7 @@ func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.
 		SELECT id, day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, target_client_event_id, corrected_at
 		FROM day_events
 		WHERE day_record_id = $1
-		ORDER BY occurred_at ASC, id ASC
+		ORDER BY id ASC
 	`, dayRecordID)
 	if err != nil {
 		return nil, err

@@ -41,7 +41,7 @@ type ActualBlockInput struct {
 func (api *API) validateCategoryIDs(contextValue context.Context, userID int, events []DayEventInput) error {
 	for _, event := range events {
 		if event.CategoryID == nil {
-			return ErrMissingEventCategory
+			continue
 		}
 		category, err := api.categoryRepo.FindByID(contextValue, *event.CategoryID, userID)
 		if err != nil || category.IsDeleted {
@@ -69,7 +69,7 @@ func validateDayEvents(events []DayEventInput) error {
 		if event.EventType != "confirmation" && event.EventType != "transition" && event.EventType != "amendment" {
 			return ErrInvalidEventType
 		}
-		if event.CategoryID == nil {
+		if event.EventType == "transition" && event.CategoryID == nil {
 			return ErrMissingEventCategory
 		}
 		if event.EventType == "amendment" && (event.TargetClientEventID == "" || event.CorrectedAt == nil) {

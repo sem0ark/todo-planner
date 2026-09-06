@@ -1,84 +1,115 @@
 package main
 
 import (
+	"errors"
 	"sort"
 	"time"
 )
 
-// ComputedBlock is an actual block derived from the event stream.
+var ErrNonMonotonicTransitions = errors.New("amendment produces invalid ordering")
+
 type ComputedBlock struct {
 	CategoryID      *int
+	BlockType       string
 	StartTime       time.Time
 	DurationMinutes int
 	IsOpen          bool
 }
 
-// computeActualBlocks converts transitions into completed or ongoing blocks.
-// Confirmation events do not change the active category and are ignored.
-func computeActualBlocks(events []DayEvent, referenceTime time.Time) []ComputedBlock {
-	events = applyEventAmendments(events)
-	computedBlocks := make([]ComputedBlock, 0)
-
-	for eventIndex, event := range events {
-		if event.EventType == "confirmation" {
-			continue
-		}
-		if event.EventType != "transition" {
-			continue
-		}
-
-		endTime := referenceTime
-		isOpen := true
-		for followingIndex := eventIndex + 1; followingIndex < len(events); followingIndex++ {
-			if events[followingIndex].EventType == "transition" {
-				endTime = events[followingIndex].OccurredAt
-				isOpen = false
-				break
-			}
-		}
-
-		durationMinutes := int(endTime.Sub(event.OccurredAt).Minutes())
-		if durationMinutes < 0 || (durationMinutes == 0 && !isOpen) {
-			continue
-		}
-
-		computedBlocks = append(computedBlocks, ComputedBlock{
-			CategoryID:      event.CategoryID,
-			StartTime:       event.OccurredAt,
-			DurationMinutes: durationMinutes,
-			IsOpen:          isOpen,
-		})
-	}
-
-	return computedBlocks
+type resolvedDayEvent struct {
+	event       DayEvent
+	effectiveAt time.Time
 }
 
-func applyEventAmendments(events []DayEvent) []DayEvent {
-	correctedEvents := make([]DayEvent, 0, len(events))
+// resolveTimeline applies the latest correction per target, then orders by the
+// corrected timestamp and the server insertion id. Events outside the day are
+// retained in day_events but do not participate in derived blocks.
+func resolveTimeline(events []DayEvent, boundaryStart, boundaryEnd time.Time) []resolvedDayEvent {
+	amendmentsByTarget := make(map[string]DayEvent)
+	for _, event := range events {
+		if event.EventType != "amendment" || event.TargetClientEventID == nil {
+			continue
+		}
+		target := *event.TargetClientEventID
+		current, exists := amendmentsByTarget[target]
+		if !exists || event.OccurredAt.After(current.OccurredAt) ||
+			(event.OccurredAt.Equal(current.OccurredAt) && event.ID > current.ID) {
+			amendmentsByTarget[target] = event
+		}
+	}
+
+	resolvedEvents := make([]resolvedDayEvent, 0, len(events))
 	for _, event := range events {
 		if event.EventType == "amendment" {
 			continue
 		}
-		correctedEvents = append(correctedEvents, event)
-	}
-	for _, amendment := range events {
-		if amendment.EventType != "amendment" {
+		effectiveAt := event.OccurredAt
+		if event.ClientEventID != nil {
+			if amendment, exists := amendmentsByTarget[*event.ClientEventID]; exists && amendment.CorrectedAt != nil {
+				effectiveAt = *amendment.CorrectedAt
+			}
+		}
+		if effectiveAt.Before(boundaryStart) || effectiveAt.After(boundaryEnd) {
 			continue
 		}
-		for eventIndex := range correctedEvents {
-			if correctedEvents[eventIndex].ClientEventID == nil || amendment.TargetClientEventID == nil || *correctedEvents[eventIndex].ClientEventID != *amendment.TargetClientEventID {
-				continue
-			}
-			if amendment.CorrectedAt != nil {
-				correctedEvents[eventIndex].OccurredAt = *amendment.CorrectedAt
-			}
-			if amendment.CategoryID != nil {
-				correctedEvents[eventIndex].CategoryID = amendment.CategoryID
-			}
+		resolvedEvents = append(resolvedEvents, resolvedDayEvent{event: event, effectiveAt: effectiveAt})
+	}
+
+	sort.SliceStable(resolvedEvents, func(leftIndex, rightIndex int) bool {
+		left := resolvedEvents[leftIndex]
+		right := resolvedEvents[rightIndex]
+		if left.effectiveAt.Equal(right.effectiveAt) {
+			return left.event.ID < right.event.ID
+		}
+		return left.effectiveAt.Before(right.effectiveAt)
+	})
+	return resolvedEvents
+}
+
+func computeResolvedBlocks(events []resolvedDayEvent, boundaryStart, boundaryEnd, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
+	transitions := make([]resolvedDayEvent, 0)
+	for _, event := range events {
+		if event.event.EventType == "transition" {
+			transitions = append(transitions, event)
 		}
 	}
-	sort.SliceStable(correctedEvents, func(leftIndex, rightIndex int) bool {
-		return correctedEvents[leftIndex].OccurredAt.Before(correctedEvents[rightIndex].OccurredAt)
-	})
-	return correctedEvents
+	if len(transitions) == 0 {
+		return []ComputedBlock{{BlockType: "untracked", StartTime: boundaryStart, DurationMinutes: int(boundaryEnd.Sub(boundaryStart).Minutes())}}, nil
+	}
+
+	blocks := make([]ComputedBlock, 0, len(transitions)+1)
+	if transitions[0].effectiveAt.After(boundaryStart) {
+		blocks = append(blocks, ComputedBlock{BlockType: "untracked", StartTime: boundaryStart, DurationMinutes: int(transitions[0].effectiveAt.Sub(boundaryStart).Minutes())})
+	}
+	for index := 0; index < len(transitions)-1; index++ {
+		start := transitions[index].effectiveAt
+		end := transitions[index+1].effectiveAt
+		if !end.After(start) {
+			return nil, ErrNonMonotonicTransitions
+		}
+		blocks = append(blocks, ComputedBlock{
+			CategoryID: transitions[index].event.CategoryID, BlockType: "actual", StartTime: start,
+			DurationMinutes: int(end.Sub(start).Minutes()),
+		})
+	}
+
+	last := transitions[len(transitions)-1]
+	end := now
+	open := true
+	if isPastDay {
+		end = boundaryEnd
+		open = false
+	}
+	if !end.Before(last.effectiveAt) {
+		blocks = append(blocks, ComputedBlock{
+			CategoryID: last.event.CategoryID, BlockType: "actual", StartTime: last.effectiveAt,
+			DurationMinutes: int(end.Sub(last.effectiveAt).Minutes()), IsOpen: open,
+		})
+	}
+	return blocks, nil
+}
+
+func computeTimeline(events []DayEvent, boundaryStart, boundaryEnd, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
+	resolvedEvents := resolveTimeline(events, boundaryStart, boundaryEnd)
+	return computeResolvedBlocks(resolvedEvents, boundaryStart, boundaryEnd, now, isPastDay)
 }
