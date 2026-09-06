@@ -386,7 +386,7 @@ func GetMigrations() []Migration {
 			},
 		},
 		{
-			ID:   3,
+			ID:   7,
 			Name: "remove_review_status",
 			Up: func(ctx context.Context, db *pgxpool.Pool) error {
 				_, err := db.Exec(ctx, `
