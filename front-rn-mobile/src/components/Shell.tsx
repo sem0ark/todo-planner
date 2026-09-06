@@ -33,7 +33,9 @@ export function Shell() {
             <Active />
           ) : null}
         </View>
-        <View style={[styles.divider, isHorizontal && styles.dividerHorizontal]} />
+        <View
+          style={[styles.divider, isHorizontal && styles.dividerHorizontal]}
+        />
         <CategoryList />
       </View>
     </SafeAreaView>
@@ -73,7 +75,10 @@ function Prompt({
   return (
     <Pressable style={styles.prompt} onPress={onConfirm}>
       <Animated.View
-        style={[styles.promptBackground, { backgroundColor: promptColor, opacity }]}
+        style={[
+          styles.promptBackground,
+          { backgroundColor: promptColor, opacity },
+        ]}
       />
       <View style={styles.promptFill}>
         <Text style={styles.name}>{name?.toUpperCase()}</Text>

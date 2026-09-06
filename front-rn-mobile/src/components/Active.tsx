@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import {
   Color,
@@ -19,7 +25,15 @@ function formatRemaining(seconds: number) {
   return `${minutes}:${secondsPart}`;
 }
 
-function PomodoroRing({ color, progress, size }: { color: string; progress: number; size: number }) {
+function PomodoroRing({
+  color,
+  progress,
+  size,
+}: {
+  color: string;
+  progress: number;
+  size: number;
+}) {
   const strokeWidth = Math.max(4, size * 0.06);
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -117,7 +131,9 @@ export function Active() {
             <View style={[styles.fill, { flex: w.progress }]} />
             <View style={{ flex: 1 - w.progress }} />
           </View>
-          <Text style={styles.remaining}>{formatRemaining(remainingSeconds)}</Text>
+          <Text style={styles.remaining}>
+            {formatRemaining(remainingSeconds)}
+          </Text>
         </View>
       </Pressable>
     </View>
@@ -140,11 +156,27 @@ const styles = StyleSheet.create({
     opacity: Opacity.label,
     marginTop: 4,
   },
-  pomodoroHint: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  pomodoroHint: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   progressRow: { flexDirection: "row", alignItems: "center", gap: Space.md },
-  remaining: { color: Color.primaryText, fontFamily: Font.data, fontSize: Size.mono, opacity: Opacity.label, minWidth: 48, textAlign: "right" },
+  remaining: {
+    color: Color.primaryText,
+    fontFamily: Font.data,
+    fontSize: Size.mono,
+    opacity: Opacity.label,
+    minWidth: 48,
+    textAlign: "right",
+  },
   spacer: { flex: 1 },
-  track: { flex: 1, height: 5, flexDirection: "row", backgroundColor: "rgba(0,0,0,.2)" },
+  track: {
+    flex: 1,
+    height: 5,
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,.2)",
+  },
   fill: { backgroundColor: `rgba(255,255,255,${Opacity.progressFill})` },
   offset: {
     minHeight: 56,
@@ -170,5 +202,11 @@ const styles = StyleSheet.create({
   },
   empty: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyText: { color: Color.mutedText, fontFamily: Font.uiBold },
-  emptySubtext: { color: Color.mutedText, fontFamily: Font.data, fontSize: Size.label, opacity: Opacity.label, marginTop: Space.sm },
+  emptySubtext: {
+    color: Color.mutedText,
+    fontFamily: Font.data,
+    fontSize: Size.label,
+    opacity: Opacity.label,
+    marginTop: Space.sm,
+  },
 });
