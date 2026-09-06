@@ -15,6 +15,8 @@ type DayRecordsResponse struct {
 	DayRecords []DayRecord `json:"day_records"`
 }
 
+const maximumDayRecordRangeDays = 31
+
 // Day record creation request data
 type DayRecordInput struct {
 	CalendarDate string `json:"calendar_date"` // YYYY-MM-DD
@@ -73,6 +75,10 @@ func (api *API) getDayRecordsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid date range", http.StatusBadRequest)
 		return
 	}
+	if toCalendarDate.Sub(fromCalendarDate) > maximumDayRecordRangeDays*24*time.Hour {
+		http.Error(w, "date range cannot exceed 31 days", http.StatusBadRequest)
+		return
+	}
 
 	// Get day records
 	records, err := api.dayRecordRepo.FindByDateRange(r.Context(), userID, fromDate, toDate)
@@ -121,7 +127,7 @@ func (api *API) postDayRecordHandler(w http.ResponseWriter, r *http.Request) {
 
 	record, err := api.dayRecordRepo.Create(r.Context(), userID, input.CalendarDate)
 	if err != nil {
-		if strings.Contains(err.Error(), "day record already exists") {
+		if errors.Is(err, ErrDayRecordAlreadyExists) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
@@ -183,8 +189,7 @@ func (api *API) postDayEventsHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "day record not found", http.StatusNotFound)
 			return
 		}
-		// Check error type
-		if strings.Contains(err.Error(), "cannot add events") {
+		if errors.Is(err, ErrDayRecordEventsForbidden) {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
@@ -248,7 +253,7 @@ func (api *API) putDayRecordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	blocks, err := api.dayRecordRepo.ReplaceActualBlocks(r.Context(), record.ID, userID, input.ActualBlocks)
 	if err != nil {
-		if strings.Contains(err.Error(), "cannot edit") {
+		if errors.Is(err, ErrDayRecordEditForbidden) {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
@@ -325,7 +330,7 @@ func (api *API) putDayRecordTemplateHandler(w http.ResponseWriter, r *http.Reque
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if errors.Is(err, ErrDayRecordNotFound) || strings.Contains(err.Error(), "day template not found") {
+		if errors.Is(err, ErrDayRecordNotFound) || errors.Is(err, ErrDayTemplateNotFound) {
 			http.Error(w, "day record or template not found", http.StatusNotFound)
 			return
 		}

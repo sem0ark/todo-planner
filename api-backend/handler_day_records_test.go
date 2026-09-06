@@ -88,6 +88,26 @@ func TestGetDayRecordsHandler_InvalidDateFormat(t *testing.T) {
 	}
 }
 
+func TestGetDayRecordsHandler_DateRangeTooLarge(t *testing.T) {
+	// Arrange
+	db := setupTestDB(t)
+	api := NewAPI(db, "test-secret", NewLogger("test"))
+	user := createTestUser(t, db, "testuser", "password123")
+
+	req := httptest.NewRequest(http.MethodGet, "/day-records?from=2026-01-01&to=2026-02-02", nil)
+	ctx := withUserID(context.Background(), user.ID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	// Act
+	api.getDayRecordsHandler(w, req)
+
+	// Assert
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
 func TestGetDayRecordsHandler_NoAuth(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)

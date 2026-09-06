@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrInvalidWeeklySchedule = errors.New("invalid weekly schedule")
 
 type ScheduleRepository struct {
 	db *pgxpool.Pool
@@ -84,16 +87,16 @@ func (r *ScheduleRepository) GetWeeklySchedule(ctx context.Context, userID int) 
 func (r *ScheduleRepository) ReplaceWeeklySchedule(ctx context.Context, userID int, entries []WeeklyScheduleEntry) ([]WeeklySchedule, error) {
 	// Validate input: must have exactly 7 entries, one per day
 	if len(entries) != 7 {
-		return nil, fmt.Errorf("exactly 7 days required, got %d", len(entries))
+		return nil, fmt.Errorf("%w: exactly 7 days required, got %d", ErrInvalidWeeklySchedule, len(entries))
 	}
 
 	seen := make(map[int]bool)
 	for _, entry := range entries {
 		if entry.DayOfWeek < 0 || entry.DayOfWeek > 6 {
-			return nil, fmt.Errorf("invalid day_of_week: %d", entry.DayOfWeek)
+			return nil, fmt.Errorf("%w: invalid day_of_week: %d", ErrInvalidWeeklySchedule, entry.DayOfWeek)
 		}
 		if seen[entry.DayOfWeek] {
-			return nil, fmt.Errorf("duplicate day_of_week: %d", entry.DayOfWeek)
+			return nil, fmt.Errorf("%w: duplicate day_of_week: %d", ErrInvalidWeeklySchedule, entry.DayOfWeek)
 		}
 		seen[entry.DayOfWeek] = true
 	}
@@ -264,7 +267,7 @@ func (r *ScheduleRepository) ensureTemplateBelongsToUser(ctx context.Context, us
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("day template not found")
+		return ErrDayTemplateNotFound
 	}
 	return nil
 }

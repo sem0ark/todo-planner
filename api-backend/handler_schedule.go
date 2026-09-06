@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -138,12 +139,11 @@ func (api *API) putWeeklyScheduleHandler(w http.ResponseWriter, r *http.Request)
 	// Update weekly schedule
 	updated, err := api.scheduleRepo.ReplaceWeeklySchedule(r.Context(), userID, input.WeeklySchedule)
 	if err != nil {
-		// Check if it's a validation error
-		if strings.Contains(err.Error(), "invalid day_of_week") || strings.Contains(err.Error(), "duplicate day_of_week") || strings.Contains(err.Error(), "exactly 7 days") {
+		if errors.Is(err, ErrInvalidWeeklySchedule) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if strings.Contains(err.Error(), "day template not found") {
+		if errors.Is(err, ErrDayTemplateNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -193,7 +193,7 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	// Set or remove override
 	override, err := api.scheduleRepo.SetOverride(r.Context(), userID, dateStr, input.DayTemplateID)
 	if err != nil {
-		if strings.Contains(err.Error(), "day template not found") {
+		if errors.Is(err, ErrDayTemplateNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

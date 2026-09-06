@@ -66,8 +66,13 @@ type ActualBlock struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
-var ErrDayRecordPast = fmt.Errorf("day record is in the past")
-var ErrDayRecordNotFound = pgx.ErrNoRows
+var (
+	ErrDayRecordPast            = fmt.Errorf("day record is in the past")
+	ErrDayRecordNotFound        = pgx.ErrNoRows
+	ErrDayRecordAlreadyExists   = fmt.Errorf("day record already exists")
+	ErrDayRecordEventsForbidden = fmt.Errorf("cannot add events")
+	ErrDayRecordEditForbidden   = fmt.Errorf("cannot edit day record")
+)
 
 func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
 	return &DayRecordRepository{db: db}
@@ -159,7 +164,7 @@ func (r *DayRecordRepository) Create(ctx context.Context, userID int, calendarDa
 		SELECT id FROM day_records WHERE user_id = $1 AND calendar_date = $2
 	`, userID, calendarDate).Scan(&existingID)
 	if err == nil {
-		return nil, fmt.Errorf("day record already exists for date %s", calendarDate)
+		return nil, fmt.Errorf("%w for date %s", ErrDayRecordAlreadyExists, calendarDate)
 	}
 
 	// Resolve the active template for this date
@@ -227,7 +232,7 @@ func (r *DayRecordRepository) UpdateTemplateByDate(ctx context.Context, userID i
 		`, *requestedTemplateID, userID).Scan(&exists); err != nil {
 			return nil, err
 		} else if !exists {
-			return nil, fmt.Errorf("day template not found")
+			return nil, ErrDayTemplateNotFound
 		}
 	}
 
@@ -464,7 +469,7 @@ func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, use
 
 	// Check review status
 	if reviewStatus != "Unreviewed" {
-		return nil, nil, fmt.Errorf("cannot add events: day record is %s", reviewStatus)
+		return nil, nil, fmt.Errorf("%w: day record is %s", ErrDayRecordEventsForbidden, reviewStatus)
 	}
 
 	// Insert events
@@ -505,7 +510,7 @@ func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecord
 		return nil, err
 	}
 	if reviewStatus != "Unreviewed" {
-		return nil, fmt.Errorf("cannot edit day record: day record is %s", reviewStatus)
+		return nil, fmt.Errorf("%w: day record is %s", ErrDayRecordEditForbidden, reviewStatus)
 	}
 
 	_, err = r.db.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
