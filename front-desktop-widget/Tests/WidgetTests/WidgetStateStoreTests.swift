@@ -130,7 +130,7 @@ enum Fixtures {
     durationMinutes: Int = 60
   ) -> PlannedBlock {
     let comps = Calendar.current.dateComponents([.hour], from: Date())
-    let start = String(format: "%02d:00:00", comps.hour ?? 0)
+    let start = String(format: "%02d:00", comps.hour ?? 0)
     return PlannedBlock(id: id, categoryId: categoryId, startTime: start, durationMinutes: durationMinutes)
   }
 
@@ -138,7 +138,7 @@ enum Fixtures {
     id: Int = 1,
     categoryId: Int? = 1,
     blockType: String = "actual",
-    startTime: String = "08:00:00",
+    startTime: String = "08:00",
     durationMinutes: Int = 60
   ) -> ActualBlock {
     ActualBlock(id: id, categoryId: categoryId, blockType: blockType, startTime: startTime, durationMinutes: durationMinutes)
@@ -249,6 +249,74 @@ final class WidgetTestHarness {
 
 @MainActor
 final class WidgetStateStoreTests {
+  func test_initResponse_decodesCurrentAPIShape() throws {
+    let json = """
+    {
+      "settings": {
+        "day_boundary_time": "04:00",
+        "updated_at": "2026-09-06T14:30:00Z"
+      },
+      "categories": [],
+      "day_record": {
+        "calendar_date": "2026-09-06",
+        "day_template_id": 5,
+        "snapshot": {
+          "snapshot_id": 12,
+          "snapshotted_at": "2026-09-01T10:00:00Z",
+          "blocks": [
+            {
+              "category_id": 3,
+              "start_time": "08:00",
+              "duration_minutes": 60
+            }
+          ]
+        },
+        "actual_blocks": [
+          {
+            "category_id": 3,
+            "block_type": "actual",
+            "start_time": "08:05",
+            "duration_minutes": 55,
+            "is_open": false
+          }
+        ],
+        "created_at": "2026-09-06T07:55:00Z",
+        "updated_at": "2026-09-06T14:30:00Z"
+      }
+    }
+    """.data(using: .utf8)!
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+
+    let response = try decoder.decode(InitResponse.self, from: json)
+
+    try assertEqual(response.settings.dayBoundaryTime, "04:00")
+    try assertEqual(response.dayRecord.calendarDate, "2026-09-06")
+    try assertEqual(response.dayRecord.snapshotId, 12)
+    try assertEqual(response.dayRecord.snapshotBlocks[0].startTime, "08:00")
+    try assertEqual(response.dayRecord.actualBlocks[0].isOpen, false)
+  }
+
+  func test_dayEventEncodesIdempotencyAndAmendmentFields() throws {
+    let event = DayEvent(
+      clientEventId: "event-1",
+      eventType: "amendment",
+      categoryId: 3,
+      occurredAt: Fixtures.now,
+      targetClientEventId: "event-0",
+      correctedAt: Fixtures.now
+    )
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    let data = try encoder.encode(event)
+    let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    try assertEqual(object?["client_event_id"] as? String, "event-1")
+    try assertEqual(object?["event_type"] as? String, "amendment")
+    try assertEqual(object?["target_client_event_id"] as? String, "event-0")
+    try assert(object?["corrected_at"] != nil, "corrected_at should be encoded")
+  }
+
   func test_init_freshDay_createsRecord() async throws {
     let newRecord = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: nil, createdRecord: newRecord)
@@ -590,6 +658,8 @@ struct TestRunner {
 
     let testMethods: [(String, () async throws -> Void)] = [
       ("test_init_freshDay_createsRecord", { try await tests.test_init_freshDay_createsRecord() }),
+      ("test_initResponse_decodesCurrentAPIShape", { try tests.test_initResponse_decodesCurrentAPIShape() }),
+      ("test_dayEventEncodesIdempotencyAndAmendmentFields", { try tests.test_dayEventEncodesIdempotencyAndAmendmentFields() }),
       ("test_init_existingRecord_doesNotCreate", { try await tests.test_init_existingRecord_doesNotCreate() }),
       ("test_selectCategory_logsTransition", { try await tests.test_selectCategory_logsTransition() }),
       ("test_initialState_isInitializing", { try await tests.test_initialState_isInitializing() }),
