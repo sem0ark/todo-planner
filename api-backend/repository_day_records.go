@@ -35,7 +35,6 @@ type DayRecord struct {
 	SnapshotID     *int            `json:"snapshot_id"`
 	DayTemplateID  *int            `json:"day_template_id"`
 	CalendarDate   string          `json:"calendar_date"` // YYYY-MM-DD
-	ReviewStatus   string          `json:"review_status"` // Unreviewed | Reviewed | Ignored
 	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks"`
 	ActualBlocks   []ActualBlock   `json:"actual_blocks"`
 	CreatedAt      time.Time       `json:"created_at"`
@@ -80,7 +79,7 @@ func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
 
 func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, fromDate, toDate string) ([]DayRecord, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, day_template_id, snapshot_id, calendar_date::text, review_status, created_at, updated_at
+		SELECT id, user_id, day_template_id, snapshot_id, calendar_date::text, created_at, updated_at
 		FROM day_records
 		WHERE user_id = $1 AND calendar_date >= $2 AND calendar_date <= $3
 		ORDER BY calendar_date ASC
@@ -93,7 +92,7 @@ func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, f
 	records := make([]DayRecord, 0)
 	for rows.Next() {
 		var rec DayRecord
-		if err := rows.Scan(&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.ReviewStatus, &rec.CreatedAt, &rec.UpdatedAt); err != nil {
+		if err := rows.Scan(&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.CreatedAt, &rec.UpdatedAt); err != nil {
 			return nil, err
 		}
 
@@ -126,10 +125,10 @@ func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, f
 func (r *DayRecordRepository) FindByID(ctx context.Context, id, userID int) (*DayRecord, error) {
 	var rec DayRecord
 	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, day_template_id, snapshot_id, calendar_date::text, review_status, created_at, updated_at
+		SELECT id, user_id, day_template_id, snapshot_id, calendar_date::text, created_at, updated_at
 		FROM day_records
 		WHERE id = $1 AND user_id = $2
-	`, id, userID).Scan(&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.ReviewStatus, &rec.CreatedAt, &rec.UpdatedAt)
+	`, id, userID).Scan(&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.CreatedAt, &rec.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -189,11 +188,11 @@ func (r *DayRecordRepository) Create(ctx context.Context, userID int, calendarDa
 	var rec DayRecord
 	now := time.Now()
 	err = r.db.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, day_template_id, snapshot_id, calendar_date, review_status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, 'Unreviewed', $5, $6)
-		RETURNING id, user_id, day_template_id, snapshot_id, calendar_date::text, review_status, created_at, updated_at
+		INSERT INTO day_records (user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, user_id, day_template_id, snapshot_id, calendar_date::text, created_at, updated_at
 	`, userID, templateID, snapshotID, calendarDate, now, now).Scan(
-		&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.ReviewStatus, &rec.CreatedAt, &rec.UpdatedAt,
+		&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.CreatedAt, &rec.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -288,72 +287,6 @@ func (r *DayRecordRepository) UpdateTemplateByDate(ctx context.Context, userID i
 		return nil, err
 	}
 	return r.FindByID(ctx, recordID, userID)
-}
-
-// UpdateStatus transitions the review status of a day record
-func (r *DayRecordRepository) UpdateStatus(ctx context.Context, id, userID int, reviewStatus string) (*DayRecord, error) {
-	// Validate status
-	if reviewStatus != "Reviewed" && reviewStatus != "Ignored" {
-		return nil, fmt.Errorf("invalid review_status: must be 'Reviewed' or 'Ignored'")
-	}
-
-	// Check current status
-	var currentStatus string
-	err := r.db.QueryRow(ctx, `
-		SELECT review_status FROM day_records WHERE id = $1 AND user_id = $2
-	`, id, userID).Scan(&currentStatus)
-	if err != nil {
-		return nil, err
-	}
-
-	// Prevent transitions from Reviewed or Ignored
-	if currentStatus == "Reviewed" || currentStatus == "Ignored" {
-		return nil, fmt.Errorf("cannot change status: record is already %s", currentStatus)
-	}
-
-	// Update status
-	now := time.Now()
-	var rec DayRecord
-	err = r.db.QueryRow(ctx, `
-		UPDATE day_records
-		SET review_status = $1, updated_at = $2
-		WHERE id = $3 AND user_id = $4
-		RETURNING id, user_id, day_template_id, snapshot_id, calendar_date::text, review_status, created_at, updated_at
-	`, reviewStatus, now, id, userID).Scan(
-		&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.ReviewStatus, &rec.CreatedAt, &rec.UpdatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Load snapshot blocks if snapshot exists
-	if rec.SnapshotID != nil {
-		snapshotBlocks, err := r.getSnapshotBlocks(ctx, *rec.SnapshotID)
-		if err != nil {
-			return nil, err
-		}
-		rec.SnapshotBlocks = snapshotBlocks
-	}
-
-	// Load actual blocks
-	actualBlocks, err := r.getActualBlocks(ctx, rec.ID)
-	if err != nil {
-		return nil, err
-	}
-	rec.ActualBlocks = actualBlocks
-
-	return &rec, nil
-}
-
-func (r *DayRecordRepository) UpdateStatusByDate(ctx context.Context, calendarDate string, userID int, reviewStatus string) (*DayRecord, error) {
-	var recordID int
-	err := r.db.QueryRow(ctx, `
-		SELECT id FROM day_records WHERE calendar_date = $1 AND user_id = $2
-	`, calendarDate, userID).Scan(&recordID)
-	if err != nil {
-		return nil, err
-	}
-	return r.UpdateStatus(ctx, recordID, userID, reviewStatus)
 }
 
 // Helper: resolve the active template for a date
@@ -458,25 +391,25 @@ func (r *DayRecordRepository) getActualBlocks(ctx context.Context, dayRecordID i
 
 // CreateEvents appends day events and recomputes actual blocks
 func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, userID int, inputs []DayEventInput) ([]DayEvent, []ActualBlock, error) {
-	// Verify record exists and belongs to user
-	var reviewStatus string
-	err := r.db.QueryRow(ctx, `
-		SELECT review_status FROM day_records WHERE id = $1 AND user_id = $2
-	`, dayRecordID, userID).Scan(&reviewStatus)
+	transaction, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
+	defer transaction.Rollback(ctx)
 
-	// Check review status
-	if reviewStatus != "Unreviewed" {
-		return nil, nil, fmt.Errorf("%w: day record is %s", ErrDayRecordEventsForbidden, reviewStatus)
+	// Verify record exists and belongs to user
+	err = transaction.QueryRow(ctx, `
+		SELECT id FROM day_records WHERE id = $1 AND user_id = $2
+	`, dayRecordID, userID).Scan(&dayRecordID)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Insert events
 	createdEvents := make([]DayEvent, 0, len(inputs))
 	for _, input := range inputs {
 		var event DayEvent
-		err := r.db.QueryRow(ctx, `
+		err := transaction.QueryRow(ctx, `
 		INSERT INTO day_events (day_record_id, event_type, category_id, occurred_at)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, day_record_id, event_type, category_id, occurred_at
@@ -490,11 +423,14 @@ func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, use
 	}
 
 	// Recompute actual blocks
-	actualBlocks, err := r.recomputeActualBlocks(ctx, dayRecordID)
+	actualBlocks, err := r.recomputeActualBlocks(ctx, transaction, dayRecordID)
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, err := r.db.Exec(ctx, `UPDATE day_records SET updated_at = NOW() WHERE id = $1 AND user_id = $2`, dayRecordID, userID); err != nil {
+	if _, err := transaction.Exec(ctx, `UPDATE day_records SET updated_at = NOW() WHERE id = $1 AND user_id = $2`, dayRecordID, userID); err != nil {
+		return nil, nil, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
 
@@ -502,18 +438,20 @@ func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, use
 }
 
 func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecordID, userID int, inputs []ActualBlockInput) ([]ActualBlock, error) {
-	var reviewStatus string
-	err := r.db.QueryRow(ctx, `
-		SELECT review_status FROM day_records WHERE id = $1 AND user_id = $2
-	`, dayRecordID, userID).Scan(&reviewStatus)
+	transaction, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if reviewStatus != "Unreviewed" {
-		return nil, fmt.Errorf("%w: day record is %s", ErrDayRecordEditForbidden, reviewStatus)
+	defer transaction.Rollback(ctx)
+
+	err = transaction.QueryRow(ctx, `
+		SELECT id FROM day_records WHERE id = $1 AND user_id = $2
+	`, dayRecordID, userID).Scan(&dayRecordID)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err = r.db.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
+	_, err = transaction.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +460,7 @@ func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecord
 	now := time.Now()
 	for _, input := range inputs {
 		var block ActualBlock
-		err := r.db.QueryRow(ctx, `
+		err := transaction.QueryRow(ctx, `
 			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6)
 			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
@@ -534,8 +472,11 @@ func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecord
 		}
 		blocks = append(blocks, block)
 	}
-	_, err = r.db.Exec(ctx, `UPDATE day_records SET updated_at = NOW() WHERE id = $1 AND user_id = $2`, dayRecordID, userID)
+	_, err = transaction.Exec(ctx, `UPDATE day_records SET updated_at = NOW() WHERE id = $1 AND user_id = $2`, dayRecordID, userID)
 	if err != nil {
+		return nil, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
 	}
 
@@ -572,13 +513,13 @@ func (r *DayRecordRepository) addUntrackedGaps(blocks []ActualBlock) []ActualBlo
 	return result
 }
 
-func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, dayRecordID int) ([]ActualBlock, error) {
-	events, err := r.getDayEvents(ctx, dayRecordID)
+func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transaction pgx.Tx, dayRecordID int) ([]ActualBlock, error) {
+	events, err := r.getDayEvents(ctx, transaction, dayRecordID)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = r.db.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
+	_, err = transaction.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +536,7 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, dayReco
 
 	for _, computed := range computedBlocks {
 		var block ActualBlock
-		err := r.db.QueryRow(ctx, `
+		err := transaction.QueryRow(ctx, `
 			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at)
 			VALUES ($1, $2, 'actual', $3, $4, $5)
 			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
@@ -611,8 +552,8 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, dayReco
 	return blocks, nil
 }
 
-func (r *DayRecordRepository) getDayEvents(ctx context.Context, dayRecordID int) ([]DayEvent, error) {
-	rows, err := r.db.Query(ctx, `
+func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.Tx, dayRecordID int) ([]DayEvent, error) {
+	rows, err := transaction.Query(ctx, `
 		SELECT id, day_record_id, event_type, category_id, occurred_at
 		FROM day_events
 		WHERE day_record_id = $1

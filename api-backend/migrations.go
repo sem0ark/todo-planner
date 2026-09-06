@@ -385,5 +385,23 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   3,
+			Name: "remove_review_status",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					DROP INDEX IF EXISTS idx_day_records_user_status;
+					ALTER TABLE day_records DROP COLUMN IF EXISTS review_status;
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE day_records ADD COLUMN IF NOT EXISTS review_status VARCHAR(20) NOT NULL DEFAULT 'Unreviewed';
+					CREATE INDEX IF NOT EXISTS idx_day_records_user_status ON day_records(user_id, review_status);
+				`)
+				return err
+			},
+		},
 	}
 }

@@ -23,8 +23,8 @@ func TestPostDayEventsHandler_Success(t *testing.T) {
 	// Create a day record
 	var dayRecordID int
 	err := db.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, calendar_date, review_status, created_at, updated_at)
-		VALUES ($1, $2, 'Unreviewed', $3, $4)
+		INSERT INTO day_records (user_id, calendar_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`, user.ID, "2026-07-01", time.Now(), time.Now()).Scan(&dayRecordID)
 	if err != nil {
@@ -105,46 +105,6 @@ func TestPostDayEventsHandler_Success(t *testing.T) {
 	}
 }
 
-func TestPostDayEventsHandler_Reviewed(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	defer cleanupTestDB(t, db)
-	api := NewAPI(db, "test-secret", NewLogger("test"))
-
-	user := createTestUser(t, db, "eventuser", "password123")
-	ctx := context.Background()
-
-	// Create a reviewed day record
-	var dayRecordID int
-	err := db.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, calendar_date, review_status, created_at, updated_at)
-		VALUES ($1, $2, 'Reviewed', $3, $4)
-		RETURNING id
-	`, user.ID, "2026-07-01", time.Now(), time.Now()).Scan(&dayRecordID)
-	if err != nil {
-		t.Fatalf("Failed to create day record: %v", err)
-	}
-
-	reqBody := DayEventsInput{
-		Events: []DayEventInput{},
-	}
-
-	body, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/day-records/"+strconv.Itoa(dayRecordID)+"/events", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(withUserID(context.Background(), user.ID))
-
-	w := httptest.NewRecorder()
-
-	// Act
-	api.postDayEventsHandler(w, req)
-
-	// Assert
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Expected status 403, got %d", w.Code)
-	}
-}
-
 func TestPostDayEventsHandler_NotFound(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
@@ -184,8 +144,8 @@ func TestPostDayEventsHandler_InvalidEventType(t *testing.T) {
 
 	var dayRecordID int
 	err := db.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, calendar_date, review_status, created_at, updated_at)
-		VALUES ($1, $2, 'Unreviewed', $3, $4)
+		INSERT INTO day_records (user_id, calendar_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`, user.ID, "2026-07-01", time.Now(), time.Now()).Scan(&dayRecordID)
 	if err != nil {
@@ -228,8 +188,8 @@ func TestPostDayEventsHandler_TransitionMissingCategories(t *testing.T) {
 
 	var dayRecordID int
 	err := db.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, calendar_date, review_status, created_at, updated_at)
-		VALUES ($1, $2, 'Unreviewed', $3, $4)
+		INSERT INTO day_records (user_id, calendar_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`, user.ID, "2026-07-01", time.Now(), time.Now()).Scan(&dayRecordID)
 	if err != nil {
@@ -272,8 +232,8 @@ func TestPostDayEventsHandler_NotChronological(t *testing.T) {
 
 	var dayRecordID int
 	err := db.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, calendar_date, review_status, created_at, updated_at)
-		VALUES ($1, $2, 'Unreviewed', $3, $4)
+		INSERT INTO day_records (user_id, calendar_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`, user.ID, "2026-07-01", time.Now(), time.Now()).Scan(&dayRecordID)
 	if err != nil {
@@ -380,8 +340,8 @@ func TestPostDayEventsHandler_ConfirmationWithCategories(t *testing.T) {
 
 	var dayRecordID int
 	err := db.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, calendar_date, review_status, created_at, updated_at)
-		VALUES ($1, $2, 'Unreviewed', $3, $4)
+		INSERT INTO day_records (user_id, calendar_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`, user.ID, "2026-07-01", time.Now(), time.Now()).Scan(&dayRecordID)
 	if err != nil {

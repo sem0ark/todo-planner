@@ -175,9 +175,6 @@ func TestPostDayRecordHandler_Success(t *testing.T) {
 	if response.CalendarDate != "2026-07-07" {
 		t.Errorf("Expected calendar_date '2026-07-07', got '%s'", response.CalendarDate)
 	}
-	if response.ReviewStatus != "Unreviewed" {
-		t.Errorf("Expected review_status 'Unreviewed', got '%s'", response.ReviewStatus)
-	}
 }
 
 func TestPostDayRecordHandler_DuplicateDate(t *testing.T) {

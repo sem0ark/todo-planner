@@ -40,9 +40,6 @@ func TestDayRecordRepository_Create(t *testing.T) {
 	if record.CalendarDate != calendarDate {
 		t.Errorf("Expected calendar_date '%s', got '%s'", calendarDate, record.CalendarDate)
 	}
-	if record.ReviewStatus != "Unreviewed" {
-		t.Errorf("Expected review_status 'Unreviewed', got '%s'", record.ReviewStatus)
-	}
 	// Note: snapshot_id may be nil if no snapshot was created for the template
 	// This is expected behavior when a template has no planned blocks
 	if len(record.ActualBlocks) != 0 {
@@ -190,151 +187,6 @@ func TestDayRecordRepository_FindByDateRange_Empty(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Errorf("Expected 0 records, got %d", len(records))
-	}
-}
-
-func TestDayRecordRepository_UpdateStatus_ToReviewed(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	calendarDate := "2026-07-07"
-	created, err := repo.Create(ctx, user.ID, calendarDate)
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	// Act
-	updated, err := repo.UpdateStatus(ctx, created.ID, user.ID, "Reviewed")
-
-	// Assert
-	if err != nil {
-		t.Fatalf("UpdateStatus failed: %v", err)
-	}
-	if updated.ReviewStatus != "Reviewed" {
-		t.Errorf("Expected review_status 'Reviewed', got '%s'", updated.ReviewStatus)
-	}
-	if !updated.UpdatedAt.After(created.UpdatedAt) {
-		t.Error("Expected updated_at to be after created_at")
-	}
-}
-
-func TestDayRecordRepository_UpdateStatus_ToIgnored(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	calendarDate := "2026-07-07"
-	created, err := repo.Create(ctx, user.ID, calendarDate)
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	// Act
-	updated, err := repo.UpdateStatus(ctx, created.ID, user.ID, "Ignored")
-
-	// Assert
-	if err != nil {
-		t.Fatalf("UpdateStatus failed: %v", err)
-	}
-	if updated.ReviewStatus != "Ignored" {
-		t.Errorf("Expected review_status 'Ignored', got '%s'", updated.ReviewStatus)
-	}
-}
-
-func TestDayRecordRepository_UpdateStatus_InvalidStatus(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	calendarDate := "2026-07-07"
-	created, err := repo.Create(ctx, user.ID, calendarDate)
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	// Act
-	_, err = repo.UpdateStatus(ctx, created.ID, user.ID, "Invalid")
-
-	// Assert
-	if err == nil {
-		t.Error("Expected error for invalid status")
-	}
-}
-
-func TestDayRecordRepository_UpdateStatus_AlreadyReviewed(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	calendarDate := "2026-07-07"
-	created, err := repo.Create(ctx, user.ID, calendarDate)
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	_, err = repo.UpdateStatus(ctx, created.ID, user.ID, "Reviewed")
-	if err != nil {
-		t.Fatalf("First UpdateStatus failed: %v", err)
-	}
-
-	// Act
-	_, err = repo.UpdateStatus(ctx, created.ID, user.ID, "Ignored")
-
-	// Assert
-	if err == nil {
-		t.Error("Expected error when trying to change status from Reviewed")
-	}
-}
-
-func TestDayRecordRepository_UpdateStatus_AlreadyIgnored(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	calendarDate := "2026-07-07"
-	created, err := repo.Create(ctx, user.ID, calendarDate)
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	_, err = repo.UpdateStatus(ctx, created.ID, user.ID, "Ignored")
-	if err != nil {
-		t.Fatalf("First UpdateStatus failed: %v", err)
-	}
-
-	// Act
-	_, err = repo.UpdateStatus(ctx, created.ID, user.ID, "Reviewed")
-
-	// Assert
-	if err == nil {
-		t.Error("Expected error when trying to change status from Ignored")
-	}
-}
-
-func TestDayRecordRepository_UpdateStatus_NotFound(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	// Act
-	_, err := repo.UpdateStatus(ctx, 9999, user.ID, "Reviewed")
-
-	// Assert
-	if err == nil {
-		t.Error("Expected error for non-existent record")
 	}
 }
 
@@ -701,6 +553,76 @@ func TestComputeActualBlocks_CategoryID(t *testing.T) {
 	}
 	if blocks[0].CategoryID == nil {
 		t.Errorf("Expected category_id, got nil")
+	}
+}
+
+func TestDayRecordRepository_CreateEvents_RollsBackPartialBatch(t *testing.T) {
+	// Arrange
+	db := setupTestDB(t)
+	repo := NewDayRecordRepository(db)
+	user := createTestUser(t, db, "testuser", "password123")
+	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
+	record, _ := repo.Create(context.Background(), user.ID, "2026-07-07")
+	invalidCategoryID := 99999
+	inputs := []DayEventInput{
+		{EventType: "transition", CategoryID: &category.ID, OccurredAt: parseTime("2026-07-07T09:00:00Z")},
+		{EventType: "transition", CategoryID: &invalidCategoryID, OccurredAt: parseTime("2026-07-07T10:00:00Z")},
+	}
+
+	// Act
+	_, _, err := repo.CreateEvents(context.Background(), record.ID, user.ID, inputs)
+
+	// Assert
+	if err == nil {
+		t.Fatal("Expected CreateEvents to fail")
+	}
+	var eventCount int
+	if err := db.QueryRow(context.Background(), "SELECT COUNT(*) FROM day_events WHERE day_record_id = $1", record.ID).Scan(&eventCount); err != nil {
+		t.Fatalf("Failed to count day events: %v", err)
+	}
+	if eventCount != 0 {
+		t.Errorf("Expected no events after rollback, got %d", eventCount)
+	}
+}
+
+func TestDayRecordRepository_ReplaceActualBlocks_RollsBackPartialBatch(t *testing.T) {
+	// Arrange
+	db := setupTestDB(t)
+	repo := NewDayRecordRepository(db)
+	user := createTestUser(t, db, "testuser", "password123")
+	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
+	record, _ := repo.Create(context.Background(), user.ID, "2026-07-07")
+	_, err := repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
+		{CategoryID: &category.ID, BlockType: "actual", StartTime: "09:00:00", DurationMinutes: 60},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create initial actual block: %v", err)
+	}
+	invalidCategoryID := 99999
+
+	// Act
+	_, err = repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
+		{CategoryID: &category.ID, BlockType: "actual", StartTime: "10:00:00", DurationMinutes: 60},
+		{CategoryID: &invalidCategoryID, BlockType: "actual", StartTime: "11:00:00", DurationMinutes: 60},
+	})
+
+	// Assert
+	if err == nil {
+		t.Fatal("Expected ReplaceActualBlocks to fail")
+	}
+	var blockCount int
+	if err := db.QueryRow(context.Background(), "SELECT COUNT(*) FROM actual_blocks WHERE day_record_id = $1", record.ID).Scan(&blockCount); err != nil {
+		t.Fatalf("Failed to count actual blocks: %v", err)
+	}
+	if blockCount != 1 {
+		t.Errorf("Expected original block to remain after rollback, got %d blocks", blockCount)
+	}
+	var startTime string
+	if err := db.QueryRow(context.Background(), "SELECT start_time::text FROM actual_blocks WHERE day_record_id = $1", record.ID).Scan(&startTime); err != nil {
+		t.Fatalf("Failed to load original actual block: %v", err)
+	}
+	if startTime != "09:00:00" {
+		t.Errorf("Expected original block at 09:00:00, got %s", startTime)
 	}
 }
 
