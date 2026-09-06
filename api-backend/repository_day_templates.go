@@ -14,7 +14,7 @@ var ErrDayTemplateNotFound = errors.New("day template not found")
 var ErrInvalidTemplateBlock = errors.New("invalid snapshot block")
 var ErrTemplateCategoryNotFound = errors.New("unknown category_id")
 
-var templateTimePattern = regexp.MustCompile(`^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$`)
+var templateTimePattern = regexp.MustCompile(`^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`)
 
 // DayTemplate contains metadata and the latest immutable snapshot.
 type DayTemplate struct {

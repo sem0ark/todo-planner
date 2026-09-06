@@ -556,6 +556,25 @@ func TestComputeActualBlocks_CategoryID(t *testing.T) {
 	}
 }
 
+func TestComputeActualBlocks_ExcludesSubMinuteOngoingBlock(t *testing.T) {
+	// Arrange
+	categoryID := 1
+	startTime := parseTime("2026-07-20T09:00:00Z")
+	events := []DayEvent{{
+		EventType:  "transition",
+		CategoryID: &categoryID,
+		OccurredAt: startTime,
+	}}
+
+	// Act
+	blocks := computeActualBlocks(events, startTime.Add(59*time.Second))
+
+	// Assert
+	if len(blocks) != 0 {
+		t.Fatalf("Expected no block before one full minute, got %d", len(blocks))
+	}
+}
+
 func TestDayRecordRepository_CreateEvents_RollsBackPartialBatch(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)

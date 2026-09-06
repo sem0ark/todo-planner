@@ -173,7 +173,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     if let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
       let url = URL(string: urlString)
     {
-      print("[DEEPLINK] Received URL: \(urlString)")
+      let displayedURLPrefix = String(urlString.prefix(32))
+      print("[DEEPLINK] Received URL: \(displayedURLPrefix)...")
 
       // Show popover when deep link is received
       showPopover()

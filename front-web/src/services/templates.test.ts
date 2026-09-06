@@ -56,6 +56,33 @@ describe("templates service", () => {
   });
 
   describe("createTemplate", () => {
+    it("normalizes block start times to HH:MM:SS", async () => {
+      const input = {
+        name: "Weekday Schedule",
+        template_group_id: null,
+        snapshot_blocks: [
+          {
+            category_id: 1,
+            start_time: "06:00:00.000000",
+            duration_minutes: 120,
+          },
+        ],
+      };
+      (fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockTemplate,
+      });
+
+      await createTemplate(token, input);
+
+      expect(JSON.parse((fetch as any).mock.calls[0][1].body)).toEqual({
+        ...input,
+        snapshot_blocks: [
+          { ...input.snapshot_blocks[0], start_time: "06:00:00" },
+        ],
+      });
+    });
+
     it("should create template successfully", async () => {
       const input = {
         name: "Weekday Schedule",

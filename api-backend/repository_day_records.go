@@ -557,7 +557,7 @@ func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.
 		SELECT id, day_record_id, event_type, category_id, occurred_at
 		FROM day_events
 		WHERE day_record_id = $1
-		ORDER BY occurred_at ASC
+		ORDER BY occurred_at ASC, id ASC
 	`, dayRecordID)
 	if err != nil {
 		return nil, err
@@ -574,67 +574,4 @@ func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.
 	}
 
 	return events, nil
-}
-
-type ComputedBlock struct {
-	CategoryID      *int
-	StartTime       time.Time
-	DurationMinutes int
-}
-
-func computeActualBlocks(events []DayEvent, referenceTime time.Time) []ComputedBlock {
-	if len(events) == 0 {
-		return []ComputedBlock{}
-	}
-
-	computedBlocks := make([]ComputedBlock, 0)
-
-	for i := 0; i < len(events); i++ {
-		event := events[i]
-
-		// Skip confirmation events for block computation
-		if event.EventType == "confirmation" {
-			continue
-		}
-
-		// For transition events, create a block
-		if event.EventType == "transition" {
-			startTime := event.OccurredAt
-			categoryID := event.CategoryID
-
-			// Find next transition to determine end time
-			var endTime time.Time
-			if i+1 < len(events) {
-				for j := i + 1; j < len(events); j++ {
-					if events[j].EventType == "transition" {
-						endTime = events[j].OccurredAt
-						break
-					}
-				}
-				// If no next transition found, block extends to referenceTime (ongoing)
-				if endTime.IsZero() {
-					endTime = referenceTime
-				}
-			} else {
-				// Last event, block extends to referenceTime
-				endTime = referenceTime
-			}
-
-			// Calculate duration in minutes
-			duration := int(endTime.Sub(startTime).Minutes())
-			if duration <= 0 {
-				continue
-			}
-
-			// Create computed block
-			block := ComputedBlock{
-				CategoryID:      categoryID,
-				StartTime:       startTime,
-				DurationMinutes: duration,
-			}
-			computedBlocks = append(computedBlocks, block)
-		}
-	}
-
-	return computedBlocks
 }

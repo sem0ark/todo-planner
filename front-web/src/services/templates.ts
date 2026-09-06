@@ -31,6 +31,22 @@ export interface TemplateInput {
   snapshot_blocks: Omit<SnapshotBlock, "id" | "snapshot_id">[];
 }
 
+function normalizeSnapshotBlockStartTime(startTime: string): string {
+  const timeParts = startTime.split(":");
+  const seconds = (timeParts[2] ?? "00").split(".")[0];
+  return `${timeParts[0]}:${timeParts[1]}:${seconds}`;
+}
+
+function normalizeTemplateInput(input: TemplateInput): TemplateInput {
+  return {
+    ...input,
+    snapshot_blocks: input.snapshot_blocks.map((block) => ({
+      ...block,
+      start_time: normalizeSnapshotBlockStartTime(block.start_time),
+    })),
+  };
+}
+
 export async function getTemplates(token: string): Promise<Template[]> {
   const response = await fetch(`${API_URL}/templates`, {
     headers: {
@@ -50,13 +66,14 @@ export async function createTemplate(
   token: string,
   input: TemplateInput,
 ): Promise<Template> {
+  const normalizedInput = normalizeTemplateInput(input);
   const response = await fetch(`${API_URL}/templates`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify(normalizedInput),
   });
 
   if (!response.ok) {
@@ -71,13 +88,14 @@ export async function updateTemplate(
   id: number,
   input: TemplateInput,
 ): Promise<Template> {
+  const normalizedInput = normalizeTemplateInput(input);
   const response = await fetch(`${API_URL}/templates/${id}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify(normalizedInput),
   });
 
   if (!response.ok) {

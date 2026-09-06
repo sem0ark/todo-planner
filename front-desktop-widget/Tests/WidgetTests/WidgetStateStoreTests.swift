@@ -288,6 +288,24 @@ final class WidgetStateStoreTests {
     try assert(h.store.displayState == .active, "After init, state should be active")
   }
 
+  func test_reload_fetchesRemoteDataAndReturnsToActive() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initialize()
+
+    await h.store.reload()
+
+    let categoryFetchCount = h.mock.calls.reduce(into: 0) { count, call in
+      if case .fetchCategories = call { count += 1 }
+    }
+    let dayRecordFetchCount = h.mock.calls.reduce(into: 0) { count, call in
+      if case .fetchDayRecord = call { count += 1 }
+    }
+
+    try assertEqual(categoryFetchCount, 2)
+    try assertEqual(dayRecordFetchCount, 2)
+    try assert(h.store.displayState == .active, "After reload, state should be active")
+  }
+
   func test_afterConfirmation_returnsToActive() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: 1))
     await h.initializeAndResetCalls()
@@ -576,6 +594,7 @@ struct TestRunner {
       ("test_selectCategory_logsTransition", { try await tests.test_selectCategory_logsTransition() }),
       ("test_initialState_isInitializing", { try await tests.test_initialState_isInitializing() }),
       ("test_afterInitialize_isActive", { try await tests.test_afterInitialize_isActive() }),
+      ("test_reload_fetchesRemoteDataAndReturnsToActive", { try await tests.test_reload_fetchesRemoteDataAndReturnsToActive() }),
       ("test_afterConfirmation_returnsToActive", { try await tests.test_afterConfirmation_returnsToActive() }),
       ("test_multipleSelectCategories", { try await tests.test_multipleSelectCategories() }),
       ("test_adjustOffset_backward", { try await tests.test_adjustOffset_backward() }),
