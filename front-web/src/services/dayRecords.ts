@@ -5,22 +5,23 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 export type ActualBlockType = "actual" | "blank" | "untracked";
 
 export interface ActualBlock {
-  id: number;
-  day_record_id: number;
   category_id: number | null;
   block_type: ActualBlockType;
   start_time: string;
   duration_minutes: number;
-  updated_at: string;
+  is_open: boolean;
+}
+
+export interface DaySnapshot {
+  snapshot_id: number;
+  snapshotted_at: string;
+  blocks: SnapshotBlock[];
 }
 
 export interface DayRecord {
-  id: number;
-  user_id: number;
-  day_template_id: number | null;
-  snapshot_id: number | null;
   calendar_date: string;
-  snapshot_blocks: SnapshotBlock[];
+  day_template_id: number | null;
+  snapshot: DaySnapshot | null;
   actual_blocks: ActualBlock[];
   created_at: string;
   updated_at: string;
@@ -35,13 +36,14 @@ async function request<T>(
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
   });
 
-  if (!response.ok)
+  if (!response.ok) {
     throw new Error(`Day record request failed (${response.status})`);
+  }
   return response.json();
 }
 
@@ -52,43 +54,41 @@ export async function getDayRecords(
 ): Promise<DayRecord[]> {
   const data = await request<{ day_records: DayRecord[] }>(
     token,
-    `/day-records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    `/days?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
   );
   return data.day_records;
+}
+
+export function getDayRecord(token: string, date: string): Promise<DayRecord> {
+  return request<DayRecord>(token, `/days/${encodeURIComponent(date)}`);
 }
 
 export function createDayRecord(
   token: string,
   date: string,
 ): Promise<DayRecord> {
-  return request<DayRecord>(token, "/day-records", {
+  return request<DayRecord>(token, `/days/${encodeURIComponent(date)}`, {
     method: "POST",
-    body: JSON.stringify({ calendar_date: date }),
   });
 }
 
 export interface ActualBlockInput {
   category_id: number | null;
-  block_type: ActualBlockType;
+  block_type: "actual" | "blank";
   start_time: string;
   duration_minutes: number;
 }
 
-export interface UpdateDayRecordInput {
+export interface UpdateDayBlocksInput {
   actual_blocks: ActualBlockInput[];
 }
 
-export interface UpdateDayRecordResponse {
-  actual_blocks: ActualBlock[];
-  updated_at: string;
-}
-
-export function updateDayRecord(
+export function updateDayBlocks(
   token: string,
-  id: number,
-  input: UpdateDayRecordInput,
-): Promise<UpdateDayRecordResponse> {
-  return request<UpdateDayRecordResponse>(token, `/day-records/${id}`, {
+  date: string,
+  input: UpdateDayBlocksInput,
+): Promise<DayRecord> {
+  return request<DayRecord>(token, `/days/${encodeURIComponent(date)}/blocks`, {
     method: "PUT",
     body: JSON.stringify(input),
   });
@@ -96,11 +96,51 @@ export function updateDayRecord(
 
 export function updateDayRecordTemplate(
   token: string,
-  id: number,
+  date: string,
   dayTemplateId: number | null,
 ): Promise<DayRecord> {
-  return request<DayRecord>(token, `/day-records/${id}/template`, {
-    method: "PUT",
-    body: JSON.stringify({ day_template_id: dayTemplateId }),
-  });
+  return request<DayRecord>(
+    token,
+    `/days/${encodeURIComponent(date)}/template`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ day_template_id: dayTemplateId }),
+    },
+  );
+}
+
+export type DayEventType = "transition" | "confirmation" | "amendment";
+
+export interface DayEventInput {
+  client_event_id: string;
+  event_type: DayEventType;
+  category_id: number | null;
+  occurred_at: string;
+  target_client_event_id?: string;
+  corrected_at?: string;
+}
+
+export interface AppendDayEventsInput {
+  device_id: number;
+  events: DayEventInput[];
+}
+
+export interface AppendDayEventsResponse extends DayRecord {
+  accepted_events: Array<DayEventInput & { occurred_at: string }>;
+  duplicate_client_event_ids: string[];
+}
+
+export function appendDayEvents(
+  token: string,
+  date: string,
+  input: AppendDayEventsInput,
+): Promise<AppendDayEventsResponse> {
+  return request<AppendDayEventsResponse>(
+    token,
+    `/days/${encodeURIComponent(date)}/events`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }

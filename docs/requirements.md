@@ -52,14 +52,14 @@ Metrics:
 # Feature Requirements
 - All deletions are **soft** - entities become invisible to the user but are retained in storage. Hard delete occurs only on full account removal.
 - Actual day blocks are **derived from Day Events** (Confirmations and Transitions) until the user replaces them with corrected actual blocks.
-- Categories are **fully user-defined** - no hardcoded set. Defined by name and color only.
+- Categories are **fully user-defined** - no hardcoded set. Defined by name, color, and an optional Pomodoro configuration.
 - Analysis includes all Day Records in the selected time window.
 
 
 ## Activity Categories
 User-defined top-level classifications for all time blocks across templates and actual days.
 
-- A Category is defined by: **name** (user-defined string) and **color** (user-selected).
+- A Category is defined by: **name** (user-defined string), **color** (user-selected), and an optional Pomodoro configuration with work and rest durations in minutes.
 - No system-defined / hardcoded categories. The user creates all categories from scratch.
 - A Category can be **renamed** or **recolored** at any time. Changes apply everywhere the category appears (templates, day records, analytics) immediately.
 - Deletion is **soft**: a deleted category becomes invisible in the UI but is retained in storage. All historical blocks referencing it remain intact and continue to appear in analytics using the category's last known name and color.

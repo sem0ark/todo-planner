@@ -131,24 +131,6 @@ describe("schedule service", () => {
       expect(result).toEqual(mockOverride);
     });
 
-    it("should return null when override is removed", async () => {
-      const date = "2024-12-25";
-      const input = { day_template_id: null };
-      (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          id: null,
-          calendar_date: date,
-          day_template_id: null,
-          created_at: null,
-        }),
-      });
-
-      const result = await updateScheduleOverride(token, date, input);
-
-      expect(result).toBeNull();
-    });
-
     it("should throw error on failed request", async () => {
       (fetch as any).mockResolvedValueOnce({ ok: false });
 

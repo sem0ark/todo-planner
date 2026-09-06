@@ -90,6 +90,7 @@ erDiagram
         integer user_id FK
         string name
         string color
+        jsonb pomodoro_config "nullable: {work_duration, rest_duration} in minutes"
         boolean is_deleted
         timestamp created_at
         timestamp updated_at
@@ -377,6 +378,8 @@ Registers a new native client device for the authenticated user. Called once on 
 
 ## Categories
 
+Categories may optionally include a Pomodoro configuration. The durations are expressed in minutes and must be positive integers.
+
 ### `GET /categories`
 Returns all non-deleted categories belonging to the authenticated user.
 
@@ -388,6 +391,10 @@ Returns all non-deleted categories belonging to the authenticated user.
       "id": "integer",
       "name": "string",
       "color": "string (hex)",
+      "pomodoro_config": {
+        "work_duration": "integer (minutes)",
+        "rest_duration": "integer (minutes)"
+      },
       "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
       "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
     }
@@ -402,9 +409,15 @@ Creates a new activity category.
 ```json
 {
   "name": "string",
-  "color": "string (hex)"
+  "color": "string (hex)",
+  "pomodoro_config": {
+    "work_duration": "integer (minutes)",
+    "rest_duration": "integer (minutes)"
+  }
 }
 ```
+
+`pomodoro_config` may be `null` to disable Pomodoro for the category.
 
 **Output `201`:**
 ```json
@@ -412,13 +425,17 @@ Creates a new activity category.
   "id": "integer",
   "name": "string",
   "color": "string (hex)",
+  "pomodoro_config": {
+    "work_duration": "integer (minutes)",
+    "rest_duration": "integer (minutes)"
+  },
   "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
   "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
 **Errors:**
-- `400` — missing name or invalid color format
+- `400` — missing name, invalid color format, or non-positive Pomodoro duration
 
 ### `PUT /categories/{id}`
 Replaces the name and color of an existing category. Changes are reflected immediately everywhere the category appears.
@@ -427,9 +444,15 @@ Replaces the name and color of an existing category. Changes are reflected immed
 ```json
 {
   "name": "string",
-  "color": "string (hex)"
+  "color": "string (hex)",
+  "pomodoro_config": {
+    "work_duration": "integer (minutes)",
+    "rest_duration": "integer (minutes)"
+  }
 }
 ```
+
+`pomodoro_config` may be `null` to disable Pomodoro for the category.
 
 **Output `200`:**
 ```json
@@ -437,12 +460,16 @@ Replaces the name and color of an existing category. Changes are reflected immed
   "id": "integer",
   "name": "string",
   "color": "string (hex)",
+  "pomodoro_config": {
+    "work_duration": "integer (minutes)",
+    "rest_duration": "integer (minutes)"
+  },
   "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
 **Errors:**
-- `400` — missing name or invalid color format
+- `400` — missing name, invalid color format, or non-positive Pomodoro duration
 - `404` — category not found or does not belong to user
 
 ### `DELETE /categories/{id}`

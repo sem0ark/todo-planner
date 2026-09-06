@@ -16,10 +16,8 @@ describe("templates service", () => {
     template_group_id: null,
     current_snapshot: {
       id: 1,
-      day_template_id: 1,
-      user_id: 1,
       snapshot_blocks: [
-        { id: 1, category_id: 1, start_time: "09:00:00", duration_minutes: 60 },
+        { id: 1, category_id: 1, start_time: "09:00", duration_minutes: 60 },
       ],
       snapshotted_at: "2024-01-01T00:00:00Z",
     },
@@ -56,14 +54,14 @@ describe("templates service", () => {
   });
 
   describe("createTemplate", () => {
-    it("normalizes block start times to HH:MM:SS", async () => {
+    it("sends schedule times without adding seconds", async () => {
       const input = {
         name: "Weekday Schedule",
         template_group_id: null,
         snapshot_blocks: [
           {
             category_id: 1,
-            start_time: "06:00:00.000000",
+            start_time: "06:00",
             duration_minutes: 120,
           },
         ],
@@ -77,9 +75,6 @@ describe("templates service", () => {
 
       expect(JSON.parse((fetch as any).mock.calls[0][1].body)).toEqual({
         ...input,
-        snapshot_blocks: [
-          { ...input.snapshot_blocks[0], start_time: "06:00:00" },
-        ],
       });
     });
 

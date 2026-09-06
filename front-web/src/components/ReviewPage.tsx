@@ -37,7 +37,7 @@ function minutes(time: string) {
 interface ReviewDay {
   date: string;
   record: DayRecord | null;
-  snapshotBlocks: DayRecord["snapshot_blocks"];
+  snapshotBlocks: NonNullable<DayRecord["snapshot"]>["blocks"];
   actualBlocks: NonNullable<DayRecord>["actual_blocks"];
 }
 
@@ -111,7 +111,7 @@ export default function ReviewPage() {
           date,
           record,
           snapshotBlocks:
-            record?.snapshot_blocks ??
+            record?.snapshot?.blocks ??
             template?.current_snapshot?.snapshot_blocks ??
             [],
           actualBlocks: record?.actual_blocks ?? [],

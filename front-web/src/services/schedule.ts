@@ -27,7 +27,7 @@ export interface UpdateWeeklyScheduleInput {
 }
 
 export interface UpdateScheduleOverrideInput {
-  day_template_id: number | null;
+  day_template_id: number;
 }
 
 export async function getSchedule(token: string): Promise<Schedule> {
@@ -72,7 +72,7 @@ export async function updateScheduleOverride(
   token: string,
   date: string,
   input: UpdateScheduleOverrideInput,
-): Promise<ScheduleOverride | null> {
+): Promise<ScheduleOverride> {
   const response = await fetch(`${API_URL}/schedule/overrides/${date}`, {
     method: "PUT",
     headers: {
@@ -86,9 +86,16 @@ export async function updateScheduleOverride(
     throw new Error("Failed to update schedule override");
   }
 
-  const data = await response.json();
-  if (data.id === null) {
-    return null;
-  }
-  return data;
+  return response.json();
+}
+
+export async function deleteScheduleOverride(
+  token: string,
+  date: string,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/schedule/overrides/${date}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to delete schedule override");
 }
