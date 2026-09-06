@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // DayRecordsResponse for GET /day-records
@@ -17,14 +20,24 @@ type DayRecordInput struct {
 	CalendarDate string `json:"calendar_date"` // YYYY-MM-DD
 }
 
-// Day record status update request data
-type DayRecordStatusInput struct {
-	ReviewStatus string `json:"review_status"` // Reviewed | Ignored
-}
-
 // Batch day event submission request data
 type DayEventsInput struct {
 	Events []DayEventInput `json:"events"`
+}
+
+type DayRecordBlocksInput struct {
+	ActualBlocks []ActualBlockInput `json:"actual_blocks"`
+}
+
+type DayRecordTemplateInput struct {
+	DayTemplateID *int `json:"day_template_id"`
+}
+
+type ActualBlockInput struct {
+	CategoryID      *int   `json:"category_id"`
+	BlockType       string `json:"block_type"`
+	StartTime       string `json:"start_time"`
+	DurationMinutes int    `json:"duration_minutes"`
 }
 
 // getDayRecordsHandler returns all day records within a date range
@@ -50,8 +63,14 @@ func (api *API) getDayRecordsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate date format (basic check)
-	if !isValidDateFormat(fromDate) || !isValidDateFormat(toDate) {
+	if !isValidCalendarDate(fromDate) || !isValidCalendarDate(toDate) {
 		http.Error(w, "invalid date format: use YYYY-MM-DD", http.StatusBadRequest)
+		return
+	}
+	fromCalendarDate, _ := time.Parse("2006-01-02", fromDate)
+	toCalendarDate, _ := time.Parse("2006-01-02", toDate)
+	if toCalendarDate.Before(fromCalendarDate) {
+		http.Error(w, "invalid date range", http.StatusBadRequest)
 		return
 	}
 
@@ -95,16 +114,14 @@ func (api *API) postDayRecordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !isValidDateFormat(input.CalendarDate) {
-		http.Error(w, "invalid date format: use YYYY-MM-DD", http.StatusBadRequest)
+	if !isValidCalendarDate(input.CalendarDate) {
+		http.Error(w, "invalid calendar date: use YYYY-MM-DD", http.StatusBadRequest)
 		return
 	}
 
-	// Create day record
 	record, err := api.dayRecordRepo.Create(r.Context(), userID, input.CalendarDate)
 	if err != nil {
-		// Check if it's a duplicate error
-		if strings.Contains(err.Error(), "already exists") {
+		if strings.Contains(err.Error(), "day record already exists") {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
@@ -114,66 +131,6 @@ func (api *API) postDayRecordHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(record)
-}
-
-// putDayRecordStatusHandler updates the review status of a day record
-func (api *API) putDayRecordStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// Extract ID from path
-	path := strings.TrimPrefix(r.URL.Path, "/day-records/")
-	parts := strings.Split(path, "/")
-	if len(parts) != 2 || parts[1] != "status" {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-
-	id, err := strconv.Atoi(parts[0])
-	if err != nil {
-		http.Error(w, "invalid day record ID", http.StatusBadRequest)
-		return
-	}
-
-	var input DayRecordStatusInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	// Validate input
-	if input.ReviewStatus != "Reviewed" && input.ReviewStatus != "Ignored" {
-		http.Error(w, "review_status must be 'Reviewed' or 'Ignored'", http.StatusBadRequest)
-		return
-	}
-
-	// Update status
-	record, err := api.dayRecordRepo.UpdateStatus(r.Context(), id, userID, input.ReviewStatus)
-	if err != nil {
-		// Check if it's a validation error
-		if strings.Contains(err.Error(), "invalid review_status") || strings.Contains(err.Error(), "cannot change status") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		// Check if not found
-		if strings.Contains(err.Error(), "no rows") {
-			http.Error(w, "day record not found", http.StatusNotFound)
-			return
-		}
-		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update day record", err, map[string]interface{}{"user_id": userID, "record_id": id})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(record)
 }
 
@@ -198,8 +155,8 @@ func (api *API) postDayEventsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := strconv.Atoi(parts[0])
-	if err != nil {
+	recordID, err := strconv.Atoi(parts[0])
+	if err != nil || recordID <= 0 {
 		http.Error(w, "invalid day record ID", http.StatusBadRequest)
 		return
 	}
@@ -215,20 +172,23 @@ func (api *API) postDayEventsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := api.validateCategoryIDs(r.Context(), userID, input.Events); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	// Create events and recompute actual blocks
-	createdEvents, actualBlocks, err := api.dayRecordRepo.CreateEvents(r.Context(), id, userID, input.Events)
+	createdEvents, actualBlocks, err := api.dayRecordRepo.CreateEvents(r.Context(), recordID, userID, input.Events)
 	if err != nil {
+		if errors.Is(err, ErrDayRecordNotFound) {
+			http.Error(w, "day record not found", http.StatusNotFound)
+			return
+		}
 		// Check error type
 		if strings.Contains(err.Error(), "cannot add events") {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
-		if strings.Contains(err.Error(), "no rows") {
-			http.Error(w, "day record not found", http.StatusNotFound)
-			return
-		}
-		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete day record", err, map[string]interface{}{"user_id": userID, "record_id": id})
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to append day events", err, map[string]interface{}{"user_id": userID, "record_id": recordID})
 		return
 	}
 
@@ -242,6 +202,138 @@ func (api *API) postDayEventsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// putDayRecordHandler replaces the actual blocks for a day record.
+func (api *API) putDayRecordHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := getUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	dayRecordID, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/day-records/"))
+	if err != nil || dayRecordID <= 0 {
+		http.Error(w, "invalid day record ID", http.StatusBadRequest)
+		return
+	}
+
+	var input DayRecordBlocksInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if err := validateActualBlocks(input.ActualBlocks); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := api.validateActualBlockCategoryIDs(r.Context(), userID, input.ActualBlocks); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	record, err := api.dayRecordRepo.FindByID(r.Context(), dayRecordID, userID)
+	if err != nil {
+		if errors.Is(err, ErrDayRecordNotFound) {
+			http.Error(w, "day record not found", http.StatusNotFound)
+			return
+		}
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to load day record", err, map[string]interface{}{"user_id": userID, "day_record_id": dayRecordID})
+		return
+	}
+	blocks, err := api.dayRecordRepo.ReplaceActualBlocks(r.Context(), record.ID, userID, input.ActualBlocks)
+	if err != nil {
+		if strings.Contains(err.Error(), "cannot edit") {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to replace actual blocks", err, map[string]interface{}{"user_id": userID, "day_record_id": dayRecordID})
+		return
+	}
+
+	updatedRecord, err := api.dayRecordRepo.FindByID(r.Context(), record.ID, userID)
+	if err != nil {
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to load updated day record", err, map[string]interface{}{"user_id": userID, "day_record_id": dayRecordID})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		ActualBlocks []ActualBlock `json:"actual_blocks"`
+		UpdatedAt    time.Time     `json:"updated_at"`
+	}{ActualBlocks: blocks, UpdatedAt: updatedRecord.UpdatedAt})
+}
+
+func (api *API) validateCategoryIDs(contextValue context.Context, userID int, events []DayEventInput) error {
+	for _, event := range events {
+		if event.CategoryID == nil {
+			return &ValidationError{Message: "category_id is required for all events"}
+		}
+		category, err := api.categoryRepo.FindByID(contextValue, *event.CategoryID, userID)
+		if err != nil || category.IsDeleted {
+			return &ValidationError{Message: "unknown category_id"}
+		}
+	}
+	return nil
+}
+
+func (api *API) validateActualBlockCategoryIDs(contextValue context.Context, userID int, blocks []ActualBlockInput) error {
+	for _, block := range blocks {
+		if block.CategoryID == nil {
+			continue
+		}
+		category, err := api.categoryRepo.FindByID(contextValue, *block.CategoryID, userID)
+		if err != nil || category.IsDeleted {
+			return &ValidationError{Message: "unknown category_id"}
+		}
+	}
+	return nil
+}
+
+func (api *API) putDayRecordTemplateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := getUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/day-records/"), "/")
+	if len(pathParts) != 2 || pathParts[1] != "template" {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	recordID, err := strconv.Atoi(pathParts[0])
+	if err != nil || recordID <= 0 {
+		http.Error(w, "invalid day record ID", http.StatusBadRequest)
+		return
+	}
+	var input DayRecordTemplateInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	record, err := api.dayRecordRepo.UpdateTemplate(r.Context(), userID, recordID, input.DayTemplateID)
+	if err != nil {
+		if errors.Is(err, ErrDayRecordPast) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrDayRecordNotFound) || strings.Contains(err.Error(), "day template not found") {
+			http.Error(w, "day record or template not found", http.StatusNotFound)
+			return
+		}
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update day record template", err, map[string]interface{}{"user_id": userID, "day_record_id": recordID})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(record)
 }
 
 // validateDayEvents validates a batch of day events
@@ -281,28 +373,44 @@ func validateDayEvents(events []DayEventInput) error {
 	return nil
 }
 
-// Helper function to validate date format YYYY-MM-DD
-func isValidDateFormat(date string) bool {
-	if len(date) != 10 {
-		return false
+func validateActualBlocks(blocks []ActualBlockInput) error {
+	var previousEnd int
+	for index, block := range blocks {
+		if block.BlockType != "actual" && block.BlockType != "blank" {
+			return &ValidationError{Message: "block_type must be 'actual' or 'blank'"}
+		}
+		if block.BlockType == "actual" && block.CategoryID == nil {
+			return &ValidationError{Message: "category_id is required for actual blocks"}
+		}
+		if block.BlockType == "blank" && block.CategoryID != nil {
+			return &ValidationError{Message: "category_id must be null for blank blocks"}
+		}
+
+		parsedTime, err := time.Parse("15:04:05", block.StartTime)
+		if err != nil {
+			parsedTime, err = time.Parse(time.RFC3339, block.StartTime)
+		}
+		if err != nil {
+			return &ValidationError{Message: "start_time must be a valid time"}
+		}
+		minuteOfDay := parsedTime.Hour()*60 + parsedTime.Minute()
+		if minuteOfDay%15 != 0 || parsedTime.Second() != 0 {
+			return &ValidationError{Message: "start_time must use 15-minute increments"}
+		}
+		if block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 {
+			return &ValidationError{Message: "duration_minutes must be at least 30 and a multiple of 15"}
+		}
+		if index > 0 && minuteOfDay < previousEnd {
+			return &ValidationError{Message: "actual blocks must not overlap"}
+		}
+		previousEnd = minuteOfDay + block.DurationMinutes
 	}
-	parts := strings.Split(date, "-")
-	if len(parts) != 3 {
-		return false
-	}
-	year, err := strconv.Atoi(parts[0])
-	if err != nil || year < 1900 || year > 2100 {
-		return false
-	}
-	month, err := strconv.Atoi(parts[1])
-	if err != nil || month < 1 || month > 12 {
-		return false
-	}
-	day, err := strconv.Atoi(parts[2])
-	if err != nil || day < 1 || day > 31 {
-		return false
-	}
-	return true
+	return nil
+}
+
+func isValidCalendarDate(date string) bool {
+	_, err := time.Parse("2006-01-02", date)
+	return err == nil
 }
 
 // dayRecordsHandler routes to the appropriate day records handler based on path and method
@@ -310,26 +418,31 @@ func (api *API) dayRecordsHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/day-records")
 
 	if path == "" || path == "/" {
-		// GET /day-records or POST /day-records
-		if r.Method == http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
 			api.getDayRecordsHandler(w, r)
-		} else if r.Method == http.MethodPost {
+		case http.MethodPost:
 			api.postDayRecordHandler(w, r)
-		} else {
+		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 		return
 	}
 
-	// PUT /day-records/{id}/status
-	if strings.HasSuffix(path, "/status") {
-		api.putDayRecordStatusHandler(w, r)
+	if strings.HasSuffix(path, "/template") {
+		api.putDayRecordTemplateHandler(w, r)
 		return
 	}
 
 	// POST /day-records/{id}/events
 	if strings.HasSuffix(path, "/events") {
 		api.postDayEventsHandler(w, r)
+		return
+	}
+
+	// PUT /day-records/{id}
+	if strings.Count(strings.Trim(path, "/"), "/") == 0 {
+		api.putDayRecordHandler(w, r)
 		return
 	}
 

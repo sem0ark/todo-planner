@@ -129,7 +129,7 @@ func TestEmptyListSerialization_Templates(t *testing.T) {
 	}
 }
 
-func TestEmptyListSerialization_TemplateWithEmptyPlannedBlocks(t *testing.T) {
+func TestEmptyListSerialization_TemplateWithEmptySnapshotBlocks(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret", NewLogger("test"))
@@ -137,8 +137,8 @@ func TestEmptyListSerialization_TemplateWithEmptyPlannedBlocks(t *testing.T) {
 
 	// Create a template with no planned blocks
 	template, err := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{
-		Name:          "Empty Template",
-		PlannedBlocks: []PlannedBlockInput{},
+		Name:           "Empty Template",
+		SnapshotBlocks: []SnapshotBlockInput{},
 	}, user.ID)
 	if err != nil {
 		t.Fatalf("Failed to create template: %v", err)
@@ -159,9 +159,11 @@ func TestEmptyListSerialization_TemplateWithEmptyPlannedBlocks(t *testing.T) {
 
 	var response struct {
 		Templates []struct {
-			ID            int           `json:"id"`
-			Name          string        `json:"name"`
-			PlannedBlocks []interface{} `json:"planned_blocks"`
+			ID              int    `json:"id"`
+			Name            string `json:"name"`
+			CurrentSnapshot struct {
+				SnapshotBlocks []interface{} `json:"snapshot_blocks"`
+			} `json:"current_snapshot"`
 		} `json:"templates"`
 	}
 	json.NewDecoder(w.Body).Decode(&response)
@@ -175,12 +177,12 @@ func TestEmptyListSerialization_TemplateWithEmptyPlannedBlocks(t *testing.T) {
 		t.Errorf("Expected template ID %d, got %d", template.ID, tmpl.ID)
 	}
 
-	// Verify planned_blocks is an empty array, not null
-	if tmpl.PlannedBlocks == nil {
-		t.Error("Expected planned_blocks to be [], not null")
+	// Verify snapshot_blocks is an empty array, not null.
+	if tmpl.CurrentSnapshot.SnapshotBlocks == nil {
+		t.Error("Expected snapshot_blocks to be [], not null")
 	}
-	if len(tmpl.PlannedBlocks) != 0 {
-		t.Errorf("Expected empty planned_blocks array, got length %d", len(tmpl.PlannedBlocks))
+	if len(tmpl.CurrentSnapshot.SnapshotBlocks) != 0 {
+		t.Errorf("Expected empty snapshot_blocks array, got length %d", len(tmpl.CurrentSnapshot.SnapshotBlocks))
 	}
 }
 

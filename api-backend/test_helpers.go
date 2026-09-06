@@ -47,7 +47,6 @@ func cleanupTestDB(t *testing.T, db *pgxpool.Pool) {
 		"block_categories",
 		"template_groups",
 		"day_templates",
-		"planned_blocks",
 		"template_snapshots",
 		"snapshot_blocks",
 		"weekly_schedule",

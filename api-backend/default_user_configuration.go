@@ -54,16 +54,6 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 		{categoryName: "Rest", startTime: "19:00:00", duration: 360},
 	}
 
-	for _, block := range blocks {
-		_, err = tx.Exec(ctx, `
-			INSERT INTO planned_blocks (day_template_id, category_id, start_time, duration_minutes)
-			VALUES ($1, $2, $3, $4)
-		`, templateID, categoryIDs[block.categoryName], block.startTime, block.duration)
-		if err != nil {
-			return err
-		}
-	}
-
 	var snapshotID int
 	err = tx.QueryRow(ctx, `
 		INSERT INTO template_snapshots (day_template_id, user_id)
@@ -74,14 +64,14 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 		return err
 	}
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO snapshot_blocks (snapshot_id, category_id, start_time, duration_minutes)
-		SELECT $1, category_id, start_time, duration_minutes
-		FROM planned_blocks
-		WHERE day_template_id = $2
-	`, snapshotID, templateID)
-	if err != nil {
-		return err
+	for _, block := range blocks {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO snapshot_blocks (snapshot_id, category_id, start_time, duration_minutes)
+			VALUES ($1, $2, $3, $4)
+		`, snapshotID, categoryIDs[block.categoryName], block.startTime, block.duration)
+		if err != nil {
+			return err
+		}
 	}
 
 	_, err = tx.Exec(ctx, `

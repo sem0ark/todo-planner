@@ -30,28 +30,23 @@
   - `DELETE /template-groups/{id}` - soft delete
 
 - **Day Templates**
-  - `GET /templates` - list all active templates with planned blocks inline
+  - `GET /templates` - list all active templates with their current snapshot blocks inline
   - `POST /templates` - create template (send copied blocks to implement "Create From")
-  - `PUT /templates/{id}` - replace template metadata and full block list; server creates a new snapshot automatically
-  - `DELETE /templates/{id}` - soft delete
+  - `PUT /templates/{id}` - update template metadata and create a new snapshot; active/future days using the template are re-pinned
+  - `DELETE /templates/{id}` - soft delete a template
 
- - **Schedule**
+- **Schedule**
   - `GET /schedule` - get full weekly schedule and all future overrides
   - `GET /schedule/today` - resolve today's schedule assignment and return its template with planned blocks
   - `PUT /schedule/weekly` - replace all 7 day-of-week assignments
   - `PUT /schedule/overrides/{date}` - set or remove override for a specific date
 
 - **Day Records**
-  - `GET /day-records?from=&to=` - fetch records in date range; each record includes its snapshot blocks and actual blocks inline, no raw events or edits
-  - `POST /day-records` - create record for a date; server pins the current template snapshot
-  - `PUT /day-records/{id}/status` - transition review status (Reviewed / Ignored)
-  - `POST /day-records/{id}/events` - append batch of day events (confirmations / transitions); server recomputes actual blocks
-  - `POST /day-records/{id}/edits` - append batch of retroactive edits; server recomputes actual blocks
-
-<!-- TODO: plan out analyztics
-- **Analytics**
-  - `GET /analytics/template-health/{template_id}?days=` - per-category planned vs actual breakdown for a template
-  - `GET /analytics/overview?weeks=` - cross-template adherence ratios and weekly gap strip -->
+  - `GET /day-records?from=&to=` - fetch existing records in date range; missing dates are omitted, and each record includes its snapshot blocks and actual blocks inline
+  - `POST /day-records` - create a record for a calendar date and pin the active template snapshot
+  - `PUT /day-records/{id}/template` - re-resolve or explicitly assign the template and re-pin an active/future day
+  - `POST /day-records/{id}/events` - append batch of day events (confirmations / transitions); recomputes actual blocks
+  - `PUT /day-records/{id}` - replace the actual blocks for a day during review
 
 
 # DB format - V1
@@ -121,14 +116,6 @@ erDiagram
         timestamp updated_at
     }
 
-    PLANNED_BLOCK {
-        integer id PK
-        integer day_template_id FK
-        integer category_id FK
-        time start_time
-        integer duration_minutes
-    }
-
     TEMPLATE_SNAPSHOT {
         integer id PK
         integer day_template_id FK
@@ -163,9 +150,9 @@ erDiagram
     DAY_RECORD {
         integer id PK
         integer user_id FK
+        integer day_template_id FK
         integer snapshot_id FK
         date calendar_date
-        string review_status
         timestamp created_at
         timestamp updated_at
     }
@@ -198,9 +185,6 @@ erDiagram
     USER ||--o{ DAY_TEMPLATE : "owns"
 
     DAY_TEMPLATE }o--o| TEMPLATE_GROUP : "belongs to"
-    DAY_TEMPLATE ||--o{ PLANNED_BLOCK : "contains"
-    PLANNED_BLOCK }o--|| BLOCK_CATEGORY : "classified by"
-
     DAY_TEMPLATE ||--o{ TEMPLATE_SNAPSHOT : "versioned by"
     TEMPLATE_SNAPSHOT ||--o{ SNAPSHOT_BLOCK : "contains"
     SNAPSHOT_BLOCK }o--|| BLOCK_CATEGORY : "classified by"
@@ -212,14 +196,13 @@ erDiagram
     SCHEDULE_OVERRIDE }o--o| DAY_TEMPLATE : "assigns"
 
     USER ||--o{ DAY_RECORD : "owns"
-    DAY_RECORD }o--|| TEMPLATE_SNAPSHOT : "pinned to"
+    DAY_RECORD }o--o| DAY_TEMPLATE : "uses template"
+    DAY_RECORD }o--o| TEMPLATE_SNAPSHOT : "pinned to snapshot"
     DAY_RECORD ||--o{ DAY_EVENT : "contains"
     DAY_EVENT }o--o| BLOCK_CATEGORY : "category"
     DAY_RECORD ||--o{ ACTUAL_BLOCK : "has derived"
     ACTUAL_BLOCK }o--|| BLOCK_CATEGORY : "classified by"
 ```
-
-Note: For now will use change log to identify what needs synchronization and actual sync will be purely timestamp-based without complex vector-sequence resolution.
 
 Index Suggestions
 
@@ -237,9 +220,6 @@ Index Suggestions
 - **`(user_id, is_deleted)`** — `GET /templates` always filters by user and excludes soft-deleted rows
 - **`(template_group_id)`** — grouping/filtering templates by group in template library view
 
-`PLANNED_BLOCK`
-- **`(day_template_id)`** — every template fetch joins to its planned blocks; high frequency
-
 `TEMPLATE_SNAPSHOT`
 - **`(day_template_id, snapshotted_at)`** — when a day record is created, server must find the most recent snapshot for the assigned template
 
@@ -254,14 +234,14 @@ Index Suggestions
 
 `DAY_RECORD`
 - **`(user_id, calendar_date)`** — `GET /day-records?from=&to=` is always a date range query scoped to a user; core access pattern for week view, analytics, and sync
-- **`(user_id, review_status)`** — analytics and overview endpoints filter by status to exclude `Ignored` records; week view counts unreviewed days
+- **`(snapshot_id)`** — every day record fetch joins its pinned snapshot to retrieve the planned schedule
 
 `DAY_EVENT`
 - **`(day_record_id, occurred_at)`** — events are appended and replayed in order per day record; ordering by time is required for correct block derivation
 
 `ACTUAL_BLOCK`
 - **`(day_record_id)`** — every day record fetch joins to its actual blocks; high frequency, same pattern as `SNAPSHOT_BLOCK`
-- **`(day_record_id, start_time)`** — analytics and health view need blocks in time order within a day; also used when recomputing blocks after new events or edits
+- **`(day_record_id, start_time)`** — analytics and health view need blocks in time order within a day; also used when recomputing blocks after new events.
 
 # API Specification
 
@@ -408,7 +388,7 @@ After processing, the server updates `last_sync_at` for the device.
   "last_sync_at": "timestamp | null",
   "changes": [
     {
-      "entity_type": "string (category | template_group | day_template | weekly_schedule | schedule_override | day_record | day_event | retroactive_edit | actual_block | settings)",
+      "entity_type": "string (category | template_group | day_template | weekly_schedule | schedule_override | day_record | day_event | actual_block | settings)",
       "entity_id": "integer",
       "operation": "string (create | update | delete)",
       "occurred_at": "timestamp (ISO 8601)",
@@ -609,10 +589,10 @@ Soft-deletes a template group. Templates previously assigned to this group retai
 
 ## Day Templates
 
-Templates are always returned with their planned blocks inline. Planned blocks have no independent API surface — they are managed as part of the template via full replacement on PUT.
+Templates are returned with the current template snapshot and its schedule blocks inline. Snapshot blocks have no independent API surface — they are managed as part of template creation or snapshot creation on PUT.
 
 ### `GET /templates`
-Returns all non-deleted templates with their planned blocks.
+Returns all non-deleted templates with their current snapshot and schedule blocks.
 
 **Output `200`:**
 ```json
@@ -622,14 +602,18 @@ Returns all non-deleted templates with their planned blocks.
       "id": "integer",
       "name": "string",
       "template_group_id": "integer | null",
-      "planned_blocks": [
-        {
-          "id": "integer",
-          "category_id": "integer",
-          "start_time": "string (ISO 8601)",
-          "duration_minutes": "integer"
-        }
-      ],
+      "current_snapshot": {
+        "id": "integer",
+        "snapshotted_at": "timestamp (ISO 8601)",
+        "snapshot_blocks": [
+          {
+            "id": "integer",
+            "category_id": "integer",
+            "start_time": "string (ISO 8601)",
+            "duration_minutes": "integer"
+          }
+        ]
+      },
       "created_at": "timestamp (ISO 8601)",
       "updated_at": "timestamp (ISO 8601)"
     }
@@ -638,14 +622,14 @@ Returns all non-deleted templates with their planned blocks.
 ```
 
 ### `POST /templates`
-Creates a new template with an initial set of planned blocks. To implement "Create From", the client sends the copied blocks from the source template as the initial `planned_blocks`. The server creates a snapshot immediately on creation.
+Creates a new template with general metadata and an initial schedule. To implement "Create From", the client sends the copied blocks from the source template as the initial `snapshot_blocks`. The server creates the first template snapshot immediately on creation.
 
 **Input:**
 ```json
 {
   "name": "string",
   "template_group_id": "integer | null",
-  "planned_blocks": [
+  "snapshot_blocks": [
     {
       "category_id": "integer",
       "start_time": "string (ISO 8601)",
@@ -661,14 +645,18 @@ Creates a new template with an initial set of planned blocks. To implement "Crea
   "id": "integer",
   "name": "string",
   "template_group_id": "integer | null",
-  "planned_blocks": [
-    {
-      "id": "integer",
-      "category_id": "integer",
-      "start_time": "string (ISO 8601)",
-      "duration_minutes": "integer"
-    }
-  ],
+  "current_snapshot": {
+    "id": "integer",
+    "snapshotted_at": "timestamp (ISO 8601)",
+    "snapshot_blocks": [
+      {
+        "id": "integer",
+        "category_id": "integer",
+        "start_time": "string (ISO 8601)",
+        "duration_minutes": "integer"
+      }
+    ]
+  },
   "created_at": "timestamp (ISO 8601)",
   "updated_at": "timestamp (ISO 8601)"
 }
@@ -679,14 +667,16 @@ Creates a new template with an initial set of planned blocks. To implement "Crea
 - `404` — template_group_id not found or does not belong to user
 
 ### `PUT /templates/{id}`
-Replaces template metadata and its complete planned block list. Existing blocks are deleted and replaced with the submitted list. The server automatically creates a new `TEMPLATE_SNAPSHOT` after applying the replacement, which will be used by any day records created from this point forward.
+Replaces the template metadata and creates a new template snapshot containing the submitted schedule. Existing snapshots and their blocks are retained unchanged for historical records.
+
+Existing active/future day records for this template are re-pinned from their old snapshot to the new snapshot. Their actual blocks and events are unchanged. Past day records are frozen and are never re-pinned automatically.
 
 **Input:**
 ```json
 {
   "name": "string",
   "template_group_id": "integer | null",
-  "planned_blocks": [
+  "snapshot_blocks": [
     {
       "category_id": "integer",
       "start_time": "string (ISO 8601)",
@@ -702,14 +692,18 @@ Replaces template metadata and its complete planned block list. Existing blocks 
   "id": "integer",
   "name": "string",
   "template_group_id": "integer | null",
-  "planned_blocks": [
-    {
-      "id": "integer",
-      "category_id": "integer",
-      "start_time": "string (ISO 8601)",
-      "duration_minutes": "integer"
-    }
-  ],
+  "current_snapshot": {
+    "id": "integer",
+    "snapshotted_at": "timestamp (ISO 8601)",
+    "snapshot_blocks": [
+      {
+        "id": "integer",
+        "category_id": "integer",
+        "start_time": "string (ISO 8601)",
+        "duration_minutes": "integer"
+      }
+    ]
+  },
   "updated_at": "timestamp (ISO 8601)"
 }
 ```
@@ -719,7 +713,7 @@ Replaces template metadata and its complete planned block list. Existing blocks 
 - `404` — template not found or does not belong to user
 
 ### `DELETE /templates/{id}`
-Soft-deletes a template. The template becomes invisible in the template library. All day records that used this template retain their pinned snapshot, which is unaffected by the deletion.
+Soft-deletes a template. The template becomes invisible in the template library. All day records that used the template retain their pinned snapshot, which is unaffected by the deletion.
 
 **Output `200`:**
 ```json
@@ -771,7 +765,11 @@ Returns the template assignment resolved for the current calendar date. A date-s
     "id": "integer",
     "name": "string",
     "template_group_id": "integer | null",
-    "planned_blocks": []
+    "current_snapshot": {
+      "id": "integer",
+      "snapshotted_at": "timestamp (ISO 8601)",
+      "snapshot_blocks": []
+    }
   }
 }
 ```
@@ -779,7 +777,7 @@ Returns the template assignment resolved for the current calendar date. A date-s
 When no template is assigned, `day_template_id` and `template` are `null`.
 
 ### `PUT /schedule/weekly`
-Replaces the full weekly schedule. All 7 days of the week must be included. Days with no template assigned should have `day_template_id: null`. Changes apply to future dates only — past day records are unaffected.
+Replaces the full weekly schedule. All 7 days of the week must be included. Days with no template assigned should have `day_template_id: null`. Changes apply to active and future dates — past day records are frozen and unaffected. Existing active/future day records are re-resolved and re-pinned when their assignment changes.
 
 **Input:**
 ```json
@@ -812,7 +810,7 @@ Replaces the full weekly schedule. All 7 days of the week must be included. Days
 - `404` — any referenced day_template_id not found or does not belong to user
 
 ### `PUT /schedule/overrides/{date}`
-Creates or replaces the schedule override for a specific calendar date. Sending `day_template_id: null` removes the override, reverting that date to the weekly schedule assignment. `{date}` must be in `YYYY-MM-DD` format.
+Creates or replaces the schedule override for a specific calendar date. Sending `day_template_id: null` removes the override, reverting that date to the weekly schedule assignment. Existing active/future day records for the date are re-resolved and re-pinned. `{date}` must be in `YYYY-MM-DD` format.
 
 **Input:**
 ```json
@@ -837,10 +835,10 @@ Creates or replaces the schedule override for a specific calendar date. Sending 
 
 ## Day Records
 
-Day records are the primary data surface for both the live widget and the review surfaces. Raw events and retroactive edits are internal — the API exposes only the derived `actual_blocks` and the `snapshot_blocks` from the pinned template snapshot. Events and edits are submitted via their own endpoints and trigger server-side recomputation of `actual_blocks`.
+Day records are the primary data surface for both the live widget and the review surfaces. Raw events are internal — the API exposes only the current `actual_blocks` and the `snapshot_blocks` from the pinned template snapshot. Records are created explicitly through `POST /day-records`. Events trigger server-side recomputation of `actual_blocks`; review changes replace the actual block list through `PUT /day-records/{id}`.
 
 ### `GET /day-records`
-Returns all day records within the specified date range. Each record includes its pinned snapshot blocks and current derived actual blocks inline. No raw events or edits are returned.
+Returns existing day records within the specified date range. Dates without a day record are omitted and do not initialize one. Each returned record includes its template identity, pinned snapshot identity and blocks, and current derived actual blocks inline.
 
 **Query params:** `from=YYYY-MM-DD&to=YYYY-MM-DD`
 
@@ -851,7 +849,8 @@ Returns all day records within the specified date range. Each record includes it
     {
       "id": "integer",
       "calendar_date": "string (YYYY-MM-DD)",
-      "review_status": "string (Unreviewed | Reviewed | Ignored)",
+      "day_template_id": "integer | null",
+      "snapshot_id": "integer | null",
       "snapshot_blocks": [
         {
           "id": "integer",
@@ -877,10 +876,10 @@ Returns all day records within the specified date range. Each record includes it
 ```
 
 **Errors:**
-- `400` — missing or invalid date range format, range exceeds allowed window
+- `400` — missing or invalid date range format, or the end date precedes the start date
 
 ### `POST /day-records`
-Creates a new day record for a given calendar date. The server resolves the active template for that date (checking schedule overrides first, then the weekly schedule), pins the most recent snapshot of that template to the record, and initializes an empty actual block list. If no template is assigned for that date, the record is created with no snapshot.
+Creates a new day record for a calendar date. The server resolves the active template for that date, checking schedule overrides first and then the weekly schedule, and pins the most recent snapshot of that template to the record. If no template is assigned, the record is created without a template or snapshot.
 
 **Input:**
 ```json
@@ -894,15 +893,9 @@ Creates a new day record for a given calendar date. The server resolves the acti
 {
   "id": "integer",
   "calendar_date": "string (YYYY-MM-DD)",
-  "review_status": "Unreviewed",
-  "snapshot_blocks": [
-    {
-      "id": "integer",
-      "category_id": "integer",
-      "start_time": "string (ISO 8601)",
-      "duration_minutes": "integer"
-    }
-  ],
+  "day_template_id": "integer | null",
+  "snapshot_id": "integer | null",
+  "snapshot_blocks": [],
   "actual_blocks": [],
   "created_at": "timestamp (ISO 8601)",
   "updated_at": "timestamp (ISO 8601)"
@@ -913,13 +906,13 @@ Creates a new day record for a given calendar date. The server resolves the acti
 - `400` — invalid date format
 - `409` — a day record already exists for this date
 
-### `PUT /day-records/{id}/status`
-Transitions the review status of a day record. Only `Reviewed` and `Ignored` are valid target states — both transitions are permanent and cannot be reversed. A `Reviewed` or `Ignored` record cannot be transitioned again.
+### `PUT /day-records/{id}/template`
+Changes the planned template for an active or future day record without changing its events or actual blocks. Past day records are frozen. If `day_template_id` is `null`, the server resolves the template from the date override and weekly schedule. If a template ID is provided, the server uses that template's latest snapshot. The day record stores both the selected template ID and the pinned snapshot ID.
 
 **Input:**
 ```json
 {
-  "review_status": "string (Reviewed | Ignored)"
+  "day_template_id": "integer | null"
 }
 ```
 
@@ -927,19 +920,43 @@ Transitions the review status of a day record. Only `Reviewed` and `Ignored` are
 ```json
 {
   "id": "integer",
-  "review_status": "string",
+  "calendar_date": "string (YYYY-MM-DD)",
+  "day_template_id": "integer | null",
+  "snapshot_id": "integer | null",
+  "snapshot_blocks": [
+    {
+      "id": "integer",
+      "category_id": "integer",
+      "start_time": "string (ISO 8601)",
+      "duration_minutes": "integer"
+    }
+  ],
+  "actual_blocks": [
+    {
+      "id": "integer",
+      "category_id": "integer | null",
+      "block_type": "string (actual | blank | untracked)",
+      "start_time": "string (ISO 8601)",
+      "duration_minutes": "integer"
+    }
+  ],
   "updated_at": "timestamp (ISO 8601)"
 }
 ```
 
+**Rules:**
+- Only active or future day records can be re-pinned.
+- `day_template_id: null` removes the plan if no template is resolved from the current schedule.
+- Actual blocks and events are unaffected.
+
 **Errors:**
-- `400` — invalid status value, or record is already Reviewed or Ignored
-- `404` — day record not found or does not belong to user
+- `400` — day record is in the past
+- `404` — day record or explicit template not found or does not belong to user
 
 ### `POST /day-records/{id}/events`
-Appends one or more day events to a day record in chronological order. Designed for batch submission — native clients accumulate events locally while offline and flush the full batch on sync. After persisting events, the server recomputes and replaces the `actual_blocks` for the day.
+Appends one or more day events to the existing day record identified by `{id}` in chronological order. Designed for batch submission — native clients accumulate events locally while offline and flush the full batch on sync. After persisting events, the server recomputes and replaces the `actual_blocks` for the day.
 
-Only valid for records with status `Unreviewed`.
+Actual blocks may be recorded or corrected for any day record. Snapshot assignment remains immutable for past records.
 
 **Input:**
 ```json
@@ -980,53 +997,33 @@ Only valid for records with status `Unreviewed`.
 
 **Errors:**
 - `400` — invalid event_type, missing required category fields, events not in chronological order
-- `403` — day record is Reviewed or Ignored
 - `404` — day record not found or does not belong to user
 
-<!-- TBD
-### `POST /day-records/{id}/edits`
-Appends one or more retroactive edits to a day record. Used during the Day View review session on the web app. After persisting edits, the server recomputes and replaces the `actual_blocks` for the day.
+### `PUT /day-records/{id}`
+Replaces the complete actual block list for the day record for `{id}`.
 
-Only valid for records with status `Unreviewed`.
-
-`edit_type` values:
-
-| Value | Description |
-|---|---|
-| `resize` | Change duration of a block at a given start time |
-| `move` | Reposition a block to a new start time |
-| `relabel` | Change the category of a block at a given start time |
-| `split` | Split a block at a given start time into two |
-| `mark_blank` | Mark a time region as a Blank Block |
+Used during the Day View to correct or reconstruct the actual timeline. Actual blocks may be changed for any day record, including past records. Snapshot assignment remains immutable for past records.
 
 **Input:**
 ```json
 {
-  "edits": [
+  "actual_blocks": [
     {
-      "edit_type": "string (resize | move | relabel | split | mark_blank)",
       "category_id": "integer | null",
-      "block_start": "string (ISO 8601)",
-      "duration_minutes": "integer | null",
-      "occurred_at": "timestamp (ISO 8601)"
+      "block_type": "string (actual | blank)",
+      "start_time": "string (ISO 8601)",
+      "duration_minutes": "integer"
     }
   ]
 }
 ```
+- `category_id` is required for `actual` blocks and must be `null` for `blank` blocks.
+- Actual and blank blocks must use 15-minute start and duration increments, have a minimum duration of 30 minutes, and must not overlap.
+- Untracked gaps are derived by the server from the gaps between submitted blocks and are returned in the response.
 
 **Output `200`:**
 ```json
 {
-  "created_edits": [
-    {
-      "id": "integer",
-      "edit_type": "string",
-      "category_id": "integer | null",
-      "block_start": "string (ISO 8601)",
-      "duration_minutes": "integer | null",
-      "occurred_at": "timestamp (ISO 8601)"
-    }
-  ],
   "actual_blocks": [
     {
       "id": "integer",
@@ -1035,93 +1032,11 @@ Only valid for records with status `Unreviewed`.
       "start_time": "string (ISO 8601)",
       "duration_minutes": "integer"
     }
-  ]
-}
-```
-
-**Errors:**
-- `400` — invalid edit_type, block_start not on 15-min boundary, duration below 30 min or not a 15-min multiple, unknown category_id
-- `403` — day record is Reviewed or Ignored
-- `404` — day record not found or does not belong to user -->
-
-<!-- Still under discussion whether we want to calculate it locally or server-side
-## Analytics
-
-Analytics are computed server-side on request from the `ACTUAL_BLOCK` and `SNAPSHOT_BLOCK` tables. Only `Unreviewed` and `Reviewed` day records are included. `Ignored` records are always excluded.
-
-### `GET /analytics/template-health/{template_id}`
-Returns the health analysis for a single template over a user-selected time window. Includes per-category planned vs actual breakdown and the overlay data needed to render the frequency heatmap.
-
-**Query params:** `days=integer` (e.g. `days=30`)
-
-**Output `200`:**
-```json
-{
-  "template_id": "integer",
-  "template_name": "string",
-  "window_days": "integer",
-  "record_count": "integer",
-  "category_breakdown": [
-    {
-      "category_id": "integer",
-      "category_name": "string",
-      "category_color": "string (hex)",
-      "planned_minutes_per_day": "integer",
-      "actual_avg_minutes_per_day": "number",
-      "delta_minutes": "number"
-    }
   ],
-  "untracked_avg_minutes_per_day": "number",
-  "blank_avg_minutes_per_day": "number",
-  "overlay_blocks": [
-    {
-      "category_id": "integer",
-      "start_time": "string (ISO 8601)",
-      "duration_minutes": "integer",
-      "frequency": "number (0.0–1.0)"
-    }
-  ]
+  "updated_at": "timestamp (ISO 8601)"
 }
 ```
-- `frequency` — proportion of days in the window where an actual block of this category occupied this time slot. Used to drive opacity in the overlay heatmap.
 
 **Errors:**
-- `400` — missing or invalid days parameter
-- `404` — template not found or does not belong to user
-
-### `GET /analytics/overview`
-Returns cross-template adherence per category and a weekly gap strip for recent weeks. Covers all non-Ignored day records regardless of which template was active.
-
-**Query params:** `weeks=integer` (number of recent weeks, default `4`)
-
-**Output `200`:**
-```json
-{
-  "adherence": [
-    {
-      "category_id": "integer",
-      "category_name": "string",
-      "category_color": "string (hex)",
-      "planned_avg_minutes_per_day": "number",
-      "actual_avg_minutes_per_day": "number",
-      "adherence_ratio": "number"
-    }
-  ],
-  "weekly_gap_strip": [
-    {
-      "week_start": "string (YYYY-MM-DD)",
-      "days": [
-        {
-          "calendar_date": "string (YYYY-MM-DD)",
-          "has_any_actual_blocks": "boolean",
-          "review_status": "string (Unreviewed | Reviewed | Ignored)"
-        }
-      ]
-    }
-  ]
-}
-```
-- `adherence_ratio` — `actual_avg / planned_avg`. Values above 1.0 indicate over-allocation; below 1.0 indicate under-allocation.
-
-**Errors:**
-- `400` — invalid weeks parameter -->
+- `400` — invalid block fields, overlapping blocks, invalid 15-minute boundary, duration below 30 minutes or not a 15-minute multiple, unknown category_id
+- `404` — day record not found or does not belong to user

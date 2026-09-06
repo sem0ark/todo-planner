@@ -16,8 +16,8 @@ func TestGetDayTemplatesHandler_Success(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
-	api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekend", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
+	api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
+	api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekend", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
 
 	req := httptest.NewRequest(http.MethodGet, "/templates", nil)
 	ctx := withUserID(context.Background(), user.ID)
@@ -65,7 +65,7 @@ func TestCreateDayTemplateHandler_Success(t *testing.T) {
 
 	reqBody := DayTemplateInput{
 		Name: "Weekday",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 480},
 		},
 	}
@@ -90,8 +90,8 @@ func TestCreateDayTemplateHandler_Success(t *testing.T) {
 	if template.Name != reqBody.Name {
 		t.Errorf("Expected name '%s', got '%s'", reqBody.Name, template.Name)
 	}
-	if len(template.PlannedBlocks) != 1 {
-		t.Errorf("Expected 1 planned block, got %d", len(template.PlannedBlocks))
+	if len(template.CurrentSnapshot.SnapshotBlocks) != 1 {
+		t.Errorf("Expected 1 planned block, got %d", len(template.CurrentSnapshot.SnapshotBlocks))
 	}
 }
 
@@ -105,7 +105,7 @@ func TestCreateDayTemplateHandler_WithTemplateGroup(t *testing.T) {
 	reqBody := DayTemplateInput{
 		Name:            "Weekday",
 		TemplateGroupID: &group.ID,
-		PlannedBlocks:   []PlannedBlockInput{},
+		SnapshotBlocks:  []SnapshotBlockInput{},
 	}
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/templates", bytes.NewReader(body))
@@ -136,7 +136,7 @@ func TestCreateDayTemplateHandler_MissingName(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	reqBody := DayTemplateInput{Name: "", PlannedBlocks: []PlannedBlockInput{}}
+	reqBody := DayTemplateInput{Name: "", SnapshotBlocks: []SnapshotBlockInput{}}
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/templates", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -164,14 +164,14 @@ func TestUpdateDayTemplateHandler_Success(t *testing.T) {
 
 	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{
 		Name: "Original",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category1.ID, StartTime: "09:00:00", DurationMinutes: 480},
 		},
 	}, user.ID)
 
 	reqBody := DayTemplateInput{
 		Name: "Updated",
-		PlannedBlocks: []PlannedBlockInput{
+		SnapshotBlocks: []SnapshotBlockInput{
 			{CategoryID: category2.ID, StartTime: "10:00:00", DurationMinutes: 240},
 			{CategoryID: category1.ID, StartTime: "14:00:00", DurationMinutes: 120},
 		},
@@ -197,8 +197,8 @@ func TestUpdateDayTemplateHandler_Success(t *testing.T) {
 	if updated.Name != reqBody.Name {
 		t.Errorf("Expected name '%s', got '%s'", reqBody.Name, updated.Name)
 	}
-	if len(updated.PlannedBlocks) != 2 {
-		t.Errorf("Expected 2 planned blocks, got %d", len(updated.PlannedBlocks))
+	if len(updated.CurrentSnapshot.SnapshotBlocks) != 2 {
+		t.Errorf("Expected 2 planned blocks, got %d", len(updated.CurrentSnapshot.SnapshotBlocks))
 	}
 }
 
@@ -208,7 +208,7 @@ func TestUpdateDayTemplateHandler_NotFound(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	reqBody := DayTemplateInput{Name: "Updated", PlannedBlocks: []PlannedBlockInput{}}
+	reqBody := DayTemplateInput{Name: "Updated", SnapshotBlocks: []SnapshotBlockInput{}}
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPut, "/templates/99999", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -232,7 +232,7 @@ func TestDeleteDayTemplateHandler_Success(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
+	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
 
 	req := httptest.NewRequest(http.MethodDelete, "/templates", nil)
 
@@ -285,7 +285,7 @@ func TestDayTemplatesHandler_RouteDispatch(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", PlannedBlocks: []PlannedBlockInput{}}, user.ID)
+	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{Name: "Weekday", SnapshotBlocks: []SnapshotBlockInput{}}, user.ID)
 
 	testCases := []struct {
 		name           string
@@ -305,7 +305,7 @@ func TestDayTemplatesHandler_RouteDispatch(t *testing.T) {
 			// Arrange
 			var body *bytes.Reader
 			if tc.method == http.MethodPost || tc.method == http.MethodPut {
-				reqBody := DayTemplateInput{Name: "Test", PlannedBlocks: []PlannedBlockInput{}}
+				reqBody := DayTemplateInput{Name: "Test", SnapshotBlocks: []SnapshotBlockInput{}}
 				jsonBody, _ := json.Marshal(reqBody)
 				body = bytes.NewReader(jsonBody)
 			} else {

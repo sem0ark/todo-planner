@@ -143,6 +143,10 @@ func (api *API) putWeeklyScheduleHandler(w http.ResponseWriter, r *http.Request)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if strings.Contains(err.Error(), "day template not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to save schedule", err, map[string]interface{}{"user_id": userID})
 		return
 	}
@@ -169,15 +173,13 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Validate date format
-	parsedDate, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
+	if _, err := time.Parse("2006-01-02", dateStr); err != nil {
 		http.Error(w, "invalid date format, expected YYYY-MM-DD", http.StatusBadRequest)
 		return
 	}
 
 	// Validate not in the past
-	today := time.Now().Truncate(24 * time.Hour)
-	if parsedDate.Before(today) {
+	if dateStr < time.Now().Format("2006-01-02") {
 		http.Error(w, "cannot set override for past date", http.StatusBadRequest)
 		return
 	}
@@ -191,7 +193,11 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	// Set or remove override
 	override, err := api.scheduleRepo.SetOverride(r.Context(), userID, dateStr, input.DayTemplateID)
 	if err != nil {
-		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete schedule override", err, map[string]interface{}{"user_id": userID, "date": dateStr})
+		if strings.Contains(err.Error(), "day template not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update schedule override", err, map[string]interface{}{"user_id": userID, "date": dateStr})
 		return
 	}
 

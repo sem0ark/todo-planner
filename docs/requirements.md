@@ -3,7 +3,7 @@
 
 The app operates across two distinct surfaces that serve different moments of the day:
 - **Live surface** — a persistent, minimal presence always available during the day. Captures activity transitions and confirmations with minimal interruption, without requiring the user to navigate or context-switch.
-- **Review surface** — an intentionally opened environment for reconstructing, adjusting, and analyzing past days. Supports both light correction of live-logged data and full retroactive reconstruction when live logging did not occur. Opened intentionally, not during active work.
+- **Day View** — an environment for reconstructing, adjusting, and analyzing actual blocks. Supports both live correction and retroactive reconstruction when live logging did not occur.
 
 The mental model: Microsoft Clock (live, minimal, always present) + Obsidian Day Planner (timeline editing and review) - two separate surfaces, not one combined view.
 
@@ -19,25 +19,21 @@ The core question the app answers over time: "Is the life structure I designed f
 
 ## Glossary
 Domain Entities:
-- *Day Template* - a named, versioned ideal-day structure representing the intended time distribution across categorys for a given life state or season.
+- *Day Template* - a named ideal-day structure with retained snapshots representing the intended time distribution across categories for a given life state or season.
     - *Template Group* - a named personal context (e.g., full-time employment, vacation) that informs which Day Template is appropriate.
 - *Schedule* - the user's assignment of Day Templates to actual days.
     - *Schedule Override* - a one-off assignment of a Day Template to a specific calendar date, superseding the Weekly Schedule for that date.
     - *Weekly Schedule* -> default assignment of Day Templates to days of the week, forming a repeating default structure. Can be changed any time. Individual calendar dates can override the repeating assignment.
 - *Activity Category (Block Category for short)* - a top-level category of activity that classifies all time blocks, user defined.
 - *Time Block (Block for short)* - a contiguous period of time assigned to a single category, with a defined start time and duration. The atomic unit of templates.
-    - *Planned Block* - a category block as defined within a Day Template, representing intended activity.
+    - *Snapshot Block* - a category block stored within a Template Snapshot, representing intended activity for that saved template schedule.
     - *Blank Block* - a special actual block marking a period the user cannot recall. Distinct from rest and untracked time. Treated as a health signal.
     - *Actual Block* - a category block as recorded for a specific calendar day, representing what the user actually did.
     - *Untracked Block* - a gap in a day's actual record where no block of any type has been placed, treated as blank until the user does not adjust it during the day review.
-- *Day Record* - the complete data for a single calendar day: the template in use, all actual blocks, skips, blank blocks, and review status.
+- *Day Record* - the complete data for a single calendar day: the template in use, all actual blocks, skips, and blank blocks.
     - *Day event* - some event used for logging the real state of day. Can confirm that the activity is still in progress, can state transitions from one category to another. It is important to note that resulting timeline and blocks derived from the events may be different from blocks in the template.
         - *Confirmation* - user confirms staying focused on the activity.
         - *Transition* - the boundary event between two consecutive category blocks, where the user confirms moving from one activity to the next.
-    - *Review Status* - the state of a Day Record:
-        - `Unreviewed` - included in analysis
-        - `Reviewed` - included in analysis
-        - `Ignored` - excluded from analysis
 - *Day Boundary* - the configured time of day at which one calendar day ends and the next begins for tracking purposes. Defaults to 04:00 AM.
 
 Synchronization:
@@ -46,18 +42,18 @@ Synchronization:
 
 Auth:
 - *User* - the account that owns all data within the system.
-- *User Settings* - a set of configuration values belonging to a User, including day boundary time and skip reason preferences.
+- *User Settings* - a set of configuration values belonging to a User, including day boundary time.
 
 Metrics:
-- *Adherence* - the measured ratio of actual time spent on a category to the planned time for that category, calculated across a set of reviewed day records.
+- *Adherence* - the measured ratio of actual time spent on a category to the planned time for that category, calculated across a selected set of day records.
 - *Template Health* - the aggregate analysis of how closely actual day records match a given Day Template over a user-selected time window.
 
 
 # Feature Requirements
 - All deletions are **soft** - entities become invisible to the user but are retained in storage. Hard delete occurs only on full account removal.
-- Actual day blocks are **derived from Day Events** (Confirmations and Transitions) plus any retroactive edits applied during review.
+- Actual day blocks are **derived from Day Events** (Confirmations and Transitions) until the user replaces them with corrected actual blocks.
 - Categories are **fully user-defined** - no hardcoded set. Defined by name and color only.
-- Analysis includes both `Unreviewed` and `Reviewed` Day Records. `Ignored` records are excluded.
+- Analysis includes all Day Records in the selected time window.
 
 
 ## Activity Categories
@@ -75,17 +71,17 @@ User-defined top-level classifications for all time blocks across templates and 
 Named, versioned ideal-day structures representing intended time distribution across categories for a given life state or season.
 
 Template structure:
-- A Template contains an ordered sequence of **Planned Blocks**, each with: category, start time, and duration.
+- A Template contains general metadata. Its schedule is an ordered sequence of **Snapshot Blocks**, each with: category, start time, and duration.
 - Block constraints: **minimum 30 minutes**, **15-minute step increments**.
-- A Template has: name (user-defined), optional association to a Template Group, creation timestamp, last-modified timestamp.
+- A Template has: name (user-defined), optional association to a Template Group, creation timestamp, and last-modified timestamp. Template snapshots contain the schedule blocks for each saved version of that template.
 - Templates are **independent** - no inheritance between them.
 
 Template management:
 - User can **create** a new empty template.
 - User can **Create From**: copy any existing template (including soft-deleted ones visible in history), rename the copy, then edit independently.
 - User can **rename** a template at any time.
-- User can **edit** a template's blocks via drag timeline (same UI as Day View Actual lane - see F6).
-- Deletion is **soft**: deleted templates become invisible in the template library but are retained. Historical Day Records that used a deleted template retain a **snapshot** of the template at the time of use - the live template and the snapshot are decoupled after assignment.
+- User can **edit** a template's schedule via drag timeline (same UI as Day View Actual lane - see F6). Each schedule edit creates a new template snapshot; previous snapshots and their blocks are retained.
+- Deletion is **soft**: deleted templates become invisible in the template library but are retained. Past Day Records retain their pinned template snapshot, which is unaffected by later template changes or deletion. Active/future Day Records can follow the template's current snapshot through automatic or explicit re-pinning.
 - Template library: flat list in v1. No grouping enforced by the system, though Template Groups provide optional labeling.
 
 Template Groups:
@@ -100,7 +96,7 @@ The user's assignment of Day Templates to actual calendar days, forming the plan
 Weekly Schedule:
 - The user assigns a Day Template to each day of the week (Monday–Sunday), forming a repeating default structure.
 - Any day of the week can be left unassigned.
-- The Weekly Schedule can be changed at any time. Changes apply to future dates only - past Day Records retain the template snapshot that was active at the time.
+- The Weekly Schedule can be changed at any time. Changes apply to active and future dates; past Day Records retain their snapshot assignment. Existing active/future Day Records are re-resolved when their assignment changes. A schedule assignment resolves to a template; a day record stores both that template and the snapshot currently applied to it.
 
 Schedule Overrides:
 - The user can assign a specific Day Template to a specific calendar date, superseding the Weekly Schedule for that date only.
@@ -113,27 +109,34 @@ Unassigned Days:
 
 
 ## Day Record & Day Events
-The complete data record for a single calendar day. Actual blocks are derived from Day Events and retroactive edits - not stored as independent block entities separate from events.
+The complete data record for a single calendar day. Actual blocks are derived from Day Events during live tracking and can be replaced during review.
 
 Each Day Record contains:
 - The calendar date.
-- A snapshot of the Day Template active for that date at the time of first event or review open.
+- The logical Day Template assigned to the date.
+- The Template Snapshot currently applied to the day. This snapshot can change while its date is active or future, but is fixed for past dates.
 - All Day Events recorded for that day (in order).
-- All retroactive edits applied during review.
-- Review Status: `Unreviewed`, `Reviewed`, or `Ignored`.
+- The current actual blocks, including any review corrections or reconstruction.
+
+Template changes:
+- Updating a Day Template creates a new Template Snapshot.
+- Existing active/future Day Records using that template are automatically re-pinned to the new snapshot. Their events and actual blocks are unchanged because the plan changed, not reality.
+- A user can explicitly re-pin an active/future day by choosing another template or re-resolving the current schedule.
+- Past Day Records retain their snapshot and are frozen from re-pinning, but their actual blocks remain editable.
 
 Day Boundary
 - The Day Boundary is a user-configured time of day at which one calendar day ends and the next begins for tracking purposes.
 - Default: **04:00 AM**.
 - Configurable in User Settings.
 - All events and blocks are assigned to a calendar day based on this boundary.
+- A day is **active** when it is the current tracking date, **future** when it follows the current tracking date, and **past** once its tracking date has passed. Past days keep their snapshot assignment, while actual blocks remain editable.
 
 *Day Events* are the atomic inputs that drive the Actual Block timeline.
 Two types for now:
 - **Confirmation**
   - The user confirms that the current activity is still in progress.
   - Logs: timestamp, current category.
-  - Does not create a new block - extends the current one.
+  - Used to track ongoing activity without creating a transition boundary.
 - **Transition**
   - The user confirms moving from one category to the next.
   - Logs: timestamp and category.
@@ -141,30 +144,16 @@ Two types for now:
   - Note that may signal transition both between planned categories and plan overrides, for example, when user takes an unexpected break or records a time region when they got distracted.
 
 Actual Block Derivation:
-- The Actual Block timeline for a day is **derived** from the ordered sequence of Day Events. plus any retroactive edits.
-- Derived blocks are not stored as separate entities - they are computed from the event log.
-- Retroactive edits (applied in Day View during review) are stored as edit events in the same log, preserving the full history of changes.
+- The Actual Block timeline for a day is **derived** from the ordered sequence of Day Events during live tracking.
+- Untracked gaps remain distinct from submitted actual and blank blocks and are derived from the gaps in the current timeline.
 
 #### Block Types in Derived Timeline
 
 | Block Type | Description |
 |---|---|
-| **Actual Block** | A contiguous period assigned to a category, derived from events or retroactive edits. |
+| **Actual Block** | A contiguous period assigned to a category, derived from events or supplied as a review correction. |
 | **Blank Block** | A user-marked period the user cannot recall. Minimum 30 min, 15-min steps. Treated as a health signal, not as rest or untracked. |
 | **Untracked** | A gap in the day with no block of any type placed. Shown as empty/dimmed. Distinct from Blank. |
-
-#### Review Status
-
-| Status | Behavior |
-|---|---|
-| `Unreviewed` | Default state. Day is editable. Included in analysis. |
-| `Reviewed` | User has marked the day complete. Day is locked from further editing. Included in analysis. |
-| `Ignored` | User has permanently dismissed the day. Excluded from analysis. Not editable. Still navigable (read-only). |
-
-- Transition from `Unreviewed` -> `Reviewed` is triggered by a user toggle. **Permanent.**
-- Transition from `Unreviewed` -> `Ignored` is triggered by an explicit Ignore action. **Permanent.**
-- No transition from `Reviewed` or `Ignored` back to `Unreviewed` in v1.
-
 
 ## Live Widget
 A persistent, minimal UI element always visible during the day on desktop and mobile. Handles Day Event input (Confirmations and Transitions). Never requires navigation for its core function.
@@ -202,7 +191,6 @@ A persistent, minimal UI element always visible during the day on desktop and mo
   - **Space/Return**: Confirm the planned category → transition to Active.
   - **Key 1-9**: Switch to selected category → stay in Active (may be on/off plan).
   - **No action**: Prompt persists until user acts (no auto-dismiss).
-- After 60 seconds of ignored prompt: untracked gap created in timeline.
 
 **Off-Plan Tracking**:
 - Selecting an unplanned category → user enters Active state with that category.
@@ -235,7 +223,7 @@ A persistent, minimal UI element always visible during the day on desktop and mo
 - **Work Phase**: Timer counts up. When elapsed time reaches work duration, timer enters rest phase.
 - **Rest Phase**: Timer counts up. User can:
   - Press Space to return to work phase early.
-  - Let timer auto-advance to work if rest duration expires and extends to 1.5x duration (auto-skip).
+  - Let timer auto-advance to work phase if rest duration expires.
 - **Visual Indicator**: Circular progress ring appears only in State 2 (Active) when pomodoro is enabled for the current category.
 - **Notifications**: Sends a notification when pomodoro timer completes (transitions from work to rest or rest to work).
 
@@ -256,16 +244,15 @@ A persistent, minimal UI element always visible during the day on desktop and mo
 - **Interaction**: Tapping notification opens app to Transition Confirmation Screen.
 - **Confirmation Screen**: Shows prompt, category chips (1-9 selectable), sync button (pull-to-refresh), *Open Web* link.
 - **Return to Background**: After confirming transition, app auto-minimizes.
-- **Note**: Mobile-specific offset nudging UI (if needed) to be designed in v2.
 
 
 ## Review: Day View
 Retroactive reconstruction and review of a single calendar day. Primary logging surface. Accessed via the web app only.
 
 #### Opening State
-- Opens pre-filled with the active template snapshot as the starting state of the Actual lane.
+- Opens with the current actual blocks, or with the active template snapshot as the starting state when no actual blocks exist.
 - Two visual lanes:
-  - **Planned lane** - template snapshot, static, always visible for reference. Not editable.
+  - **Planned lane** - the pinned template snapshot's blocks, static, always visible for reference. Not editable.
   - **Actual lane** - editable. Pre-filled from template, adjusted by the user to match reality.
 
 #### Editing Interactions
@@ -278,26 +265,17 @@ Retroactive reconstruction and review of a single calendar day. Primary logging 
 | Tap midpoint + drag | Splits block into two |
 | Paint time region as Blank | Creates a Blank Block (min 30 min, 15-min steps) |
 
-- All edits are stored as edit events in the Day Record's event log.
-- Editing is available while status is `Unreviewed`. Locked when `Reviewed` or `Ignored`.
-
-#### Review Status Actions
-- **Mark Reviewed** toggle: transitions Day Record to `Reviewed`. Permanent. Locks editing.
-- **Ignore** action: transitions Day Record to `Ignored`. Permanent. Removes day from unreviewed count and analysis.
-- Ignored days remain navigable in read-only mode.
+- Editing actual blocks is available for active, future, and past days. Snapshot assignment is editable only for active and future days.
 
 
 ## Review: Week View
-A 7-day overview of actual theme distribution. Default landing view of the web app. Surfaces unlogged and unreviewed days.
+A 7-day overview of actual theme distribution. Default landing view of the web app. Surfaces unlogged days.
 
 - Displays a 7-day horizontal strip. Each day = a vertical bar divided by category colors (Actual data only).
 - Planned template is **not** shown in this view.
-- **Unreviewed days** (status = `Unreviewed` with no Actual blocks): blank and flagged (visual indicator - border or icon). No ghost template shown.
+- **Unlogged days** (with no Actual blocks): blank and flagged (visual indicator - border or icon). No ghost template shown.
 - **Gaps within logged days**: visible as empty/dimmed segments within the day bar.
 - **Blank Blocks**: shown as a distinct pattern (e.g., hatched) within the day bar.
-- **Ignored days**: shown as explicitly dismissed (distinct visual state, not flagged as unreviewed).
-- Status message: *"X days not yet reviewed this week."* Counts only days that are neither `Reviewed` nor `Ignored`.
-- Tapping the status message navigates to the earliest `Unreviewed` day's Day View.
 - User can navigate to any past week.
 - Tapping any day bar navigates to that day's Day View.
 
@@ -327,7 +305,7 @@ Per-category breakdown for the selected time window:
 | Untracked / Blank | - | - | 1.5h | - |
 
 - Untracked and Blank are reported separately.
-- Only `Reviewed` and `Unreviewed` Day Records are included. `Ignored` records are excluded.
+- All Day Records in the selected time window are included.
 
 #### Time Window
 - User-selectable: *Last N days* input.
@@ -337,7 +315,7 @@ Per-category breakdown for the selected time window:
 ## Overview / Analytics
 Cross-template summary of category adherence and unlogged activity. Separate tab in the web app.
 
-- **Adherence per category**: ratio of actual average time to planned time, across all non-Ignored Day Records. e.g., `Exercising: 25% - planned 2h/day, actual avg 0.5h/day`
+- **Adherence per category**: ratio of actual average time to planned time, across all Day Records in the selected time window. e.g., `Exercising: 25% - planned 2h/day, actual avg 0.5h/day`
 - **Weekly gap strip**: mini 7-day strip showing unlogged day gaps across recent weeks. Visual only - no numbers in this view.
 - No drill-down from this tab. Template Health is accessed via the Template Editor.
 

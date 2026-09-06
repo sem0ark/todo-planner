@@ -335,5 +335,31 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   6,
+			Name: "add_day_record_template_reference",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					DROP INDEX IF EXISTS idx_planned_blocks_template;
+					DROP TABLE IF EXISTS planned_blocks;
+
+					ALTER TABLE day_records
+					ADD COLUMN IF NOT EXISTS day_template_id INTEGER REFERENCES day_templates(id) ON DELETE SET NULL;
+
+					UPDATE day_records AS records
+					SET day_template_id = snapshots.day_template_id
+					FROM template_snapshots AS snapshots
+					WHERE records.snapshot_id = snapshots.id
+					  AND records.day_template_id IS NULL;
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE day_records DROP COLUMN IF EXISTS day_template_id;
+				`)
+				return err
+			},
+		},
 	}
 }
