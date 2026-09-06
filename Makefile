@@ -1,4 +1,4 @@
-.PHONY: local railway lint lint-backend lint-frontend format
+.PHONY: local clear-local local-fe railway lint lint-backend lint-frontend format test-prepare test
 
 local:
 	-colima start
@@ -14,15 +14,15 @@ clear-local:
 local-fe:
 	cd front-web && pnpm dev
 
-lint: format lint-backend lint-frontend
+lint: lint-backend lint-frontend
 
 lint-backend:
-	-cd api-backend && gofmt -l .
-	-cd api-backend && go vet ./...
+	@test -z "$$(cd api-backend && gofmt -l .)" || { echo "Go files need formatting. Run make format."; exit 1; }
+	cd api-backend && go vet ./...
 
 lint-frontend:
-	-cd front-web && pnpm lint
-	-cd front-rn-mobile && pnpm lint
+	cd front-web && pnpm lint
+	cd front-rn-mobile && pnpm lint
 
 format:
 	-cd api-backend && gofmt -w .

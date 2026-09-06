@@ -39,19 +39,6 @@ type publicDayRecordsResponse struct {
 	DayRecords []publicDayRecord `json:"day_records"`
 }
 
-type publicAcceptedEvent struct {
-	ClientEventID string    `json:"client_event_id"`
-	EventType     string    `json:"event_type"`
-	CategoryID    *int      `json:"category_id"`
-	OccurredAt    time.Time `json:"occurred_at"`
-}
-
-type publicDayEventsResponse struct {
-	publicDayRecord
-	AcceptedEvents    []publicAcceptedEvent `json:"accepted_events"`
-	DuplicateEventIDs []string              `json:"duplicate_client_event_ids"`
-}
-
 func toPublicDayRecord(record *DayRecord) publicDayRecord {
 	var snapshot *publicSnapshot
 	if record.SnapshotID != nil {
@@ -76,14 +63,11 @@ func shortClock(value string) string {
 }
 
 func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Request, userID int) {
-	fromDate, toDate := request.URL.Query().Get("from"), request.URL.Query().Get("to")
-	fromTime, fromError := time.Parse("2006-01-02", fromDate)
-	toTime, toError := time.Parse("2006-01-02", toDate)
-	if fromError != nil || toError != nil || toTime.Before(fromTime) {
-		http.Error(responseWriter, "invalid date range", http.StatusBadRequest)
+	records, err := api.dayService.GetDays(request.Context(), userID, request.URL.Query().Get("from"), request.URL.Query().Get("to"))
+	if errors.Is(err, ErrInvalidDayDateRange) {
+		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
 		return
 	}
-	records, err := api.dayRecordRepo.FindByDateRange(request.Context(), userID, fromDate, toDate)
 	if err != nil {
 		HTTPError(responseWriter, request, api.logger, 500, "failed to fetch days", err, nil)
 		return
@@ -96,7 +80,7 @@ func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Reques
 }
 
 func (api *API) getDay(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
-	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, calendarDate)
+	record, err := api.dayService.GetDay(request.Context(), userID, calendarDate)
 	if errors.Is(err, ErrDayRecordNotFound) {
 		http.Error(responseWriter, "day record not found", 404)
 		return
@@ -106,125 +90,6 @@ func (api *API) getDay(responseWriter http.ResponseWriter, request *http.Request
 		return
 	}
 	writeJSON(responseWriter, toPublicDayRecord(record))
-}
-
-func (api *API) createDay(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
-	record, err := api.dayRecordRepo.Create(request.Context(), userID, calendarDate)
-	if errors.Is(err, ErrDayRecordAlreadyExists) {
-		http.Error(responseWriter, "day record already exists", 409)
-		return
-	}
-	if err != nil {
-		HTTPError(responseWriter, request, api.logger, 500, "failed to create day", err, nil)
-		return
-	}
-	responseWriter.WriteHeader(http.StatusCreated)
-	writeJSON(responseWriter, toPublicDayRecord(record))
-}
-
-func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
-	var input DayRecordBlocksInput
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-		http.Error(responseWriter, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-	if err := validateActualBlocks(input.ActualBlocks); err != nil {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := api.validateActualBlockCategoryIDs(request.Context(), userID, input.ActualBlocks); err != nil {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
-		return
-	}
-	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, calendarDate)
-	if err != nil {
-		http.Error(responseWriter, "day record not found", 404)
-		return
-	}
-	if _, err = api.dayRecordRepo.ReplaceActualBlocks(request.Context(), record.ID, userID, input.ActualBlocks); err != nil {
-		http.Error(responseWriter, "failed to replace actual blocks", 500)
-		return
-	}
-	record, err = api.dayRecordRepo.FindByDate(request.Context(), userID, calendarDate)
-	if err != nil {
-		http.Error(responseWriter, "failed to fetch updated day", 500)
-		return
-	}
-	writeJSON(responseWriter, toPublicDayRecord(record))
-}
-
-func (api *API) putDateTemplate(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
-	var input DayRecordTemplateInput
-	if json.NewDecoder(request.Body).Decode(&input) != nil {
-		http.Error(responseWriter, "invalid JSON", 400)
-		return
-	}
-	record, err := api.dayRecordRepo.UpdateTemplateByDate(request.Context(), userID, calendarDate, input.DayTemplateID)
-	if errors.Is(err, ErrDayRecordPast) {
-		http.Error(responseWriter, err.Error(), 400)
-		return
-	}
-	if err != nil {
-		http.Error(responseWriter, "day record or template not found", 404)
-		return
-	}
-	writeJSON(responseWriter, toPublicDayRecord(record))
-}
-
-func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
-	var input DayEventsInput
-	if json.NewDecoder(request.Body).Decode(&input) != nil {
-		http.Error(responseWriter, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-	if input.DeviceID <= 0 {
-		http.Error(responseWriter, "device_id is required", http.StatusBadRequest)
-		return
-	}
-	if err := validateDateEvents(input.Events); err != nil {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := api.validateCategoryIDs(request.Context(), userID, input.Events); err != nil {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
-		return
-	}
-	result, err := api.dayRecordRepo.CreateEventsByDate(request.Context(), userID, calendarDate, input.DeviceID, input.Events)
-	if errors.Is(err, ErrDeviceNotFound) {
-		http.Error(responseWriter, err.Error(), http.StatusNotFound)
-		return
-	}
-	if errors.Is(err, ErrAmendmentTargetNotFound) {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, ErrNonMonotonicTransitions) {
-		http.Error(responseWriter, err.Error(), http.StatusConflict)
-		return
-	}
-	if err != nil {
-		HTTPError(responseWriter, request, api.logger, http.StatusInternalServerError, "failed to append day events", err, nil)
-		return
-	}
-	acceptedEvents := make([]publicAcceptedEvent, 0, len(result.AcceptedEvents))
-	for _, event := range result.AcceptedEvents {
-		clientEventID := ""
-		if event.ClientEventID != nil {
-			clientEventID = *event.ClientEventID
-		}
-		acceptedEvents = append(acceptedEvents, publicAcceptedEvent{
-			ClientEventID: clientEventID,
-			EventType:     event.EventType,
-			CategoryID:    event.CategoryID,
-			OccurredAt:    event.OccurredAt,
-		})
-	}
-	response := toPublicDayRecord(result.Record)
-	writeJSON(responseWriter, publicDayEventsResponse{
-		publicDayRecord:   response,
-		AcceptedEvents:    acceptedEvents,
-		DuplicateEventIDs: result.DuplicateEventIDs,
-	})
 }
 
 func writeJSON(responseWriter http.ResponseWriter, value interface{}) {

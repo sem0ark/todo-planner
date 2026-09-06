@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"time"
 )
@@ -36,32 +35,6 @@ type ActualBlockInput struct {
 	BlockType       string `json:"block_type"`
 	StartTime       string `json:"start_time"`
 	DurationMinutes int    `json:"duration_minutes"`
-}
-
-func (api *API) validateCategoryIDs(contextValue context.Context, userID int, events []DayEventInput) error {
-	for _, event := range events {
-		if event.CategoryID == nil {
-			continue
-		}
-		category, err := api.categoryRepo.FindByID(contextValue, *event.CategoryID, userID)
-		if err != nil || category.IsDeleted {
-			return ErrUnknownCategoryID
-		}
-	}
-	return nil
-}
-
-func (api *API) validateActualBlockCategoryIDs(contextValue context.Context, userID int, blocks []ActualBlockInput) error {
-	for _, block := range blocks {
-		if block.CategoryID == nil {
-			continue
-		}
-		category, err := api.categoryRepo.FindByID(contextValue, *block.CategoryID, userID)
-		if err != nil || category.IsDeleted {
-			return ErrUnknownCategoryID
-		}
-	}
-	return nil
 }
 
 func validateDayEvents(events []DayEventInput) error {

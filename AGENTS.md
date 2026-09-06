@@ -1,6 +1,56 @@
-# General Coding Conventions (Python, Go, Swift)
+# Repository Agent Guidance
 
-## Function & API Design
+These rules apply to the whole repository. Follow the nearest more-specific
+instruction file when one is added for a subdirectory.
+
+## Project Boundaries
+
+- `api-backend/`: Go HTTP API. Follow `api-backend/ARCHITECTURE.md`; keep handlers focused on HTTP concerns and put persistence in repositories.
+- `front-web/`: web frontend. Use the existing React and styling patterns and run commands through `pnpm`.
+- `front-rn-mobile/`: React Native client. Use the existing mobile patterns and run commands through `pnpm`.
+- `front-desktop-widget/`: macOS 13+ SwiftUI widget. Follow its README and `docs/` design specification; use its Makefile for builds and tests.
+- `docs/`: product, API, database, and design decisions. Update the relevant document when an explicit behavior or contract changes.
+
+## Change Workflow
+
+- Inspect the nearest README, architecture document, and tests before editing.
+- Keep changes scoped to the owning project; do not refactor unrelated code.
+- Preserve existing public APIs and data contracts unless the request requires a change, and add or update focused tests for behavior changes.
+- Do not create action-summary or report files. Put durable documentation in the appropriate file under `docs/`.
+- Use `make lint` for repository linting, `make test` for backend tests, and `make test` from `front-desktop-widget/` for widget tests.
+
+## Approved Commands
+
+**IMPORTANT: Use ONLY these commands. Do not invent, combine, or modify targets.**
+
+### Repository Root
+- `make lint` - check code style
+- `make format` - format all code
+- `make test-prepare` - start test database
+- `make test` - run backend tests
+- `make local` - full stack (backend + web)
+- `make local-fe` - web frontend only
+- `make clear-local` - stop and clean containers
+
+### Desktop Widget (`front-desktop-widget/`)
+- `make build` - build for current architecture
+- `make dev-local` - build and run against localhost:8080
+- `make dev-remote` - build and run against staging
+- `make test` - run unit tests
+- `make clean` - remove build artifacts
+- `make help` - show all targets
+
+### Frontend (Web & React Native)
+**Never use `make` in `front-web/` or `front-rn-mobile/` - use pnpm only.**
+
+- `pnpm dev` - start dev server (web)
+- `pnpm start` - start dev server (React Native)
+- `pnpm build` - build for production
+- `pnpm lint` - check code style
+
+## Code Conventions
+
+### Function & API Design
 
 - Write clear, concise comments and docstrings explaining the **"why"** and usage scenarios, "what" must be described briefly by the name only.
 - Ensure functions have descriptive, intention-revealing names.
@@ -12,7 +62,7 @@
 - Break down complex functions into smaller, single-responsibility units.
 - Avoid dynamic reflection or type inspection workarounds (e.g., Python `hasattr`/`getattr`, Go `reflect`, Swift runtime `Mirror`/unsafe casts) to bypass type safety; refactor leaky abstractions into explicit interfaces, protocols, or base types instead.
 
-## General Instructions
+### General Instructions
 
 - **Readability and clarity over brevity**: Write code that is easily readable and maintainable over compact or "clever" one-liners.
 - **Explain algorithms**: Document the approach, time/space complexity, and non-obvious design choices.
@@ -23,7 +73,7 @@
 - **Dependencies**: Explicitly document third-party libraries and their purpose in comments or module headers.
 - **File structure**: Place all imports and package references at the top of the file. Avoid inline or nested imports/includes.
 
-## Naming Conventions
+### Naming Conventions
 
 ### 1. No Single-Character Variables or Arbitrary Abbreviations
 **Use full, unabbreviated words.** Never shorten names or use single-character variables for brevity. Focus on domain lexicon and clarity.
@@ -81,7 +131,7 @@ Apply the unabbreviated lexicon using each language's standard casing style:
 - **Go**: `camelCase` (unexported types/fields/functions), `PascalCase` (exported types/fields/functions).
 - **Swift**: `camelCase` (functions, properties, variables, enum cases), `PascalCase` (types, protocols).
 
-## Code Style and Formatting
+### Code Style and Formatting
 
 - Use the official formatter and linter for each ecosystem:
   - **Python**: PEP 8 standards (`ruff` or `flake8` / `black`).
@@ -91,7 +141,7 @@ Apply the unabbreviated lexicon using each language's standard casing style:
 - Place documentation comments directly above or at the beginning of the declaration (docstrings in Python, `//` in Go, `///` in Swift).
 - Avoid deeply nested structures; prefer early returns / guard clauses to reduce nesting depth.
 
-## Testing Guidelines
+### Testing Guidelines
 
 - **AAA Pattern**: Structure tests strictly around **Arrange-Act-Assert**.
 - **Low Cyclomatic Complexity**: Strive for a cyclomatic complexity of **1** inside test bodies (linear flow, avoiding conditional branches and loops within the test body).
