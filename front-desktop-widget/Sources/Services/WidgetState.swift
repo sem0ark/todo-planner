@@ -231,7 +231,6 @@ func updateDayRecord(_ context: inout WidgetContext, with blocks: [ActualBlock])
   context.currentDayRecord = DayRecord(
     id: record.id,
     calendarDate: record.calendarDate,
-    reviewStatus: record.reviewStatus,
     actualBlocks: blocks,
     createdAt: record.createdAt,
     updatedAt: Date()
@@ -247,7 +246,7 @@ func logEvent(
   recordId: Int?,
   repo: TodoPlannerRepository
 ) async -> [ActualBlock] {
-  guard let recordId = recordId else { return [] }
+  guard let recordId else { return [] }
   guard let categoryId = category?.id else { return [] }
 
   let event = DayEvent(
@@ -506,7 +505,7 @@ class WidgetStateStore {
       let today = DateFormatter.yyyyMMdd.string(from: Date())
 
       let todaySchedule = try await repository.fetchTodaySchedule()
-      context.currentPlannedBlocks = todaySchedule.template?.plannedBlocks ?? []
+      context.currentPlannedBlocks = todaySchedule.template?.currentSnapshot.snapshotBlocks ?? []
 
       if let record = try await repository.fetchDayRecord(date: today) {
         context.currentDayRecord = record

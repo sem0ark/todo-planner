@@ -44,10 +44,7 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
     if dayRecord?.calendarDate == date {
       return dayRecord
     }
-    // If date doesn't match, create a new one for that date
-    let newRecord = seedDayRecord(for: date)
-    self.dayRecord = newRecord
-    return newRecord
+    return nil
   }
 
   func createDayRecord(date: String) async throws -> DayRecord {
@@ -119,7 +116,6 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
     let updatedRecord = DayRecord(
       id: currentRecord.id,
       calendarDate: currentRecord.calendarDate,
-      reviewStatus: currentRecord.reviewStatus,
       actualBlocks: updatedActuals,
       createdAt: currentRecord.createdAt,
       updatedAt: Date()
@@ -135,7 +131,11 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
       id: 200,
       name: "Mock Daily Template",
       templateGroupId: nil,
-      plannedBlocks: blocks
+      currentSnapshot: TemplateSnapshot(
+        id: 201,
+        snapshottedAt: Date(),
+        snapshotBlocks: blocks
+      )
     )
     return TodaySchedule(
       calendarDate: todayString(),
@@ -179,7 +179,6 @@ class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendable {
     return DayRecord(
       id: 5001,
       calendarDate: date,
-      reviewStatus: "unreviewed",
       actualBlocks: [],  // Starts empty for testing initialization
       createdAt: Date(),
       updatedAt: Date()

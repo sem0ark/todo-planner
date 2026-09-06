@@ -230,6 +230,50 @@ final class APIClient: @unchecked Sendable {
     )
   }
 
+  func assignTemplate(dayRecordId: Int, templateId: Int?) async throws -> DayRecord {
+    struct AssignTemplateRequest: Encodable {
+      let dayTemplateId: Int?
+
+      enum CodingKeys: String, CodingKey {
+        case dayTemplateId = "day_template_id"
+      }
+    }
+
+    return try await makeRequest(
+      endpoint: "/day-records/\(dayRecordId)/template",
+      method: "PUT",
+      body: AssignTemplateRequest(dayTemplateId: templateId)
+    )
+  }
+
+  func updateDayRecord(dayRecordId: Int, actualBlocks: [ActualBlockInput]) async throws
+    -> DayRecordUpdateResponse
+  {
+    struct UpdateDayRecordRequest: Encodable {
+      let actualBlocks: [ActualBlockInput]
+
+      enum CodingKeys: String, CodingKey {
+        case actualBlocks = "actual_blocks"
+      }
+    }
+
+    return try await makeRequest(
+      endpoint: "/day-records/\(dayRecordId)",
+      method: "PUT",
+      body: UpdateDayRecordRequest(actualBlocks: actualBlocks)
+    )
+  }
+
+  func createTemplate(_ template: TemplateRequest) async throws -> DayTemplate {
+    return try await makeRequest(endpoint: "/templates", method: "POST", body: template)
+  }
+
+  func updateTemplate(templateId: Int, template: TemplateRequest) async throws -> DayTemplate {
+    return try await makeRequest(
+      endpoint: "/templates/\(templateId)", method: "PUT", body: template
+    )
+  }
+
   func postDayEvents(dayRecordId: Int, events: [DayEvent]) async throws -> DayEventsResponse {
     let request = DayEventsRequest(events: events)
     return try await makeRequest(

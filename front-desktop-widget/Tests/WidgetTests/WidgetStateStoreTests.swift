@@ -54,7 +54,7 @@ enum RecordedCall: CustomStringConvertible {
 final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
   var stubbedCategories: [Category] = []
   var stubbedDayRecord: DayRecord? = nil
-  var stubbedCreatedRecord: DayRecord? = nil
+  var stubbedCreatedRecord: DayRecord?
   var stubbedEventsResponse: DayEventsResponse?
   var shouldThrowOnSubmitEvents = false
 
@@ -86,7 +86,8 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
 
   func createDayRecord(date: String) async throws -> DayRecord {
     calls.append(.createDayRecord(date: date))
-    return stubbedCreatedRecord!
+    guard let record = stubbedCreatedRecord else { throw StorageError.notFound }
+    return record
   }
 
   func submitEvents(dayRecordId: Int, events: [DayEvent]) async throws -> DayEventsResponse {
@@ -186,7 +187,6 @@ final class WidgetTestHarness {
     let repo = MockRepository()
     repo.stubbedCategories = categories
     repo.stubbedDayRecord = existingRecord
-    repo.stubbedCreatedRecord = createdRecord ?? existingRecord
     repo.stubbedEventsResponse = eventsResponse
     self.mock = repo
     self.store = TestableWidgetStateStore(repository: repo)
