@@ -43,7 +43,6 @@ func cleanupTestDB(t *testing.T, db *pgxpool.Pool) {
 		"users",
 		"user_settings",
 		"devices",
-		"change_log",
 		"block_categories",
 		"template_groups",
 		"day_templates",

@@ -403,5 +403,89 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   8,
+			Name: "migrate_day_events_and_remove_sync_storage",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE devices DROP COLUMN IF EXISTS last_sync_at;
+					DROP INDEX IF EXISTS idx_change_log_user_occurred;
+					DROP INDEX IF EXISTS idx_change_log_device_occurred;
+					DROP TABLE IF EXISTS change_log CASCADE;
+
+					ALTER TABLE day_events
+						ADD COLUMN IF NOT EXISTS device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+						ADD COLUMN IF NOT EXISTS client_event_id VARCHAR(255),
+						ADD COLUMN IF NOT EXISTS target_client_event_id VARCHAR(255),
+						ADD COLUMN IF NOT EXISTS corrected_at TIMESTAMPTZ,
+						ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT now();
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_day_events_record_client
+						ON day_events(day_record_id, client_event_id)
+						WHERE client_event_id IS NOT NULL;
+					CREATE INDEX IF NOT EXISTS idx_day_events_device_received
+						ON day_events(device_id, received_at);
+					ALTER TABLE actual_blocks
+						ADD COLUMN IF NOT EXISTS is_open BOOLEAN NOT NULL DEFAULT FALSE;
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_day_records_user_date_unique
+						ON day_records(user_id, calendar_date);
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					DROP INDEX IF EXISTS idx_day_records_user_date_unique;
+					DROP INDEX IF EXISTS idx_day_events_device_received;
+					DROP INDEX IF EXISTS idx_day_events_record_client;
+					ALTER TABLE actual_blocks DROP COLUMN IF EXISTS is_open;
+					ALTER TABLE day_events
+						DROP COLUMN IF EXISTS received_at,
+						DROP COLUMN IF EXISTS corrected_at,
+						DROP COLUMN IF EXISTS target_client_event_id,
+						DROP COLUMN IF EXISTS client_event_id,
+						DROP COLUMN IF EXISTS device_id;
+					CREATE TABLE IF NOT EXISTS change_log (
+						id SERIAL PRIMARY KEY, device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+						user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+						entity_type VARCHAR(50) NOT NULL, entity_id INTEGER NOT NULL,
+						operation VARCHAR(20) NOT NULL, occurred_at TIMESTAMPTZ NOT NULL
+					);
+					ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ;
+				`)
+				return err
+			},
+		},
+		{
+			ID:   9,
+			Name: "remove_legacy_schema_artifacts",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					DROP INDEX IF EXISTS idx_planned_blocks_template;
+					DROP INDEX IF EXISTS idx_retroactive_edits_record_occurred;
+					DROP TABLE IF EXISTS planned_blocks CASCADE;
+					DROP TABLE IF EXISTS retroactive_edits CASCADE;
+					DROP INDEX IF EXISTS idx_day_records_user_date;
+					DELETE FROM schedule_overrides WHERE day_template_id IS NULL;
+					ALTER TABLE schedule_overrides
+						DROP CONSTRAINT IF EXISTS schedule_overrides_day_template_id_fkey;
+					ALTER TABLE schedule_overrides
+						ADD CONSTRAINT schedule_overrides_day_template_id_fkey
+						FOREIGN KEY (day_template_id) REFERENCES day_templates(id) ON DELETE CASCADE;
+					ALTER TABLE schedule_overrides
+						ALTER COLUMN day_template_id SET NOT NULL;
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE schedule_overrides ALTER COLUMN day_template_id DROP NOT NULL;
+					ALTER TABLE schedule_overrides DROP CONSTRAINT IF EXISTS schedule_overrides_day_template_id_fkey;
+					ALTER TABLE schedule_overrides
+						ADD CONSTRAINT schedule_overrides_day_template_id_fkey
+						FOREIGN KEY (day_template_id) REFERENCES day_templates(id) ON DELETE SET NULL;
+					CREATE INDEX IF NOT EXISTS idx_day_records_user_date ON day_records(user_id, calendar_date);
+				`)
+				return err
+			},
+		},
 	}
 }

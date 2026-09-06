@@ -75,7 +75,6 @@ func main() {
 	http.HandleFunc("/account", loggingMiddleware(corsMiddleware(api.authMiddleware(api.deleteAccountHandler))))
 	http.HandleFunc("/settings", loggingMiddleware(corsMiddleware(api.authMiddleware(api.settingsHandler))))
 	http.HandleFunc("/devices", loggingMiddleware(corsMiddleware(api.authMiddleware(api.registerDeviceHandler))))
-	http.HandleFunc("/sync", loggingMiddleware(corsMiddleware(api.authMiddleware(api.syncHandler))))
 	http.HandleFunc("/categories", loggingMiddleware(corsMiddleware(api.authMiddleware(api.categoriesHandler))))
 	http.HandleFunc("/categories/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.categoriesHandler))))
 	http.HandleFunc("/schedule", loggingMiddleware(corsMiddleware(api.authMiddleware(api.scheduleHandler))))
@@ -84,8 +83,9 @@ func main() {
 	http.HandleFunc("/template-groups/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.templateGroupsHandler))))
 	http.HandleFunc("/templates", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayTemplatesHandler))))
 	http.HandleFunc("/templates/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayTemplatesHandler))))
-	http.HandleFunc("/day-records", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayRecordsHandler))))
-	http.HandleFunc("/day-records/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.dayRecordsHandler))))
+	http.HandleFunc("/days", loggingMiddleware(corsMiddleware(api.authMiddleware(api.daysHandler))))
+	http.HandleFunc("/days/", loggingMiddleware(corsMiddleware(api.authMiddleware(api.daysHandler))))
+	http.HandleFunc("/init", loggingMiddleware(corsMiddleware(api.authMiddleware(api.initHandler))))
 
 	// Start server
 	logger.Info("Server listening for requests", map[string]interface{}{

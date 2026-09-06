@@ -2,12 +2,19 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+)
+
+var (
+	ErrCategoryNameRequired     = errors.New("name is required")
+	ErrInvalidCategoryColor     = errors.New("invalid color format")
+	ErrInvalidPomodoroDurations = errors.New("pomodoro durations must be positive")
 )
 
 type PomodoroConfig struct {
@@ -180,10 +187,10 @@ func (api *API) categoriesHandler(w http.ResponseWriter, r *http.Request) {
 
 func validateCategoryInput(input CategoryInput) error {
 	if input.Name == "" {
-		return &ValidationError{Message: "name is required"}
+		return ErrCategoryNameRequired
 	}
 	if !isValidHexColor(input.Color) {
-		return &ValidationError{Message: "invalid color format"}
+		return ErrInvalidCategoryColor
 	}
 	return validatePomodoroConfig(input.PomodoroConfig)
 }
@@ -193,7 +200,7 @@ func validatePomodoroConfig(config *PomodoroConfig) error {
 		return nil
 	}
 	if config.WorkDuration <= 0 || config.RestDuration <= 0 {
-		return &ValidationError{Message: "pomodoro durations must be positive"}
+		return ErrInvalidPomodoroDurations
 	}
 	return nil
 }

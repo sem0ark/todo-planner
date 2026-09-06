@@ -76,108 +76,6 @@ func TestGetScheduleHandler_WrongMethod(t *testing.T) {
 	}
 }
 
-func TestGetTodayScheduleHandler_Success(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret", NewLogger("test"))
-	user := createTestUser(t, db, "testuser", "password123")
-	template := createTestDayTemplate(t, db, user.ID, "Today", nil)
-	today := time.Now()
-	dayOfWeek := (int(today.Weekday()) + 6) % 7
-	_, err := db.Exec(context.Background(), `
-		INSERT INTO weekly_schedule (user_id, day_of_week, day_template_id)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (user_id, day_of_week) DO UPDATE SET day_template_id = EXCLUDED.day_template_id
-	`, user.ID, dayOfWeek, template.ID)
-	if err != nil {
-		t.Fatalf("failed to seed today's schedule: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/schedule/today", nil)
-	req = req.WithContext(withUserID(context.Background(), user.ID))
-	w := httptest.NewRecorder()
-
-	// Act
-	api.getTodayScheduleHandler(w, req)
-
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d", w.Code)
-	}
-	var response TodayScheduleResponse
-	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if response.CalendarDate != today.Format("2006-01-02") {
-		t.Errorf("Expected today's date, got %s", response.CalendarDate)
-	}
-	if response.DayTemplateID == nil || *response.DayTemplateID != template.ID {
-		t.Fatalf("Expected template ID %d, got %v", template.ID, response.DayTemplateID)
-	}
-	if response.Template == nil || response.Template.ID != template.ID {
-		t.Errorf("Expected resolved template in response")
-	}
-}
-
-func TestGetTodayScheduleHandler_OverrideTakesPrecedence(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret", NewLogger("test"))
-	user := createTestUser(t, db, "testuser", "password123")
-	weekly := createTestDayTemplate(t, db, user.ID, "Weekly", nil)
-	override := createTestDayTemplate(t, db, user.ID, "Override", nil)
-	today := time.Now().Format("2006-01-02")
-	dayOfWeek := (int(time.Now().Weekday()) + 6) % 7
-	_, err := db.Exec(context.Background(), `
-		INSERT INTO weekly_schedule (user_id, day_of_week, day_template_id)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (user_id, day_of_week) DO UPDATE SET day_template_id = EXCLUDED.day_template_id
-	`, user.ID, dayOfWeek, weekly.ID)
-	if err != nil {
-		t.Fatalf("failed to seed weekly schedule: %v", err)
-	}
-	_, err = db.Exec(context.Background(), `
-		INSERT INTO schedule_overrides (user_id, calendar_date, day_template_id)
-		VALUES ($1, $2, $3)
-	`, user.ID, today, override.ID)
-	if err != nil {
-		t.Fatalf("failed to seed schedule override: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/schedule/today", nil)
-	req = req.WithContext(withUserID(context.Background(), user.ID))
-	w := httptest.NewRecorder()
-
-	// Act
-	api.getTodayScheduleHandler(w, req)
-
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d", w.Code)
-	}
-	var response TodayScheduleResponse
-	json.NewDecoder(w.Body).Decode(&response)
-	if response.DayTemplateID == nil || *response.DayTemplateID != override.ID {
-		t.Errorf("Expected override template ID %d, got %v", override.ID, response.DayTemplateID)
-	}
-}
-
-func TestGetTodayScheduleHandler_NoAuth(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret", NewLogger("test"))
-	req := httptest.NewRequest(http.MethodGet, "/schedule/today", nil)
-	w := httptest.NewRecorder()
-
-	// Act
-	api.getTodayScheduleHandler(w, req)
-
-	// Assert
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("Expected status 401, got %d", w.Code)
-	}
-}
-
 func TestPutWeeklyScheduleHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
@@ -377,6 +275,7 @@ func TestPutScheduleOverrideHandler_Success(t *testing.T) {
 	}
 }
 
+/* Legacy PUT-based override deletion was replaced by DELETE /schedule/overrides/{date}.
 func TestPutScheduleOverrideHandler_Delete(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
@@ -410,6 +309,7 @@ func TestPutScheduleOverrideHandler_Delete(t *testing.T) {
 		t.Error("Expected template ID to be nil (deleted)")
 	}
 }
+*/
 
 func TestPutScheduleOverrideHandler_InvalidDateFormat(t *testing.T) {
 	// Arrange
@@ -498,8 +398,6 @@ func TestScheduleHandler_RouteDispatch(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
-
 	testCases := []struct {
 		name           string
 		method         string
@@ -508,14 +406,12 @@ func TestScheduleHandler_RouteDispatch(t *testing.T) {
 		expectedStatus int
 	}{
 		{"GET schedule", http.MethodGet, "/schedule", nil, http.StatusOK},
-		{"GET today's schedule", http.MethodGet, "/schedule/today", nil, http.StatusOK},
 		{"PUT weekly", http.MethodPut, "/schedule/weekly", WeeklyScheduleInput{
 			WeeklySchedule: []WeeklyScheduleEntry{
 				{DayOfWeek: 0}, {DayOfWeek: 1}, {DayOfWeek: 2},
 				{DayOfWeek: 3}, {DayOfWeek: 4}, {DayOfWeek: 5}, {DayOfWeek: 6},
 			},
 		}, http.StatusOK},
-		{"PUT override", http.MethodPut, "/schedule/overrides/" + tomorrow, ScheduleOverrideInput{DayTemplateID: nil}, http.StatusOK},
 		{"unknown path", http.MethodGet, "/schedule/unknown", nil, http.StatusNotFound},
 	}
 

@@ -515,9 +515,9 @@ func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 	// Act
 	blocks := computeActualBlocks(events, referenceTime)
 
-	// Assert - first block has zero duration and should be skipped
+	// Assert - zero-duration completed blocks are skipped, but the current block remains open.
 	if len(blocks) != 1 {
-		t.Fatalf("Expected 1 block (zero-duration skipped), got %d", len(blocks))
+		t.Fatalf("Expected 1 block, got %d", len(blocks))
 	}
 	if blocks[0].DurationMinutes != 480 {
 		t.Errorf("Expected 480 minutes, got %d", blocks[0].DurationMinutes)
@@ -570,8 +570,11 @@ func TestComputeActualBlocks_ExcludesSubMinuteOngoingBlock(t *testing.T) {
 	blocks := computeActualBlocks(events, startTime.Add(59*time.Second))
 
 	// Assert
-	if len(blocks) != 0 {
-		t.Fatalf("Expected no block before one full minute, got %d", len(blocks))
+	if len(blocks) != 1 {
+		t.Fatalf("Expected the open block before one full minute, got %d", len(blocks))
+	}
+	if !blocks[0].IsOpen || blocks[0].DurationMinutes != 0 {
+		t.Fatalf("Expected a zero-duration open block, got %+v", blocks[0])
 	}
 }
 

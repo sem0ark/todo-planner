@@ -11,6 +11,7 @@ import (
 )
 
 var ErrInvalidWeeklySchedule = errors.New("invalid weekly schedule")
+var ErrScheduleOverrideNotFound = errors.New("schedule override not found")
 
 type ScheduleRepository struct {
 	db *pgxpool.Pool
@@ -256,6 +257,26 @@ func (r *ScheduleRepository) SetOverride(ctx context.Context, userID int, calend
 		CalendarDate:  calendarDate,
 		DayTemplateID: dayTemplateID,
 	}, nil
+}
+
+// DeleteOverride removes a date override and re-pins the date to the weekly schedule.
+func (r *ScheduleRepository) DeleteOverride(ctx context.Context, userID int, calendarDate string) error {
+	transaction, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer transaction.Rollback(ctx)
+	commandTag, err := transaction.Exec(ctx, `DELETE FROM schedule_overrides WHERE user_id = $1 AND calendar_date = $2`, userID, calendarDate)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ErrScheduleOverrideNotFound
+	}
+	if err := r.repinDate(ctx, transaction, userID, calendarDate); err != nil {
+		return err
+	}
+	return transaction.Commit(ctx)
 }
 
 func (r *ScheduleRepository) ensureTemplateBelongsToUser(ctx context.Context, userID, templateID int) error {

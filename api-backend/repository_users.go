@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,6 +14,11 @@ type UserRepository struct {
 	db                            *pgxpool.Pool
 	setupDefaultUserConfiguration bool
 }
+
+var (
+	ErrDuplicateUsername = fmt.Errorf("username already exists")
+	ErrInvalidPassword   = fmt.Errorf("invalid password")
+)
 
 func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 	return &UserRepository{db: db, setupDefaultUserConfiguration: true}
@@ -94,22 +100,4 @@ func (r *UserRepository) DeleteAccount(ctx context.Context, userID int, password
 	deleteQuery := `DELETE FROM users WHERE id = $1`
 	_, err = r.db.Exec(ctx, deleteQuery, userID)
 	return err
-}
-
-// Common errors
-var (
-	ErrDuplicateUsername = &DuplicateUsernameError{}
-	ErrInvalidPassword   = &InvalidPasswordError{}
-)
-
-type DuplicateUsernameError struct{}
-
-func (e *DuplicateUsernameError) Error() string {
-	return "username already exists"
-}
-
-type InvalidPasswordError struct{}
-
-func (e *InvalidPasswordError) Error() string {
-	return "invalid password"
 }
