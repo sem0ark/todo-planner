@@ -32,7 +32,7 @@ func TestPostDateEventsAutoCreatesAndDeduplicates(t *testing.T) {
 		DayTemplateID *int `json:"day_template_id"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&first); err != nil {
-		t.Fatalf("failed to decode first response: %v", err)
+		t.Fatalf("failed to decode first response: %v; body=%s", err, response.Body.String())
 	}
 	if len(first.AcceptedEvents) != 1 || first.AcceptedEvents[0].ClientEventID != "event-1" {
 		t.Fatalf("unexpected accepted events: %+v", first.AcceptedEvents)
@@ -77,9 +77,45 @@ func TestPostDateEventsRequiresAmendmentFields(t *testing.T) {
 	}
 }
 
+func TestDayEventRequestAllowsNullableAmendmentFieldsToBeOmitted(t *testing.T) {
+	var request dayEventRequest
+	err := json.Unmarshal([]byte(`{
+		"client_event_id": "event-1",
+		"event_type": "confirmation",
+		"occurred_at": "2026-09-06T14:26:37Z"
+	}`), &request)
+	if err != nil {
+		t.Fatalf("expected request to decode: %v", err)
+	}
+	if request.TargetClientEventID != nil || request.CorrectedAt != nil {
+		t.Fatal("expected omitted amendment fields to remain nil")
+	}
+}
+
 func postDateEventsRequest(t *testing.T, api *API, userID int, calendarDate string, input DayEventsInput) *httptest.ResponseRecorder {
 	t.Helper()
-	body, err := json.Marshal(input)
+	publicEvents := make([]dayEventRequest, 0, len(input.Events))
+	for _, event := range input.Events {
+		var correctedAt *APITimestamp
+		if event.CorrectedAt != nil {
+			convertedTime := APITimestamp(*event.CorrectedAt)
+			correctedAt = &convertedTime
+		}
+		var targetClientEventID *string
+		if event.TargetClientEventID != "" {
+			targetClientEventID = &event.TargetClientEventID
+		}
+		publicEvents = append(publicEvents, dayEventRequest{
+			ClientEventID:       event.ClientEventID,
+			EventType:           event.EventType,
+			CategoryID:          event.CategoryID,
+			OccurredAt:          APITimestamp(event.OccurredAt),
+			TargetClientEventID: targetClientEventID,
+			CorrectedAt:         correctedAt,
+		})
+	}
+	requestBody := dayEventsRequest{DeviceID: input.DeviceID, Events: publicEvents}
+	body, err := json.Marshal(requestBody)
 	if err != nil {
 		t.Fatalf("failed to encode request: %v", err)
 	}

@@ -48,7 +48,7 @@ func TestGetScheduleHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.getScheduleHandler(w, req)
+	api.protectedHandler(api.getScheduleHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {
@@ -229,7 +229,7 @@ func TestPutWeeklyScheduleHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.putWeeklyScheduleHandler(w, req)
+	api.protectedHandler(api.putWeeklyScheduleHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {
@@ -244,7 +244,7 @@ func TestPutScheduleOverrideHandler_Success(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	reqBody := ScheduleOverrideInput{
 		DayTemplateID: &template.ID,
@@ -267,49 +267,13 @@ func TestPutScheduleOverrideHandler_Success(t *testing.T) {
 
 	var response ScheduleOverride
 	json.NewDecoder(w.Body).Decode(&response)
-	if response.CalendarDate != tomorrow {
+	if response.CalendarDate != mustCalendarDate(tomorrow) {
 		t.Errorf("Expected date %s, got %s", tomorrow, response.CalendarDate)
 	}
 	if response.DayTemplateID == nil || *response.DayTemplateID != template.ID {
 		t.Error("Expected template ID to be set")
 	}
 }
-
-/* Legacy PUT-based override deletion was replaced by DELETE /schedule/overrides/{date}.
-func TestPutScheduleOverrideHandler_Delete(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret", NewLogger("test"))
-	user := createTestUser(t, db, "testuser", "password123")
-
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
-
-	reqBody := ScheduleOverrideInput{
-		DayTemplateID: nil,
-	}
-	body, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPut, "/schedule/overrides/"+tomorrow, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-
-	ctx := withUserID(context.Background(), user.ID)
-	req = req.WithContext(ctx)
-	w := httptest.NewRecorder()
-
-	// Act
-	api.putScheduleOverrideHandler(w, req, tomorrow)
-
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	var response ScheduleOverride
-	json.NewDecoder(w.Body).Decode(&response)
-	if response.DayTemplateID != nil {
-		t.Error("Expected template ID to be nil (deleted)")
-	}
-}
-*/
 
 func TestPutScheduleOverrideHandler_InvalidDateFormat(t *testing.T) {
 	// Arrange
@@ -345,7 +309,7 @@ func TestPutScheduleOverrideHandler_PastDate(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format(DateFormat)
 
 	reqBody := ScheduleOverrideInput{
 		DayTemplateID: nil,
@@ -372,7 +336,7 @@ func TestPutScheduleOverrideHandler_NoAuth(t *testing.T) {
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	reqBody := ScheduleOverrideInput{
 		DayTemplateID: nil,
@@ -384,7 +348,9 @@ func TestPutScheduleOverrideHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.putScheduleOverrideHandler(w, req, tomorrow)
+	api.protectedHandler(func(responseWriter http.ResponseWriter, request *http.Request) {
+		api.putScheduleOverrideHandler(responseWriter, request, tomorrow)
+	})(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

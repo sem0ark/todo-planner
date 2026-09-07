@@ -10,6 +10,7 @@ final class AuthController {
 
   var isAuthenticated: Bool = false
   var isCheckingAuth: Bool = true
+  var lastError: String?
 
   init(repository: TodoPlannerRepository) {
     self.repository = repository
@@ -22,6 +23,7 @@ final class AuthController {
     guard repository.getAuthToken() != nil else {
       print("[AUTH] No token found")
       isAuthenticated = false
+      lastError = nil
       isCheckingAuth = false
       return
     }
@@ -32,13 +34,16 @@ final class AuthController {
       if isValid {
         print("[OK] Token is valid, user authenticated")
         isAuthenticated = true
+        lastError = nil
       } else {
         print("[AUTH] Token invalid")
         isAuthenticated = false
+        lastError = nil
       }
     } catch {
-      print("[AUTH] Validation failed: \(error)")
-      isAuthenticated = false
+      WidgetLogger.error(
+        "Authentication validation failed", context: ["error": String(describing: error)])
+      lastError = String(describing: error)
     }
 
     isCheckingAuth = false
@@ -48,6 +53,7 @@ final class AuthController {
   func setAuthToken(_ token: String) async throws {
     try await repository.persistAuthToken(token)
     isAuthenticated = true
+    lastError = nil
     print("[OK] Authentication successful!")
   }
 
@@ -59,7 +65,8 @@ final class AuthController {
       isAuthenticated = false
       print("[OK] Logout successful")
     } catch {
-      print("[ERROR] Logout failed: \(error)")
+      WidgetLogger.error("Logout failed", context: ["error": String(describing: error)])
+      lastError = String(describing: error)
     }
   }
 }

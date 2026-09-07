@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -10,8 +9,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrInvalidWeeklySchedule = errors.New("invalid weekly schedule")
-var ErrScheduleOverrideNotFound = errors.New("schedule override not found")
+var ErrInvalidWeeklySchedule = NewBadRequestError("invalid weekly schedule")
+var ErrScheduleOverrideNotFound = NewNotFoundError("schedule override not found")
+var ErrIncompleteWeeklySchedule = NewAppError(500, "incomplete weekly schedule")
 
 type ScheduleRepository struct {
 	db *pgxpool.Pool
@@ -28,11 +28,11 @@ type WeeklySchedule struct {
 
 // ScheduleOverride struct already defined in models.go
 type ScheduleOverride struct {
-	ID            int        `json:"id"`
-	UserID        int        `json:"user_id"`
-	CalendarDate  string     `json:"calendar_date"`
-	DayTemplateID *int       `json:"day_template_id"`
-	CreatedAt     *time.Time `json:"created_at"`
+	ID            int          `json:"id"`
+	UserID        int          `json:"user_id"`
+	CalendarDate  CalendarDate `json:"calendar_date"`
+	DayTemplateID *int         `json:"day_template_id"`
+	CreatedAt     *time.Time   `json:"created_at"`
 }
 
 // A single day's template assignment
@@ -67,20 +67,17 @@ func (r *ScheduleRepository) GetWeeklySchedule(ctx context.Context, userID int) 
 		existing[ws.DayOfWeek] = ws
 	}
 
-	// Ensure all 7 days are present
-	result := make([]WeeklySchedule, 7)
-	for i := 0; i < 7; i++ {
-		if ws, ok := existing[i]; ok {
-			result[i] = ws
-		} else {
-			result[i] = WeeklySchedule{
-				UserID:        userID,
-				DayOfWeek:     i,
-				DayTemplateID: nil,
-			}
-		}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(existing) != 7 {
+		return nil, fmt.Errorf("%w: expected 7 entries, got %d", ErrIncompleteWeeklySchedule, len(existing))
 	}
 
+	result := make([]WeeklySchedule, 0, len(existing))
+	for dayOfWeek := 0; dayOfWeek < 7; dayOfWeek++ {
+		result = append(result, existing[dayOfWeek])
+	}
 	return result, nil
 }
 
@@ -143,10 +140,10 @@ func (r *ScheduleRepository) ReplaceWeeklySchedule(ctx context.Context, userID i
 
 // GetFutureOverrides returns all overrides from today onward
 func (r *ScheduleRepository) GetFutureOverrides(ctx context.Context, userID int) ([]ScheduleOverride, error) {
-	today := time.Now().Format("2006-01-02")
+	today := CalendarDate(time.Now().UTC().Truncate(24 * time.Hour))
 
 	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, calendar_date::text, day_template_id, created_at
+		SELECT id, user_id, calendar_date, day_template_id, created_at
 		FROM schedule_overrides
 		WHERE user_id = $1 AND calendar_date >= $2
 		ORDER BY calendar_date ASC
@@ -170,7 +167,7 @@ func (r *ScheduleRepository) GetFutureOverrides(ctx context.Context, userID int)
 
 // GetTemplateForDate resolves the template assigned to a calendar date.
 // A date-specific override takes precedence over the weekly schedule.
-func (r *ScheduleRepository) GetTemplateForDate(ctx context.Context, userID int, calendarDate string) (*int, error) {
+func (r *ScheduleRepository) GetTemplateForDate(ctx context.Context, userID int, calendarDate CalendarDate) (*int, error) {
 	var templateID *int
 	err := r.db.QueryRow(ctx, `
 		SELECT day_template_id
@@ -184,11 +181,7 @@ func (r *ScheduleRepository) GetTemplateForDate(ctx context.Context, userID int,
 		return nil, err
 	}
 
-	parsedDate, err := time.Parse("2006-01-02", calendarDate)
-	if err != nil {
-		return nil, err
-	}
-	dayOfWeek := (int(parsedDate.Weekday()) + 6) % 7
+	dayOfWeek := (int(calendarDate.Weekday()) + 6) % 7
 
 	err = r.db.QueryRow(ctx, `
 		SELECT day_template_id
@@ -206,7 +199,7 @@ func (r *ScheduleRepository) GetTemplateForDate(ctx context.Context, userID int,
 }
 
 // SetOverride creates or updates a schedule override. If dayTemplateID is nil, removes the override.
-func (r *ScheduleRepository) SetOverride(ctx context.Context, userID int, calendarDate string, dayTemplateID *int) (*ScheduleOverride, error) {
+func (r *ScheduleRepository) SetOverride(ctx context.Context, userID int, calendarDate CalendarDate, dayTemplateID *int) (*ScheduleOverride, error) {
 	if dayTemplateID != nil {
 		if err := r.ensureTemplateBelongsToUser(ctx, userID, *dayTemplateID); err != nil {
 			return nil, err
@@ -260,7 +253,7 @@ func (r *ScheduleRepository) SetOverride(ctx context.Context, userID int, calend
 }
 
 // DeleteOverride removes a date override and re-pins the date to the weekly schedule.
-func (r *ScheduleRepository) DeleteOverride(ctx context.Context, userID int, calendarDate string) error {
+func (r *ScheduleRepository) DeleteOverride(ctx context.Context, userID int, calendarDate CalendarDate) error {
 	transaction, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -295,7 +288,7 @@ func (r *ScheduleRepository) ensureTemplateBelongsToUser(ctx context.Context, us
 
 func (r *ScheduleRepository) repinActiveAndFutureRecords(ctx context.Context, transaction pgx.Tx, userID int) error {
 	rows, err := transaction.Query(ctx, `
-		SELECT id, calendar_date::text
+		SELECT id, calendar_date
 		FROM day_records
 		WHERE user_id = $1 AND calendar_date >= CURRENT_DATE
 	`, userID)
@@ -304,7 +297,7 @@ func (r *ScheduleRepository) repinActiveAndFutureRecords(ctx context.Context, tr
 	}
 	type recordDate struct {
 		id   int
-		date string
+		date CalendarDate
 	}
 	recordDates := make([]recordDate, 0)
 	for rows.Next() {
@@ -326,7 +319,7 @@ func (r *ScheduleRepository) repinActiveAndFutureRecords(ctx context.Context, tr
 	return nil
 }
 
-func (r *ScheduleRepository) repinDate(ctx context.Context, transaction pgx.Tx, userID int, calendarDate string) error {
+func (r *ScheduleRepository) repinDate(ctx context.Context, transaction pgx.Tx, userID int, calendarDate CalendarDate) error {
 	var recordID int
 	err := transaction.QueryRow(ctx, `
 		SELECT id FROM day_records
@@ -341,7 +334,7 @@ func (r *ScheduleRepository) repinDate(ctx context.Context, transaction pgx.Tx, 
 	return r.repinRecord(ctx, transaction, userID, recordID, calendarDate)
 }
 
-func (r *ScheduleRepository) repinRecord(ctx context.Context, transaction pgx.Tx, userID, recordID int, calendarDate string) error {
+func (r *ScheduleRepository) repinRecord(ctx context.Context, transaction pgx.Tx, userID, recordID int, calendarDate CalendarDate) error {
 	templateID, err := resolveTemplateForDateTx(ctx, transaction, userID, calendarDate)
 	if err != nil {
 		return err
@@ -369,7 +362,7 @@ func (r *ScheduleRepository) repinRecord(ctx context.Context, transaction pgx.Tx
 	return err
 }
 
-func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID int, calendarDate string) (*int, error) {
+func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID int, calendarDate CalendarDate) (*int, error) {
 	var templateID *int
 	err := transaction.QueryRow(ctx, `
 		SELECT day_template_id FROM schedule_overrides
@@ -381,11 +374,7 @@ func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID in
 	if err != pgx.ErrNoRows {
 		return nil, err
 	}
-	parsedDate, err := time.Parse("2006-01-02", calendarDate)
-	if err != nil {
-		return nil, err
-	}
-	dayOfWeek := (int(parsedDate.Weekday()) + 6) % 7
+	dayOfWeek := (int(calendarDate.Weekday()) + 6) % 7
 	err = transaction.QueryRow(ctx, `
 		SELECT day_template_id FROM weekly_schedule
 		WHERE user_id = $1 AND day_of_week = $2
@@ -397,10 +386,10 @@ func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID in
 }
 
 // GetOverride retrieves a specific override by date
-func (r *ScheduleRepository) GetOverride(ctx context.Context, userID int, calendarDate string) (*ScheduleOverride, error) {
+func (r *ScheduleRepository) GetOverride(ctx context.Context, userID int, calendarDate CalendarDate) (*ScheduleOverride, error) {
 	var so ScheduleOverride
 	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, calendar_date::text, day_template_id, created_at
+		SELECT id, user_id, calendar_date, day_template_id, created_at
 		FROM schedule_overrides
 		WHERE user_id = $1 AND calendar_date = $2
 	`, userID, calendarDate).Scan(&so.ID, &so.UserID, &so.CalendarDate, &so.DayTemplateID, &so.CreatedAt)

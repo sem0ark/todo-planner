@@ -2,17 +2,16 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"regexp"
-
-	"github.com/jackc/pgx/v5"
 )
 
+var hexColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
 var (
-	ErrCategoryNameRequired     = errors.New("name is required")
-	ErrInvalidCategoryColor     = errors.New("invalid color format")
-	ErrInvalidPomodoroDurations = errors.New("pomodoro durations must be positive")
+	ErrCategoryNameRequired     = NewBadRequestError("name is required")
+	ErrInvalidCategoryColor     = NewBadRequestError("invalid color format")
+	ErrInvalidPomodoroDurations = NewBadRequestError("pomodoro durations must be positive")
 )
 
 type PomodoroConfig struct {
@@ -36,11 +35,7 @@ type CategoryDeleteResponse struct {
 }
 
 func (api *API) getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	categories, err := api.categoryRepo.FindByUser(r.Context(), userID)
 	if err != nil {
@@ -51,16 +46,11 @@ func (api *API) getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := CategoriesResponse{Categories: categories}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 func (api *API) createCategoryHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input CategoryInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -71,7 +61,7 @@ func (api *API) createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateCategoryInput(input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeAppError(w, err)
 		return
 	}
 
@@ -84,17 +74,12 @@ func (api *API) createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(category)
+	writeJSON(w, category)
 }
 
 func (api *API) updateCategoryHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input CategoryInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -105,14 +90,13 @@ func (api *API) updateCategoryHandler(w http.ResponseWriter, r *http.Request, id
 	}
 
 	if err := validateCategoryInput(input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeAppError(w, err)
 		return
 	}
 
 	category, err := api.categoryRepo.Update(r.Context(), id, input, userID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			http.Error(w, "category not found", http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update category", err, map[string]interface{}{
@@ -123,21 +107,15 @@ func (api *API) updateCategoryHandler(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(category)
+	writeJSON(w, category)
 }
 
 func (api *API) deleteCategoryHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	err := api.categoryRepo.Delete(r.Context(), id, userID)
 	if err != nil {
-		if err == ErrCategoryNotFound {
-			http.Error(w, "category not found", http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete category", err, map[string]interface{}{
@@ -148,8 +126,7 @@ func (api *API) deleteCategoryHandler(w http.ResponseWriter, r *http.Request, id
 	}
 
 	response := CategoryDeleteResponse{ID: id, Deleted: true}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 func validateCategoryInput(input CategoryInput) error {
@@ -173,6 +150,5 @@ func validatePomodoroConfig(config *PomodoroConfig) error {
 }
 
 func isValidHexColor(color string) bool {
-	matched, _ := regexp.MatchString(`^#[0-9A-Fa-f]{6}$`, color)
-	return matched
+	return hexColorPattern.MatchString(color)
 }

@@ -18,8 +18,8 @@ func TestDayTemplateRepository_Create(t *testing.T) {
 	input := DayTemplateInput{
 		Name: "Weekday",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
-			{CategoryID: category.ID, StartTime: "13:00:00", DurationMinutes: 180},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 120},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("13:00:00"), DurationMinutes: 180},
 		},
 	}
 
@@ -57,7 +57,7 @@ func TestDayTemplateRepository_Create_WithTemplateGroup(t *testing.T) {
 		Name:            "Weekday",
 		TemplateGroupID: &group.ID,
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 480},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 480},
 		},
 	}
 
@@ -134,7 +134,7 @@ func TestDayTemplateRepository_FindByUser_IncludesBlocks(t *testing.T) {
 	input := DayTemplateInput{
 		Name: "Weekday",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 480},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 480},
 		},
 	}
 	templateRepo.Create(ctx, input, user.ID)
@@ -195,15 +195,15 @@ func TestDayTemplateRepository_Update(t *testing.T) {
 	template, _ := templateRepo.Create(ctx, DayTemplateInput{
 		Name: "Original",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category1.ID, StartTime: "09:00:00", DurationMinutes: 480},
+			{CategoryID: category1.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 480},
 		},
 	}, user.ID)
 
 	newInput := DayTemplateInput{
 		Name: "Updated",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category2.ID, StartTime: "10:00:00", DurationMinutes: 240},
-			{CategoryID: category1.ID, StartTime: "14:00:00", DurationMinutes: 120},
+			{CategoryID: category2.ID, StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 240},
+			{CategoryID: category1.ID, StartTime: mustScheduleTime("14:00:00"), DurationMinutes: 120},
 		},
 	}
 

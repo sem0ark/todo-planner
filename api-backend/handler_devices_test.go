@@ -87,7 +87,7 @@ func TestRegisterDeviceHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.registerDeviceHandler(w, req)
+	api.protectedHandler(api.registerDeviceHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

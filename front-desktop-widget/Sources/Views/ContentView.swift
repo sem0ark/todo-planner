@@ -394,13 +394,11 @@ struct ActiveView: View {
                     .frame(width: 140 * widgetState.progressPercentage, height: 5)
                 }
 
-                // Elapsed time
-                Text(
-                  "\(Int(widgetState.progressPercentage * Double(widgetState.plannedDurationMinutes)))m"
-                )
-                .font(.system(size: Typography.tinyMono, design: .monospaced))
-                .monospacedDigit()
-                .foregroundColor(Color.white.opacity(0.6))
+                // Remaining planned time
+                Text("\(widgetState.remainingPlannedMinutes)m")
+                  .font(.system(size: Typography.tinyMono, design: .monospaced))
+                  .monospacedDigit()
+                  .foregroundColor(Color.white.opacity(0.6))
               }
             }
           }
@@ -528,9 +526,10 @@ struct RightRailView: View {
       .foregroundColor(StyleTokens.secondaryText)
       .frame(maxWidth: .infinity)
       .padding(.vertical, 8)
+      .background(StyleTokens.baseVoid)
+      .contentShape(Rectangle())
     }
     .buttonStyle(PlainButtonStyle())
-    .background(StyleTokens.baseVoid)
     .overlay(
       Rectangle()
         .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))

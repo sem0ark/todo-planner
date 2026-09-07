@@ -1,8 +1,7 @@
 # Date and Time Formats
-- **Date-only values** — `YYYY-MM-DD` (ISO calendar date). Used for calendar route parameters, `calendar_date`, and `from`/`to` query parameters.
-- **Schedule times** — `HH:MM` in 24-hour local time. Used for `day_boundary_time`, planned snapshot block `start_time`, and actual block `start_time`. Seconds are not returned by the API.
-- **User-driven event timestamps** — ISO 8601 - `YYYY-MM-DDTHH:MM:SSZ` in UTC, for example `2026-09-06T14:26:37Z`. Used for `occurred_at`, including event corrections.
-- **Server-managed timestamps** — ISO 8601 - `YYYY-MM-DDTHH:MM:SSZ` in UTC, for example `2026-09-06T14:26:37Z`. Used for `created_at`, `updated_at`, `registered_at`, `snapshotted_at`, and `received_at`.
+- **Date-only values** — ISO 8601 - `YYYY-MM-DD` (ISO calendar date). Used for calendar route parameters, `calendar_date`, and `from`/`to` query parameters.
+- **Schedule times** — ISO 8601 - `HH:MM:SS` - define events in scope of a single day, such as actual timeline, planned timeline, template.
+- **User-driven event timestamps & Server-managed timestamps** — ISO 8601 - `YYYY-MM-DDTHH:MM:SSZ` in UTC, for example `2026-09-06T14:26:37Z`. Used for `occurred_at`, `created_at`, `updated_at`, etc.
 
 Date-only values must not include a time or timezone. Schedule times must not include a date or timezone. Timestamp fields must use UTC and the exact `YYYY-MM-DDTHH:MM:SSZ` representation; fractional seconds and local offsets are not used.
 
@@ -47,7 +46,7 @@ Date-only values must not include a time or timezone. Schedule times must not in
   - `DELETE /schedule/overrides/{date}` - remove override for a specific date
 
 - **Days**
-  - `GET /days?from=&to=` - fetch existing records in date range; missing dates are omitted, and each record includes its snapshot blocks and actual blocks inline
+  - `GET /days?from=&to=` - fetch existing records in date range; missing dates are null, and each record includes its snapshot blocks and actual blocks inline
   - `GET /days/{date}` - fetch a single day record
   - `POST /days/{date}` - create a record and pin the active template snapshot
   - `POST /days/{date}/events` - append batch of day events; auto-creates and recomputes actual blocks
@@ -266,7 +265,11 @@ Creates a new user account and returns a JWT token.
 ```json
 {
   "token": "string",
-  "user_id": "integer"
+  "user": {
+    "id": "integer",
+    "username": "string",
+    "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
+  }
 }
 ```
 
@@ -289,7 +292,11 @@ Authenticates an existing user and returns a JWT token.
 ```json
 {
   "token": "string",
-  "user_id": "integer"
+  "user": {
+    "id": "integer",
+    "username": "string",
+    "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
+  }
 }
 ```
 
@@ -327,8 +334,8 @@ Returns the current user settings.
 **Output `200`:**
 ```json
 {
-  "day_boundary_time": "string (HH:MM)",
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "day_boundary_time": "string (HH:MM:SS)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -338,15 +345,15 @@ Replaces all user settings.
 **Input:**
 ```json
 {
-  "day_boundary_time": "string (HH:MM)"
+  "day_boundary_time": "string (HH:MM:SS)"
 }
 ```
 
 **Output `200`:**
 ```json
 {
-  "day_boundary_time": "string (HH:MM)",
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "day_boundary_time": "string (HH:MM:SS)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -369,7 +376,7 @@ Registers a new native client device for the authenticated user. Called once on 
 ```json
 {
   "device_id": "integer",
-  "registered_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "registered_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -395,8 +402,8 @@ Returns all non-deleted categories belonging to the authenticated user.
         "work_duration": "integer (minutes)",
         "rest_duration": "integer (minutes)"
       },
-      "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-      "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+      "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
     }
   ]
 }
@@ -429,8 +436,8 @@ Creates a new activity category.
     "work_duration": "integer (minutes)",
     "rest_duration": "integer (minutes)"
   },
-  "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -464,7 +471,8 @@ Replaces the name and color of an existing category. Changes are reflected immed
     "work_duration": "integer (minutes)",
     "rest_duration": "integer (minutes)"
   },
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -498,8 +506,8 @@ Returns all non-deleted template groups belonging to the authenticated user.
     {
       "id": "integer",
       "name": "string",
-      "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-      "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+      "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
     }
   ]
 }
@@ -520,8 +528,8 @@ Creates a new template group.
 {
   "id": "integer",
   "name": "string",
-  "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -543,7 +551,8 @@ Replaces the name of an existing template group.
 {
   "id": "integer",
   "name": "string",
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -580,20 +589,15 @@ Returns all non-deleted templates with their current snapshot and schedule block
       "id": "integer",
       "name": "string",
       "template_group_id": "integer | null",
-      "current_snapshot": {
-        "id": "integer",
-        "snapshotted_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-        "snapshot_blocks": [
-          {
-            "id": "integer",
-            "category_id": "integer",
-            "start_time": "string (HH:MM)",
-            "duration_minutes": "integer"
-          }
-        ]
-      },
-      "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-      "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+      "plan": [
+        {
+          "category_id": "integer",
+          "start_time": "string (HH:MM:SS)",
+          "duration_minutes": "integer"
+        }
+      ],
+      "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
     }
   ]
 }
@@ -607,10 +611,10 @@ Creates a new template with general metadata and an initial schedule. To impleme
 {
   "name": "string",
   "template_group_id": "integer | null",
-  "snapshot_blocks": [
+  "plan": [
     {
       "category_id": "integer",
-      "start_time": "string (HH:MM)",
+      "start_time": "string (HH:MM:SS)",
       "duration_minutes": "integer"
     }
   ]
@@ -623,20 +627,15 @@ Creates a new template with general metadata and an initial schedule. To impleme
   "id": "integer",
   "name": "string",
   "template_group_id": "integer | null",
-  "current_snapshot": {
-    "id": "integer",
-    "snapshotted_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-    "snapshot_blocks": [
-      {
-        "id": "integer",
-        "category_id": "integer",
-        "start_time": "string (HH:MM)",
-        "duration_minutes": "integer"
-      }
-    ]
-  },
-  "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "plan": [
+    {
+      "category_id": "integer",
+      "start_time": "string (HH:MM:SS)",
+      "duration_minutes": "integer"
+    }
+  ],
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -654,10 +653,10 @@ Existing active/future day records for this template are re-pinned from their ol
 {
   "name": "string",
   "template_group_id": "integer | null",
-  "snapshot_blocks": [
+  "plan": [
     {
       "category_id": "integer",
-            "start_time": "string (HH:MM)",
+      "start_time": "string (HH:MM:SS)",
       "duration_minutes": "integer"
     }
   ]
@@ -670,19 +669,14 @@ Existing active/future day records for this template are re-pinned from their ol
   "id": "integer",
   "name": "string",
   "template_group_id": "integer | null",
-  "current_snapshot": {
-    "id": "integer",
-    "snapshotted_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-    "snapshot_blocks": [
-      {
-        "id": "integer",
-        "category_id": "integer",
-        "start_time": "string (HH:MM)",
-        "duration_minutes": "integer"
-      }
-    ]
-  },
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "plan": [
+    {
+      "category_id": "integer",
+      "start_time": "string (HH:MM:SS)",
+      "duration_minutes": "integer"
+    }
+  ],
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -717,7 +711,7 @@ Returns the complete weekly schedule (all 7 slots, including unassigned days) an
       "id": "integer | null",
       "day_of_week": "integer (0=Monday … 6=Sunday)",
       "day_template_id": "integer | null",
-      "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ) | null"
+      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ) | null"
     }
   ],
   "overrides": [
@@ -725,7 +719,7 @@ Returns the complete weekly schedule (all 7 slots, including unassigned days) an
       "id": "integer",
       "calendar_date": "string (YYYY-MM-DD)",
       "day_template_id": "integer | null",
-      "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+      "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
     }
   ]
 }
@@ -754,7 +748,7 @@ Replaces the full weekly schedule. All 7 days of the week must be included. Days
       "id": "integer",
       "day_of_week": "integer",
       "day_template_id": "integer | null",
-      "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
     }
   ]
 }
@@ -780,7 +774,7 @@ Creates or replaces the schedule override for a specific calendar date. The requ
   "id": "integer",
   "calendar_date": "string (YYYY-MM-DD)",
   "day_template_id": "integer",
-  "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -809,37 +803,33 @@ Day records are the primary data surface for both the live widget and the review
 
 ```json
 {
-  "calendar_date": "2026-09-06",
+  "calendar_date": "string (YYYY-MM-DD)",
   "day_template_id": 5,
-  "snapshot": {
-    "snapshot_id": 12,
-    "snapshotted_at": "2026-09-01T10:00:00Z",
-    "blocks": [
-      {
-        "category_id": 3,
-        "start_time": "08:00",
-        "duration_minutes": 60
-      }
-    ]
-  },
-  "actual_blocks": [
+  "plan": [
+    {
+      "category_id": 3,
+      "start_time": "string (HH:MM:SS)",
+      "duration_minutes": 60
+    }
+  ],
+  "actual": [
     {
       "category_id": 3,
       "block_type": "actual",
-      "start_time": "08:05",
+      "start_time": "string (HH:MM:SS)",
       "duration_minutes": 55,
       "is_open": false
     }
   ],
-  "created_at": "2026-09-06T07:55:00Z",
-  "updated_at": "2026-09-06T14:30:00Z"
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
 The `snapshot` is `null` when no template is assigned. Actual blocks can be `actual`, `blank`, or server-derived `untracked`.
 
 ### `GET /days?from=&to=`
-Returns existing day records within the specified inclusive date range. Dates without a day record are omitted and do not initialize one.
+Returns existing day records within the specified inclusive date range. Dates without a day record are null and do not initialize one.
 
 **Query params:** `from=YYYY-MM-DD&to=YYYY-MM-DD`
 
@@ -850,28 +840,48 @@ Returns existing day records within the specified inclusive date range. Dates wi
     {
       "calendar_date": "string (YYYY-MM-DD)",
       "day_template_id": "integer | null",
-      "snapshot": {
-        "snapshot_id": "integer",
-        "snapshotted_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-        "blocks": [
-          {
-            "category_id": "integer",
-            "start_time": "string (HH:MM)",
-            "duration_minutes": "integer"
-          }
-        ]
-      },
-      "actual_blocks": [
+      "plan": [
+        {
+          "category_id": "integer",
+          "start_time": "string (HH:MM:SS)",
+          "duration_minutes": "integer"
+        }
+      ],
+      "actual": [
         {
           "category_id": "integer | null",
           "block_type": "actual | blank | untracked",
-          "start_time": "string (HH:MM)",
+          "start_time": "string (HH:MM:SS)",
           "duration_minutes": "integer",
           "is_open": "boolean"
         }
       ],
-      "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-      "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+      "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
+    }
+  ]
+}
+```
+
+In case of missing dates:
+```json
+
+{
+  "days": [
+    {
+      "calendar_date": "2026-09-06",
+      "day_record": null
+    },
+    {
+      "calendar_date": "2026-09-07",
+      "day_record": {
+        "calendar_date": "2026-09-07",
+        "day_template_id": null,
+        "plan": [],
+        "actual": [],
+        "created_at": "2026-09-07T08:00:00Z",
+        "updated_at": "2026-09-07T08:00:00Z"
+      }
     }
   ]
 }
@@ -918,9 +928,9 @@ Appends one or more day events to the day record identified by `{date}`. If no r
       "client_event_id": "uuid",
       "event_type": "transition | confirmation | amendment",
       "category_id": 4,
-      "occurred_at": "2026-09-06T14:26:37Z",
-      "target_client_event_id": "uuid | omitted",
-      "corrected_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ) | omitted"
+      "occurred_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+      "target_client_event_id": "uuid | null",
+      "corrected_at": "string (YYYY-MM-DDTHH:MM:SSZ) | null"
     }
   ]
 }
@@ -942,19 +952,15 @@ Appends one or more day events to the day record identified by `{date}`. If no r
 **Output `200`:**
 ```json
 {
-  "calendar_date": "2026-09-06",
+  "calendar_date": "string (YYYY-MM-DD)",
   "day_template_id": 5,
-  "snapshot": {
-    "snapshot_id": 12,
-    "snapshotted_at": "2026-09-01T10:00:00Z",
-    "blocks": [
-      {
-        "category_id": 3,
-        "start_time": "08:00",
-        "duration_minutes": 60
-      }
-    ]
-  },
+  "plan": [
+    {
+      "category_id": 3,
+      "start_time": "string (HH:MM:SS)",
+      "duration_minutes": 60
+    }
+  ],
   "accepted_events": [
     {
       "client_event_id": "uuid",
@@ -966,7 +972,7 @@ Appends one or more day events to the day record identified by `{date}`. If no r
   "duplicate_client_event_ids": [
     "previously-submitted-uuid"
   ],
-  "actual_blocks": [
+  "actual": [
     {
       "category_id": 4,
       "block_type": "actual",
@@ -975,8 +981,8 @@ Appends one or more day events to the day record identified by `{date}`. If no r
       "is_open": true
     }
   ],
-  "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-  "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
 ```
 
@@ -991,11 +997,11 @@ Replaces the complete actual block list for the day record for `{date}`. This is
 **Input:**
 ```json
 {
-  "actual_blocks": [
+  "actual": [
     {
       "category_id": "integer | null",
       "block_type": "string (actual | blank)",
-      "start_time": "string (HH:MM)",
+      "start_time": "string (HH:MM:SS)",
       "duration_minutes": "integer"
     }
   ]
@@ -1040,7 +1046,7 @@ Composite bootstrap for native clients. It returns settings, active categories, 
 ```json
 {
   "device_id": 12,
-  "calendar_date": "2026-09-06"
+  "calendar_date": "string (YYYY-MM-DD)"
 }
 ```
 
@@ -1048,43 +1054,39 @@ Composite bootstrap for native clients. It returns settings, active categories, 
 ```json
 {
   "settings": {
-    "day_boundary_time": "04:00",
-    "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+    "day_boundary_time": "string (HH:MM:SS)",
+    "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
   },
   "categories": [
     {
       "id": 1,
       "name": "Working",
-      "color": "#4A90D9",
-      "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-      "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+      "color": "string (hex)",
+      "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
     }
   ],
   "day_record": {
-    "calendar_date": "2026-09-06",
-    "day_template_id": 5,
-    "snapshot": {
-      "snapshot_id": 12,
-      "snapshotted_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-      "blocks": [
-        {
-          "category_id": 3,
-          "start_time": "08:00",
-          "duration_minutes": 60
-        }
-      ]
-    },
-    "actual_blocks": [
+    "calendar_date": "string (YYYY-MM-DD)",
+    "day_template_id": "integer",
+    "plan": [
       {
-        "category_id": 3,
-        "block_type": "actual",
-        "start_time": "08:05",
-        "duration_minutes": 55,
-        "is_open": false
+        "category_id": "integer",
+        "start_time": "string (HH:MM:SS)",
+        "duration_minutes": "integer"
       }
     ],
-    "created_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)",
-    "updated_at": "string (ISO 8601 - YYYY-MM-DDTHH:MM:SSZ)"
+    "actual": [
+      {
+        "category_id": "integer",
+        "block_type": "string",
+        "start_time": "string (HH:MM:SS)",
+        "duration_minutes": "integer",
+        "is_open": "boolean"
+      }
+    ],
+    "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
+    "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
   }
 }
 ```

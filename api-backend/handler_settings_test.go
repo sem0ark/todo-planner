@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,17 +30,13 @@ func TestGetSettingsHandler_Success(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var settings UserSettings
+	var settings PublicSettings
 	if err := json.NewDecoder(w.Body).Decode(&settings); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if settings.UserID != user.ID {
-		t.Errorf("Expected UserID %d, got %d", user.ID, settings.UserID)
-	}
-
-	if settings.DayBoundaryTime != "04:00:00" {
-		t.Errorf("Expected default time '04:00:00', got '%s'", settings.DayBoundaryTime)
+	if settings.DayBoundaryTime != mustScheduleTime("04:00:00") {
+		t.Errorf("Expected default time '04:00:00', got '%v'", settings.DayBoundaryTime)
 	}
 }
 
@@ -52,7 +49,7 @@ func TestGetSettingsHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.getSettingsHandler(w, req)
+	api.protectedHandler(api.getSettingsHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {
@@ -88,10 +85,15 @@ func TestPutSettingsHandler_Success(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create initial settings
-	api.settingsRepo.GetOrCreate(context.Background(), user.ID)
+	if _, err := api.settingsRepo.Get(context.Background(), user.ID); err != nil {
+		t.Fatalf("settings setup failed: %v", err)
+	}
 
-	reqBody := UserSettingsInput{DayBoundaryTime: "06:30:00"}
-	body, _ := json.Marshal(reqBody)
+	reqBody := UserSettingsInput{DayBoundaryTime: mustScheduleTime("06:30:00")}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -108,13 +110,13 @@ func TestPutSettingsHandler_Success(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var settings UserSettings
+	var settings PublicSettings
 	if err := json.NewDecoder(w.Body).Decode(&settings); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if settings.DayBoundaryTime != "06:30:00" {
-		t.Errorf("Expected time '06:30:00', got '%s'", settings.DayBoundaryTime)
+	if settings.DayBoundaryTime != mustScheduleTime("06:30:00") {
+		t.Errorf("Expected time '06:30:00', got '%v'", settings.DayBoundaryTime)
 	}
 }
 
@@ -137,8 +139,7 @@ func TestPutSettingsHandler_InvalidTimeFormat(t *testing.T) {
 	for _, invalidTime := range invalidTimes {
 		t.Run("InvalidTime_"+invalidTime, func(t *testing.T) {
 			// Arrange
-			reqBody := UserSettingsInput{DayBoundaryTime: invalidTime}
-			body, _ := json.Marshal(reqBody)
+			body := fmt.Appendf(nil, `{"day_boundary_time":%q}`, invalidTime)
 			req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 
@@ -163,7 +164,9 @@ func TestPutSettingsHandler_ValidTimeFormats(t *testing.T) {
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
-	api.settingsRepo.GetOrCreate(context.Background(), user.ID)
+	if _, err := api.settingsRepo.Get(context.Background(), user.ID); err != nil {
+		t.Fatalf("settings setup failed: %v", err)
+	}
 
 	validTimes := []string{
 		"00:00:00",
@@ -175,8 +178,11 @@ func TestPutSettingsHandler_ValidTimeFormats(t *testing.T) {
 	for _, validTime := range validTimes {
 		t.Run("ValidTime_"+validTime, func(t *testing.T) {
 			// Arrange
-			reqBody := UserSettingsInput{DayBoundaryTime: validTime}
-			body, _ := json.Marshal(reqBody)
+			reqBody := UserSettingsInput{DayBoundaryTime: mustScheduleTime(validTime)}
+			body, err := json.Marshal(reqBody)
+			if err != nil {
+				t.Fatalf("failed to marshal request: %v", err)
+			}
 			req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 
@@ -193,10 +199,10 @@ func TestPutSettingsHandler_ValidTimeFormats(t *testing.T) {
 				t.Errorf("Expected status 200 for time '%s', got %d", validTime, w.Code)
 			}
 
-			var settings UserSettings
+			var settings PublicSettings
 			json.NewDecoder(w.Body).Decode(&settings)
-			if settings.DayBoundaryTime != validTime {
-				t.Errorf("Expected time '%s', got '%s'", validTime, settings.DayBoundaryTime)
+			if settings.DayBoundaryTime != mustScheduleTime(validTime) {
+				t.Errorf("Expected time '%s', got '%v'", validTime, settings.DayBoundaryTime)
 			}
 		})
 	}
@@ -207,15 +213,18 @@ func TestPutSettingsHandler_NoAuth(t *testing.T) {
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 
-	reqBody := UserSettingsInput{DayBoundaryTime: "06:30:00"}
-	body, _ := json.Marshal(reqBody)
+	reqBody := UserSettingsInput{DayBoundaryTime: mustScheduleTime("06:30:00")}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
 
 	// Act
-	api.putSettingsHandler(w, req)
+	api.protectedHandler(api.putSettingsHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

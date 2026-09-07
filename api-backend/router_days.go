@@ -6,16 +6,12 @@ import (
 )
 
 func (api *API) daysHandler(responseWriter http.ResponseWriter, request *http.Request) {
-	userID, authenticated := getUserID(request.Context())
-	if !authenticated {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(request)
 	api.routeDays(responseWriter, request, userID)
 }
 
 func (api *API) daysRouter(responseWriter http.ResponseWriter, request *http.Request) {
-	userID, _ := getUserID(request.Context())
+	userID := userIDFromRequest(request)
 	api.routeDays(responseWriter, request, userID)
 }
 

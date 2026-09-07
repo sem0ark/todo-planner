@@ -13,9 +13,9 @@ type initRequest struct {
 }
 
 type initResponse struct {
-	Settings   *UserSettings   `json:"settings"`
+	Settings   PublicSettings  `json:"settings"`
 	Categories []BlockCategory `json:"categories"`
-	DayRecord  publicDayRecord `json:"day_record"`
+	DayRecord  PublicDayRecord `json:"day_record"`
 }
 
 // initHandler returns the small bootstrap payload required by a native client.
@@ -24,13 +24,14 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		http.Error(responseWriter, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	userID, authenticated := getUserID(request.Context())
-	if !authenticated {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(request)
 	var input initRequest
 	if json.NewDecoder(request.Body).Decode(&input) != nil || input.DeviceID <= 0 || !isValidCalendarDate(input.CalendarDate) {
+		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
+		return
+	}
+	calendarDate, err := parseCalendarDate(input.CalendarDate)
+	if err != nil {
 		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
 		return
 	}
@@ -43,7 +44,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 	var deviceUserID int
 	err = transaction.QueryRow(request.Context(), `SELECT user_id FROM devices WHERE id = $1`, input.DeviceID).Scan(&deviceUserID)
 	if err != nil || deviceUserID != userID {
-		http.Error(responseWriter, "device not found", http.StatusNotFound)
+		writeAppError(responseWriter, NewNotFoundError("device not found"))
 		return
 	}
 	settings, err := loadSettingsForInit(request, transaction, userID)
@@ -56,7 +57,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		http.Error(responseWriter, "failed to load categories", http.StatusInternalServerError)
 		return
 	}
-	dayRecordID, err := findOrCreateDayRecord(request.Context(), transaction, userID, input.CalendarDate)
+	dayRecordID, err := findOrCreateDayRecord(request.Context(), transaction, userID, calendarDate)
 	if err != nil {
 		http.Error(responseWriter, "failed to load day", http.StatusInternalServerError)
 		return
@@ -71,7 +72,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		return
 	}
 	writeJSON(responseWriter, initResponse{
-		Settings:   settings,
+		Settings:   toPublicSettings(*settings),
 		Categories: categories,
 		DayRecord:  toPublicDayRecord(record),
 	})
@@ -81,12 +82,12 @@ func loadSettingsForInit(request *http.Request, transaction pgx.Tx, userID int) 
 	var settings UserSettings
 	err := transaction.QueryRow(
 		request.Context(),
-		`SELECT id, user_id, day_boundary_time::time(0)::text, updated_at FROM user_settings WHERE user_id = $1`, userID,
+		`SELECT id, user_id, day_boundary_time, updated_at FROM user_settings WHERE user_id = $1`, userID,
 	).Scan(&settings.ID, &settings.UserID, &settings.DayBoundaryTime, &settings.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		err = transaction.QueryRow(
 			request.Context(),
-			`INSERT INTO user_settings(user_id) VALUES($1) RETURNING id, user_id, day_boundary_time::time(0)::text, updated_at`, userID,
+			`INSERT INTO user_settings(user_id) VALUES($1) RETURNING id, user_id, day_boundary_time, updated_at`, userID,
 		).Scan(&settings.ID, &settings.UserID, &settings.DayBoundaryTime, &settings.UpdatedAt)
 	}
 	return &settings, err

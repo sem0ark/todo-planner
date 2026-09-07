@@ -2,19 +2,15 @@ package main
 
 import (
 	"context"
-	"errors"
-	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrDayTemplateNotFound = errors.New("day template not found")
-var ErrInvalidTemplateBlock = errors.New("invalid snapshot block")
-var ErrTemplateCategoryNotFound = errors.New("unknown category_id")
-
-var templateTimePattern = regexp.MustCompile(`^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`)
+var ErrDayTemplateNotFound = NewNotFoundError("day template not found")
+var ErrInvalidTemplateBlock = NewBadRequestError("invalid snapshot block")
+var ErrTemplateCategoryNotFound = NewBadRequestError("unknown category_id")
 
 // DayTemplate contains metadata and the latest immutable snapshot.
 type DayTemplate struct {
@@ -32,14 +28,14 @@ type DayTemplate struct {
 type DayTemplateInput struct {
 	Name            string               `json:"name"`
 	TemplateGroupID *int                 `json:"template_group_id"`
-	SnapshotBlocks  []SnapshotBlockInput `json:"snapshot_blocks"`
+	SnapshotBlocks  []SnapshotBlockInput `json:"-"`
 }
 
 // SnapshotBlockInput describes a block in a newly-created snapshot.
 type SnapshotBlockInput struct {
-	CategoryID      int    `json:"category_id"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
+	CategoryID      int          `json:"category_id"`
+	StartTime       ScheduleTime `json:"-"`
+	DurationMinutes int          `json:"duration_minutes"`
 }
 
 type DayTemplateRepository struct {
@@ -52,7 +48,7 @@ func NewDayTemplateRepository(db *pgxpool.Pool) *DayTemplateRepository {
 
 func (r *DayTemplateRepository) validateInput(ctx context.Context, input DayTemplateInput, userID int) error {
 	for _, block := range input.SnapshotBlocks {
-		if !templateTimePattern.MatchString(block.StartTime) ||
+		if block.StartTime.IsZero() || block.StartTime.Second() != 0 ||
 			block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 ||
 			blockExceedsDay(block.StartTime, block.DurationMinutes) {
 			return ErrInvalidTemplateBlock

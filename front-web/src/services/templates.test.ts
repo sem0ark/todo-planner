@@ -14,13 +14,7 @@ describe("templates service", () => {
     id: 1,
     name: "Weekday Schedule",
     template_group_id: null,
-    current_snapshot: {
-      id: 1,
-      snapshot_blocks: [
-        { id: 1, category_id: 1, start_time: "09:00", duration_minutes: 60 },
-      ],
-      snapshotted_at: "2024-01-01T00:00:00Z",
-    },
+    plan: [{ category_id: 1, start_time: "09:00:00", duration_minutes: 60 }],
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   };
@@ -58,7 +52,7 @@ describe("templates service", () => {
       const input = {
         name: "Weekday Schedule",
         template_group_id: null,
-        snapshot_blocks: [
+        plan: [
           {
             category_id: 1,
             start_time: "06:00",
@@ -82,7 +76,7 @@ describe("templates service", () => {
       const input = {
         name: "Weekday Schedule",
         template_group_id: null,
-        snapshot_blocks: [
+        plan: [
           { category_id: 1, start_time: "09:00:00", duration_minutes: 60 },
         ],
       };
@@ -111,7 +105,7 @@ describe("templates service", () => {
         createTemplate(token, {
           name: "Test",
           template_group_id: null,
-          snapshot_blocks: [],
+          plan: [],
         }),
       ).rejects.toThrow("Failed to create template");
     });
@@ -122,7 +116,7 @@ describe("templates service", () => {
       const input = {
         name: "Updated Schedule",
         template_group_id: null,
-        snapshot_blocks: [
+        plan: [
           { category_id: 1, start_time: "09:00:00", duration_minutes: 90 },
         ],
       };
@@ -151,7 +145,7 @@ describe("templates service", () => {
         updateTemplate(token, 1, {
           name: "Test",
           template_group_id: null,
-          snapshot_blocks: [],
+          plan: [],
         }),
       ).rejects.toThrow("Failed to update template");
     });

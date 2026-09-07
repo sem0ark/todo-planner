@@ -185,6 +185,7 @@ type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
 	written    bool
+	logger     *Logger
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
@@ -200,7 +201,15 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 		rw.statusCode = http.StatusOK
 		rw.written = true
 	}
-	return rw.ResponseWriter.Write(b)
+	writtenBytes, err := rw.ResponseWriter.Write(b)
+	if err != nil && rw.logger != nil {
+		rw.logger.Error("Failed to write HTTP response", err, map[string]interface{}{
+			"status_code":     rw.statusCode,
+			"bytes_requested": len(b),
+			"bytes_written":   writtenBytes,
+		})
+	}
+	return writtenBytes, err
 }
 
 // LoggingMiddleware logs all incoming HTTP requests
@@ -213,6 +222,7 @@ func LoggingMiddleware(logger *Logger) func(http.HandlerFunc) http.HandlerFunc {
 			rw := &responseWriter{
 				ResponseWriter: w,
 				statusCode:     http.StatusOK,
+				logger:         logger,
 			}
 
 			// Recover from panics
@@ -226,7 +236,9 @@ func LoggingMiddleware(logger *Logger) func(http.HandlerFunc) http.HandlerFunc {
 							"path":   r.URL.Path,
 						},
 					)
-					http.Error(w, "internal server error", http.StatusInternalServerError)
+					if !rw.written {
+						http.Error(rw, "internal server error", http.StatusInternalServerError)
+					}
 				}
 			}()
 

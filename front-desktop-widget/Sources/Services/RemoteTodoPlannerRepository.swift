@@ -16,51 +16,24 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
   }
 
   func validateAuth() async throws -> Bool {
-    return await api.validateToken()
+    return try await api.validateToken()
   }
 
-  func fetchCategories() async throws -> [Category] {
-    let response = try await api.initialize(calendarDate: todayString())
-    return response.categories
+  func initialize(calendarDate: String) async throws -> InitResponse {
+    return try await api.initialize(calendarDate: calendarDate)
   }
 
-  func fetchDayRecord(date: String) async throws -> DayRecord? {
-    return try await api.initialize(calendarDate: date).dayRecord
+  func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse {
+    return try await api.postDayEvents(date: calendarDate, events: events)
   }
 
-  func createDayRecord(date: String) async throws -> DayRecord {
-    return try await api.initialize(calendarDate: date).dayRecord
+  func hasPendingSync() async -> Bool {
+    // This repository has no local event queue, so there is nothing to sync.
+    return false
   }
 
-  func submitEvents(dayRecordId: Int, events: [DayEvent]) async throws -> DayEventsResponse {
-    return try await api.postCurrentDayEvents(events: events)
+  func synchronize() async throws {
+    WidgetLogger.error("Remote synchronization was requested but no local queue exists")
+    throw StorageError.invalidContract("remote synchronization is not supported")
   }
-
-  func fetchTodaySchedule() async throws -> TodaySchedule {
-    let day = try await api.initialize(calendarDate: todayString()).dayRecord
-    let template: DayTemplate? = day.dayTemplateId.map { templateId in
-      DayTemplate(
-        id: templateId,
-        name: "",
-        templateGroupId: nil,
-        currentSnapshot: TemplateSnapshot(
-          id: day.snapshotId ?? 0,
-          snapshottedAt: day.updatedAt,
-          snapshotBlocks: day.snapshotBlocks
-        )
-      )
-    }
-    return TodaySchedule(
-      calendarDate: day.calendarDate,
-      dayTemplateId: day.dayTemplateId,
-      template: template
-    )
-  }
-
-  private func todayString() -> String {
-    DateFormatter.yyyyMMdd.string(from: Date())
-  }
-
-  func hasPendingSync() async -> Bool { return false }  // Remote is always "synced"
-  func synchronize() async throws {}
 }

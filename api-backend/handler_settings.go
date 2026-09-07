@@ -3,23 +3,28 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"regexp"
 )
 
 type UserSettingsInput struct {
-	DayBoundaryTime string `json:"day_boundary_time"`
+	DayBoundaryTime ScheduleTime `json:"day_boundary_time"`
 }
 
-var timeFormatRegex = regexp.MustCompile(`^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`)
+type PublicSettings struct {
+	DayBoundaryTime ScheduleTime `json:"day_boundary_time"`
+	UpdatedAt       APITimestamp `json:"updated_at"`
+}
+
+func toPublicSettings(settings UserSettings) PublicSettings {
+	return PublicSettings{
+		DayBoundaryTime: formatScheduleTime(settings.DayBoundaryTime),
+		UpdatedAt:       APITimestamp(settings.UpdatedAt),
+	}
+}
 
 func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
-	settings, err := api.settingsRepo.GetOrCreate(r.Context(), userID)
+	settings, err := api.settingsRepo.Get(r.Context(), userID)
 	if err != nil {
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to retrieve settings", err, map[string]interface{}{
 			"user_id": userID,
@@ -27,27 +32,17 @@ func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(settings)
+	writeJSON(w, toPublicSettings(*settings))
 }
 
 func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input UserSettingsInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		return
-	}
-
-	if !timeFormatRegex.MatchString(input.DayBoundaryTime) {
-		http.Error(w, "invalid time format, expected HH:MM:SS", http.StatusBadRequest)
 		return
 	}
 
@@ -60,8 +55,7 @@ func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(settings)
+	writeJSON(w, toPublicSettings(*settings))
 }
 
 func (api *API) settingsHandler(w http.ResponseWriter, r *http.Request) {

@@ -71,18 +71,18 @@ func TestEmptyListSerialization_TemplateGroups(t *testing.T) {
 	var response map[string]interface{}
 	json.NewDecoder(w.Body).Decode(&response)
 
-	groups, ok := response["template_groups"]
+	groups, ok := response["groups"]
 	if !ok {
-		t.Fatal("Expected 'template_groups' field in response")
+		t.Fatal("Expected 'groups' field in response")
 	}
 
 	// Verify it's an empty array, not null
 	groupsArray, ok := groups.([]interface{})
 	if !ok {
-		t.Fatalf("Expected template_groups to be an array, got %T: %v", groups, groups)
+		t.Fatalf("Expected groups to be an array, got %T: %v", groups, groups)
 	}
 	if groupsArray == nil {
-		t.Error("Expected template_groups to be [], not null")
+		t.Error("Expected groups to be [], not null")
 	}
 	if len(groupsArray) != 0 {
 		t.Errorf("Expected empty array, got length %d", len(groupsArray))
@@ -159,11 +159,8 @@ func TestEmptyListSerialization_TemplateWithEmptySnapshotBlocks(t *testing.T) {
 
 	var response struct {
 		Templates []struct {
-			ID              int    `json:"id"`
-			Name            string `json:"name"`
-			CurrentSnapshot struct {
-				SnapshotBlocks []interface{} `json:"snapshot_blocks"`
-			} `json:"current_snapshot"`
+			ID   int           `json:"id"`
+			Plan []interface{} `json:"plan"`
 		} `json:"templates"`
 	}
 	json.NewDecoder(w.Body).Decode(&response)
@@ -178,11 +175,11 @@ func TestEmptyListSerialization_TemplateWithEmptySnapshotBlocks(t *testing.T) {
 	}
 
 	// Verify snapshot_blocks is an empty array, not null.
-	if tmpl.CurrentSnapshot.SnapshotBlocks == nil {
-		t.Error("Expected snapshot_blocks to be [], not null")
+	if tmpl.Plan == nil {
+		t.Error("Expected plan to be [], not null")
 	}
-	if len(tmpl.CurrentSnapshot.SnapshotBlocks) != 0 {
-		t.Errorf("Expected empty snapshot_blocks array, got length %d", len(tmpl.CurrentSnapshot.SnapshotBlocks))
+	if len(tmpl.Plan) != 0 {
+		t.Errorf("Expected empty plan array, got length %d", len(tmpl.Plan))
 	}
 }
 
@@ -193,7 +190,7 @@ func TestEmptyListSerialization_DayRecordWithEmptyBlocks(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create a day record with no snapshot (no template assigned)
-	_, err := api.dayRecordRepo.Create(context.Background(), user.ID, "2026-07-08")
+	_, err := api.dayRecordRepo.Create(context.Background(), user.ID, mustCalendarDate("2026-07-08"))
 	if err != nil {
 		t.Fatalf("Failed to create day record: %v", err)
 	}
@@ -212,36 +209,36 @@ func TestEmptyListSerialization_DayRecordWithEmptyBlocks(t *testing.T) {
 	}
 
 	var response struct {
-		DayRecords []struct {
+		Days []struct {
 			CalendarDate string `json:"calendar_date"`
-			Snapshot     *struct {
-				Blocks []interface{} `json:"blocks"`
-			} `json:"snapshot"`
-			ActualBlocks []interface{} `json:"actual_blocks"`
-		} `json:"day_records"`
+			DayRecord    *struct {
+				Plan   []interface{} `json:"plan"`
+				Actual []interface{} `json:"actual"`
+			} `json:"day_record"`
+		} `json:"days"`
 	}
 	json.NewDecoder(w.Body).Decode(&response)
 
-	if len(response.DayRecords) != 1 {
-		t.Fatalf("Expected 1 day record, got %d", len(response.DayRecords))
+	if len(response.Days) != 1 {
+		t.Fatalf("Expected 1 day entry, got %d", len(response.Days))
 	}
 
-	record := response.DayRecords[0]
+	record := response.Days[0]
 	if record.CalendarDate != "2026-07-08" {
 		t.Errorf("Expected calendar date 2026-07-08, got %s", record.CalendarDate)
 	}
 
 	// Verify snapshot is null when no template is assigned.
-	if record.Snapshot != nil {
-		t.Error("Expected snapshot to be null")
+	if record.DayRecord == nil {
+		t.Fatal("Expected day record")
 	}
 
 	// Verify actual_blocks is an empty array, not null
-	if record.ActualBlocks == nil {
-		t.Error("Expected actual_blocks to be [], not null")
+	if record.DayRecord.Actual == nil {
+		t.Error("Expected actual to be [], not null")
 	}
-	if len(record.ActualBlocks) != 0 {
-		t.Errorf("Expected empty actual_blocks array, got length %d", len(record.ActualBlocks))
+	if len(record.DayRecord.Actual) != 0 {
+		t.Errorf("Expected empty actual array, got length %d", len(record.DayRecord.Actual))
 	}
 }
 

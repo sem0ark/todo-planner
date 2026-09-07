@@ -1,26 +1,25 @@
 package main
 
-import (
-	"errors"
-	"time"
+var (
+	ErrUnknownCategoryID           = NewBadRequestError("unknown category_id")
+	ErrMissingEventCategory        = NewBadRequestError("category_id is required for all events")
+	ErrInvalidEventType            = NewBadRequestError("invalid event_type")
+	ErrIncompleteAmendment         = NewBadRequestError("amendments require target_client_event_id and corrected_at")
+	ErrMissingEventTimestamp       = NewBadRequestError("occurred_at is required")
+	ErrUnsortedEvents              = NewBadRequestError("events must be in chronological order")
+	ErrMissingClientEventID        = NewBadRequestError("client_event_id is required")
+	ErrInvalidActualBlockType      = NewBadRequestError("block_type must be 'actual' or 'blank'")
+	ErrActualBlockCategoryRequired = NewBadRequestError("category_id is required for actual blocks")
+	ErrBlankBlockCategoryForbidden = NewBadRequestError("category_id must be null for blank blocks")
+	ErrInvalidBlockStartTime       = NewBadRequestError("start_time must be a valid time")
+	ErrInvalidBlockGranularity     = NewBadRequestError("blocks must use 15-minute increments and last at least 30 minutes")
+	ErrBlockExceedsDay             = NewBadRequestError("block must end by 24:00")
+	ErrActualBlocksOverlap         = NewBadRequestError("actual blocks must not overlap")
+	ErrInvalidDayDateRange         = NewBadRequestError("invalid date range")
+	ErrDeviceIDRequired            = NewBadRequestError("device_id is required")
 )
 
-var (
-	ErrUnknownCategoryID           = errors.New("unknown category_id")
-	ErrMissingEventCategory        = errors.New("category_id is required for all events")
-	ErrInvalidEventType            = errors.New("invalid event_type")
-	ErrIncompleteAmendment         = errors.New("amendments require target_client_event_id and corrected_at")
-	ErrMissingEventTimestamp       = errors.New("occurred_at is required")
-	ErrUnsortedEvents              = errors.New("events must be in chronological order")
-	ErrMissingClientEventID        = errors.New("client_event_id is required")
-	ErrInvalidActualBlockType      = errors.New("block_type must be 'actual' or 'blank'")
-	ErrActualBlockCategoryRequired = errors.New("category_id is required for actual blocks")
-	ErrBlankBlockCategoryForbidden = errors.New("category_id must be null for blank blocks")
-	ErrInvalidBlockStartTime       = errors.New("start_time must be a valid time")
-	ErrInvalidBlockGranularity     = errors.New("blocks must use 15-minute increments and last at least 30 minutes")
-	ErrBlockExceedsDay             = errors.New("block must end by 24:00")
-	ErrActualBlocksOverlap         = errors.New("actual blocks must not overlap")
-)
+const minutesPerDay = 24 * 60
 
 type DayRecordBlocksInput struct {
 	ActualBlocks []ActualBlockInput `json:"actual_blocks"`
@@ -31,10 +30,10 @@ type DayRecordTemplateInput struct {
 }
 
 type ActualBlockInput struct {
-	CategoryID      *int   `json:"category_id"`
-	BlockType       string `json:"block_type"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
+	CategoryID      *int         `json:"category_id"`
+	BlockType       string       `json:"block_type"`
+	StartTime       ScheduleTime `json:"-"`
+	DurationMinutes int          `json:"duration_minutes"`
 }
 
 func validateDayEvents(events []DayEventInput) error {
@@ -82,14 +81,10 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 		if block.BlockType == "blank" && block.CategoryID != nil {
 			return ErrBlankBlockCategoryForbidden
 		}
-		parsedTime, err := time.Parse("15:04:05", block.StartTime)
-		if err != nil {
-			parsedTime, err = time.Parse("15:04", block.StartTime)
-		}
-		if err != nil || parsedTime.Second() != 0 {
+		if block.StartTime.IsZero() || block.StartTime.Second() != 0 {
 			return ErrInvalidBlockStartTime
 		}
-		minuteOfDay := parsedTime.Hour()*60 + parsedTime.Minute()
+		minuteOfDay := block.StartTime.Hour()*60 + block.StartTime.Minute()
 		if minuteOfDay%15 != 0 || block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 {
 			return ErrInvalidBlockGranularity
 		}
@@ -104,7 +99,12 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 	return nil
 }
 
+func blockExceedsDay(startTime ScheduleTime, durationMinutes int) bool {
+	startMinute := startTime.Hour()*60 + startTime.Minute()
+	return startMinute+durationMinutes > minutesPerDay
+}
+
 func isValidCalendarDate(date string) bool {
-	_, err := time.Parse("2006-01-02", date)
+	_, err := parseCalendarDate(date)
 	return err == nil
 }

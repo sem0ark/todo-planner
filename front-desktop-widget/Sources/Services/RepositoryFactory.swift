@@ -12,16 +12,6 @@ enum RepositoryFactory {
     case "mock":
       print("[FACTORY] Using MockTodoPlannerRepository (in-memory)")
       return MockTodoPlannerRepository()
-    case "local":
-      print("[FACTORY] Using LocalTodoPlannerRepository (SQLite)")
-      let dbPath = getLocalDatabasePath()
-      do {
-        return try LocalTodoPlannerRepository(dbPath: dbPath)
-      } catch {
-        print("[FACTORY] Failed to initialize LocalTodoPlannerRepository: \(error)")
-        print("[FACTORY] Falling back to MockTodoPlannerRepository")
-        return MockTodoPlannerRepository()
-      }
     case "remote":
       print("[FACTORY] Using RemoteTodoPlannerRepository (API)")
       return RemoteTodoPlannerRepository()
@@ -31,17 +21,4 @@ enum RepositoryFactory {
     }
   }
 
-  private static func getLocalDatabasePath() -> String {
-    let appSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory, in: .userDomainMask
-    ).first!
-    let appDir = appSupport.appendingPathComponent("TodoPlannerWidget", isDirectory: true)
-
-    // Create directory if it doesn't exist
-    try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
-
-    let dbPath = appDir.appendingPathComponent("todoplanner.db").path
-    print("[FACTORY] Local DB path: \(dbPath)")
-    return dbPath
-  }
 }

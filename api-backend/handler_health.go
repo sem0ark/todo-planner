@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 )
@@ -18,10 +17,9 @@ func (api *API) HealthHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := api.db.Ping(ctx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(healthResponse{Status: "unhealthy", Error: err.Error()})
+		writeJSON(w, healthResponse{Status: "unhealthy", Error: err.Error()})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(healthResponse{Status: "healthy"})
+	writeJSON(w, healthResponse{Status: "healthy"})
 }

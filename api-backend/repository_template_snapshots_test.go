@@ -16,8 +16,8 @@ func TestTemplateSnapshotCreation_OnCreate(t *testing.T) {
 	input := DayTemplateInput{
 		Name: "Morning Routine",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "08:00:00", DurationMinutes: 60},
-			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("08:00:00"), DurationMinutes: 60},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 120},
 		},
 	}
 
@@ -66,7 +66,7 @@ func TestTemplateSnapshotCreation_OnUpdate(t *testing.T) {
 	createInput := DayTemplateInput{
 		Name: "Morning Routine",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "08:00:00", DurationMinutes: 60},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("08:00:00"), DurationMinutes: 60},
 		},
 	}
 	template, _ := repo.Create(ctx, createInput, user.ID)
@@ -81,8 +81,8 @@ func TestTemplateSnapshotCreation_OnUpdate(t *testing.T) {
 	updateInput := DayTemplateInput{
 		Name: "Morning Routine Updated",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "08:00:00", DurationMinutes: 60},
-			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("08:00:00"), DurationMinutes: 60},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 120},
 		},
 	}
 	updated, err := repo.Update(ctx, template.ID, updateInput, user.ID)
@@ -141,8 +141,8 @@ func TestDayRecordCreation_WithTemplateSnapshot(t *testing.T) {
 	templateInput := DayTemplateInput{
 		Name: "Weekday Schedule",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 120},
-			{CategoryID: category.ID, StartTime: "11:00:00", DurationMinutes: 60},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 120},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("11:00:00"), DurationMinutes: 60},
 		},
 	}
 	template, _ := templateRepo.Create(ctx, templateInput, user.ID)
@@ -160,7 +160,7 @@ func TestDayRecordCreation_WithTemplateSnapshot(t *testing.T) {
 	scheduleRepo.ReplaceWeeklySchedule(ctx, user.ID, weeklySchedule)
 
 	// Act - create a day record for a Monday (2026-07-07 is a Tuesday, so use 2026-07-06 Monday)
-	dayRecord, err := dayRecordRepo.Create(ctx, user.ID, "2026-07-06")
+	dayRecord, err := dayRecordRepo.Create(ctx, user.ID, mustCalendarDate("2026-07-06"))
 
 	// Assert
 	if err != nil {

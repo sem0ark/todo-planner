@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,7 +25,7 @@ type CategoryRepository struct {
 }
 
 var (
-	ErrCategoryNotFound = fmt.Errorf("category not found")
+	ErrCategoryNotFound = NewNotFoundError("category not found")
 )
 
 func NewCategoryRepository(db *pgxpool.Pool) *CategoryRepository {
@@ -69,6 +69,21 @@ func (r *CategoryRepository) FindByID(ctx context.Context, id, userID int) (*Blo
 	return &cat, nil
 }
 
+func (r *CategoryRepository) ValidateIDs(ctx context.Context, userID int, categoryIDs []int) error {
+	validatedCategoryIDs := make(map[int]struct{}, len(categoryIDs))
+	for _, categoryID := range categoryIDs {
+		if _, alreadyValidated := validatedCategoryIDs[categoryID]; alreadyValidated {
+			continue
+		}
+		validatedCategoryIDs[categoryID] = struct{}{}
+		category, err := r.FindByID(ctx, categoryID, userID)
+		if err != nil || category.IsDeleted {
+			return ErrUnknownCategoryID
+		}
+	}
+	return nil
+}
+
 func (r *CategoryRepository) Create(ctx context.Context, input CategoryInput, userID int) (*BlockCategory, error) {
 	now := time.Now()
 	var cat BlockCategory
@@ -87,6 +102,9 @@ func (r *CategoryRepository) Create(ctx context.Context, input CategoryInput, us
 		&cat.UpdatedAt,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrCategoryNotFound
+		}
 		return nil, err
 	}
 
@@ -112,6 +130,9 @@ func (r *CategoryRepository) Update(ctx context.Context, id int, input CategoryI
 		&cat.UpdatedAt,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrCategoryNotFound
+		}
 		return nil, err
 	}
 

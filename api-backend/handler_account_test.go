@@ -109,7 +109,7 @@ func TestDeleteAccountHandler_NoAuth(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	api.deleteAccountHandler(w, req)
+	api.protectedHandler(api.deleteAccountHandler)(w, req)
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("Expected status 401, got %d", w.Code)

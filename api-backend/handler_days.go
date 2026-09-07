@@ -1,98 +1,88 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
-	"time"
 )
 
-type publicSnapshotBlock struct {
-	CategoryID      int    `json:"category_id"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
+type PublicTimelineBlock struct {
+	CategoryID      *int         `json:"category_id"`
+	BlockType       string       `json:"block_type"`
+	StartTime       ScheduleTime `json:"start_time"`
+	DurationMinutes int          `json:"duration_minutes"`
+	IsOpen          bool         `json:"is_open"`
 }
 
-type publicSnapshot struct {
-	SnapshottedAt time.Time             `json:"snapshotted_at"`
-	Blocks        []publicSnapshotBlock `json:"blocks"`
+type PublicDayRecord struct {
+	CalendarDate  CalendarDate          `json:"calendar_date"`
+	DayTemplateID *int                  `json:"day_template_id"`
+	Plan          []PublicTemplateBlock `json:"plan"`
+	Actual        []PublicTimelineBlock `json:"actual"`
+	CreatedAt     APITimestamp          `json:"created_at"`
+	UpdatedAt     APITimestamp          `json:"updated_at"`
 }
 
-type publicActualBlock struct {
-	CategoryID      *int   `json:"category_id"`
-	BlockType       string `json:"block_type"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
-	IsOpen          bool   `json:"is_open"`
+type PublicDayRangeEntry struct {
+	CalendarDate CalendarDate     `json:"calendar_date"`
+	DayRecord    *PublicDayRecord `json:"day_record"`
 }
 
-type publicDayRecord struct {
-	CalendarDate  string              `json:"calendar_date"`
-	DayTemplateID *int                `json:"day_template_id"`
-	Snapshot      *publicSnapshot     `json:"snapshot"`
-	ActualBlocks  []publicActualBlock `json:"actual_blocks"`
-	CreatedAt     time.Time           `json:"created_at"`
-	UpdatedAt     time.Time           `json:"updated_at"`
+type PublicDayRangeResponse struct {
+	Days []PublicDayRangeEntry `json:"days"`
 }
 
-type publicDayRecordsResponse struct {
-	DayRecords []publicDayRecord `json:"day_records"`
-}
-
-func toPublicDayRecord(record *DayRecord) publicDayRecord {
-	var snapshot *publicSnapshot
-	if record.SnapshotID != nil {
-		blocks := make([]publicSnapshotBlock, 0, len(record.SnapshotBlocks))
-		for _, block := range record.SnapshotBlocks {
-			blocks = append(blocks, publicSnapshotBlock{block.CategoryID, shortClock(block.StartTime), block.DurationMinutes})
-		}
-		snapshot = &publicSnapshot{record.SnapshottedAt, blocks}
-	}
-	actualBlocks := make([]publicActualBlock, 0, len(record.ActualBlocks))
+func toPublicDayRecord(record *DayRecord) PublicDayRecord {
+	plan := toPublicTemplateBlocks(record.SnapshotBlocks)
+	actualBlocks := make([]PublicTimelineBlock, 0, len(record.ActualBlocks))
 	for _, block := range record.ActualBlocks {
-		actualBlocks = append(actualBlocks, publicActualBlock{block.CategoryID, block.BlockType, shortClock(block.StartTime), block.DurationMinutes, block.IsOpen})
+		actualBlocks = append(actualBlocks, PublicTimelineBlock{CategoryID: block.CategoryID,
+			BlockType: block.BlockType, StartTime: formatScheduleTime(block.StartTime),
+			DurationMinutes: block.DurationMinutes, IsOpen: block.IsOpen})
 	}
-	return publicDayRecord{record.CalendarDate, record.DayTemplateID, snapshot, actualBlocks, record.CreatedAt, record.UpdatedAt}
-}
-
-func shortClock(value string) string {
-	if len(value) > 5 {
-		return value[:5]
-	}
-	return value
+	return PublicDayRecord{CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
+		Plan: plan, Actual: actualBlocks, CreatedAt: APITimestamp(record.CreatedAt),
+		UpdatedAt: APITimestamp(record.UpdatedAt)}
 }
 
 func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Request, userID int) {
-	records, err := api.dayService.GetDays(request.Context(), userID, request.URL.Query().Get("from"), request.URL.Query().Get("to"))
-	if errors.Is(err, ErrInvalidDayDateRange) {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
+	fromDate, fromError := parseCalendarDate(request.URL.Query().Get("from"))
+	toDate, toError := parseCalendarDate(request.URL.Query().Get("to"))
+	if fromError != nil || toError != nil || toDate.Before(fromDate) {
+		http.Error(responseWriter, ErrInvalidDayDateRange.Error(), http.StatusBadRequest)
 		return
 	}
+	records, err := api.dayRecordRepo.FindDateRange(request.Context(), userID, fromDate, toDate)
 	if err != nil {
 		HTTPError(responseWriter, request, api.logger, 500, "failed to fetch days", err, nil)
 		return
 	}
-	publicRecords := make([]publicDayRecord, 0, len(records))
-	for index := range records {
-		publicRecords = append(publicRecords, toPublicDayRecord(&records[index]))
+	publicEntries := make([]PublicDayRangeEntry, 0, len(records))
+	for _, entry := range records {
+		var publicRecord *PublicDayRecord
+		if entry.Record != nil {
+			convertedRecord := toPublicDayRecord(entry.Record)
+			publicRecord = &convertedRecord
+		}
+		publicEntries = append(publicEntries, PublicDayRangeEntry{
+			CalendarDate: entry.CalendarDate,
+			DayRecord:    publicRecord,
+		})
 	}
-	writeJSON(responseWriter, publicDayRecordsResponse{DayRecords: publicRecords})
+	writeJSON(responseWriter, PublicDayRangeResponse{Days: publicEntries})
 }
 
 func (api *API) getDay(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
-	record, err := api.dayService.GetDay(request.Context(), userID, calendarDate)
-	if errors.Is(err, ErrDayRecordNotFound) {
-		http.Error(responseWriter, "day record not found", 404)
+	parsedDate, err := parseCalendarDate(calendarDate)
+	if err != nil {
+		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
 		return
 	}
+	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
 	if err != nil {
+		if writeAppError(responseWriter, err) {
+			return
+		}
 		HTTPError(responseWriter, request, api.logger, 500, "failed to fetch day", err, nil)
 		return
 	}
 	writeJSON(responseWriter, toPublicDayRecord(record))
-}
-
-func writeJSON(responseWriter http.ResponseWriter, value interface{}) {
-	responseWriter.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(responseWriter).Encode(value)
 }

@@ -154,11 +154,11 @@ func TestScheduleRepository_GetFutureOverrides(t *testing.T) {
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
-	dayAfter := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
+	dayAfter := time.Now().AddDate(0, 0, 2).Format(DateFormat)
 
-	repo.SetOverride(ctx, user.ID, tomorrow, &template.ID)
-	repo.SetOverride(ctx, user.ID, dayAfter, nil)
+	repo.SetOverride(ctx, user.ID, mustCalendarDate(tomorrow), &template.ID)
+	repo.SetOverride(ctx, user.ID, mustCalendarDate(dayAfter), nil)
 
 	// Act
 	overrides, err := repo.GetFutureOverrides(ctx, user.ID)
@@ -170,7 +170,7 @@ func TestScheduleRepository_GetFutureOverrides(t *testing.T) {
 	if len(overrides) != 1 {
 		t.Errorf("Expected 1 override (nil template ID is deleted), got %d", len(overrides))
 	}
-	if overrides[0].CalendarDate != tomorrow {
+	if overrides[0].CalendarDate != mustCalendarDate(tomorrow) {
 		t.Errorf("Expected override for %s, got %s", tomorrow, overrides[0].CalendarDate)
 	}
 }
@@ -183,10 +183,10 @@ func TestScheduleRepository_SetOverride_Create(t *testing.T) {
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	// Act
-	override, err := repo.SetOverride(ctx, user.ID, tomorrow, &template.ID)
+	override, err := repo.SetOverride(ctx, user.ID, mustCalendarDate(tomorrow), &template.ID)
 
 	// Assert
 	if err != nil {
@@ -195,7 +195,7 @@ func TestScheduleRepository_SetOverride_Create(t *testing.T) {
 	if override.ID == 0 {
 		t.Error("Expected override ID to be set")
 	}
-	if override.CalendarDate != tomorrow {
+	if override.CalendarDate != mustCalendarDate(tomorrow) {
 		t.Errorf("Expected date %s, got %s", tomorrow, override.CalendarDate)
 	}
 	if override.DayTemplateID == nil || *override.DayTemplateID != template.ID {
@@ -212,12 +212,12 @@ func TestScheduleRepository_SetOverride_Update(t *testing.T) {
 	template2 := createTestDayTemplate(t, db, user.ID, "Vacation", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
-	repo.SetOverride(ctx, user.ID, tomorrow, &template1.ID)
+	repo.SetOverride(ctx, user.ID, mustCalendarDate(tomorrow), &template1.ID)
 
 	// Act
-	override, err := repo.SetOverride(ctx, user.ID, tomorrow, &template2.ID)
+	override, err := repo.SetOverride(ctx, user.ID, mustCalendarDate(tomorrow), &template2.ID)
 
 	// Assert
 	if err != nil {
@@ -236,12 +236,12 @@ func TestScheduleRepository_SetOverride_Delete(t *testing.T) {
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
-	repo.SetOverride(ctx, user.ID, tomorrow, &template.ID)
+	repo.SetOverride(ctx, user.ID, mustCalendarDate(tomorrow), &template.ID)
 
 	// Act
-	override, err := repo.SetOverride(ctx, user.ID, tomorrow, nil)
+	override, err := repo.SetOverride(ctx, user.ID, mustCalendarDate(tomorrow), nil)
 
 	// Assert
 	if err != nil {
@@ -265,10 +265,10 @@ func TestScheduleRepository_SetOverride_DeleteNonExistent(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	// Act
-	override, err := repo.SetOverride(ctx, user.ID, tomorrow, nil)
+	override, err := repo.SetOverride(ctx, user.ID, mustCalendarDate(tomorrow), nil)
 
 	// Assert
 	if err != nil {

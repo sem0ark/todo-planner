@@ -77,6 +77,19 @@ func createTestUser(t *testing.T, db *pgxpool.Pool, username, password string) *
 	if err != nil {
 		t.Fatalf("Failed to fetch created user: %v", err)
 	}
+	if _, err := db.Exec(context.Background(), `
+		INSERT INTO user_settings (user_id, day_boundary_time, updated_at)
+		VALUES ($1, $2, now())
+	`, fullUser.ID, "04:00:00"); err != nil {
+		t.Fatalf("Failed to create test user settings: %v", err)
+	}
+	if _, err := db.Exec(context.Background(), `
+		INSERT INTO weekly_schedule (user_id, day_of_week, day_template_id)
+		SELECT $1, day_of_week, NULL
+		FROM generate_series(0, 6) AS days(day_of_week)
+	`, fullUser.ID); err != nil {
+		t.Fatalf("Failed to create test weekly schedule: %v", err)
+	}
 
 	return fullUser
 }
@@ -115,4 +128,20 @@ func createTestDayTemplate(t *testing.T, db *pgxpool.Pool, userID int, name stri
 	}
 
 	return template
+}
+
+func mustScheduleTime(value string) ScheduleTime {
+	parsedTime, err := parseScheduleTime(value)
+	if err != nil {
+		panic(err)
+	}
+	return parsedTime
+}
+
+func mustCalendarDate(value string) CalendarDate {
+	parsedDate, err := parseCalendarDate(value)
+	if err != nil {
+		panic(err)
+	}
+	return parsedDate
 }

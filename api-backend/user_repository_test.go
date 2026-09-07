@@ -76,7 +76,7 @@ func TestUserRepository_DeleteAccount_CascadeSettings(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create settings for the user
-	_, err := settingsRepo.GetOrCreate(ctx, user.ID)
+	_, err := settingsRepo.Get(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("Failed to create settings: %v", err)
 	}

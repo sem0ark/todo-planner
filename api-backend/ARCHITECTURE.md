@@ -1,348 +1,338 @@
 # Backend Architecture
 
-## Lightweight Repository Pattern
+The API is a small Go HTTP service built around the standard library, `chi`, `pgx/v5`, and PostgreSQL. All files currently belong to the `main` package; the file names provide the logical separation between HTTP handlers, repositories, services, routing, and shared types.
 
-The backend uses a clean, lightweight repository pattern (service-per-table) to keep code organized without the bloat of a full ORM.
+## Request Flow
 
-### Structure
-
+```text
+HTTP request
+    |
+    v
+router_*.go       route and method selection
+    |
+    v
+auth.go           authentication middleware for protected routes
+    |
+    v
+handler_*.go      decode, validate, call application code, encode response
+    |
+    +--> repository_*.go -> SQL and PostgreSQL mapping
+                               |
+                               v
+                           PostgreSQL
 ```
-┌──────────────┐
-│   Handlers   │  <- HTTP layer (routing, validation)
-└──────┬───────┘
-       │
-┌──────▼────────┐
-│ Repositories  │  <- Data access layer (CRUD)
-└──────┬────────┘
-       │
-┌──────▼────────┐
-│   Database    │  <- PostgreSQL
-└───────────────┘
-```
 
-### Files
+Handlers own HTTP concerns. Repositories own persistence. Services coordinate domain operations that span repositories or require more than CRUD. Keep SQL out of handlers and keep HTTP types out of repository methods where practical.
 
-- **`handlers.go`** - Main API structure, shared middleware, and request/response utilities.
-- **`handler_....go`** - Feature-specific HTTP handlers (e.g., `handler_health.go`). Define routes, validation, and JSON conversion; delegate business logic to repositories.
-- **`repository_....go`** - Data access layer (e.g., `repository_users.go`). Wraps SQL and entity-related operations.
-- **`logger.go`** - Structured JSON logging system with request/error tracking. See [LOGGING.md](LOGGING.md) for details.
-- **`models.go`** - Shared data structures and entities.
-- **`main.go`** - Entry point, environment configuration, and server initialization.
+## File Organization
 
-### Benefits
+Use the existing prefixes and place a new file beside the code it extends:
 
-1. **Separation of Concerns**
-   - Handlers: HTTP logic only (request/response, validation)
-   - Repositories: Data access and business logic
+| File pattern | Responsibility |
+| --- | --- |
+| `main.go` | Configuration, database pool, migrations, and server startup |
+| `handlers.go` | `API` composition and shared HTTP middleware |
+| `handler_<feature>.go` | Feature request/response types, validation, and handlers |
+| `router_<feature>.go` | Feature route registration and path parameter parsing |
+| `repository_<resource>.go` | Persistence models, SQL queries, and repository methods |
+| `shared_*.go` | Cross-feature infrastructure and shared types |
+| `*_test.go` | Focused handler, repository, or domain tests |
+| `migrations.go` | Versioned PostgreSQL schema changes |
 
-2. **Clean Code**
-   - No SQL in handlers
-   - Easy to test each layer independently
 
-3. **One Service = One Table**
-   - Each repository provides basic CRUD operations
+## Naming and Type Conventions
 
-## Resource Optimization for .25 CPU Container
+Follow standard Go naming while using descriptive domain names:
 
-### Pre-allocated Slices
-**Benefit**: Reduce memory allocations and GC pressure in performance-critical sections.
+- Use `PascalCase` for exported types, functions, fields, and constants; use `camelCase` for unexported identifiers.
+- Use descriptive names for domain concepts: `userID`, `categoryID`, `parsedDate`, `databaseError`. For types already explicit from context, idiomatic Go abbreviations are acceptable.
+- Use one domain term consistently. For example, use `category` rather than mixing `category`, `cat`, and `blockCategory` for the same local value.
+- Return errors explicitly. Use early returns to keep the successful path flat.
+- Keep constructors named `New<Type>` and return pointers for repositories and services that hold shared dependencies.
+- Use `time.Time` for database values and `APITimestamp` or `APIScheduleTime` only at the JSON boundary. `shared_types_time.go` is the single source of truth for public date and time formats.
 
-### Connection Pooling
+Example of a repository constructor and method:
+
 ```go
-// main.go
+type CategoryRepository struct {
+    db *pgxpool.Pool
+}
+
+func NewCategoryRepository(database *pgxpool.Pool) *CategoryRepository {
+    return &CategoryRepository{db: database}
+}
+
+func (repository *CategoryRepository) FindByUser(
+    context context.Context,
+    userID int,
+) ([]BlockCategory, error) {
+    // Query, scan, and return rows. Do not write HTTP responses here.
+}
+```
+
+## API Composition
+
+Construct dependencies once in `NewAPI`. Keep dependency wiring visible and avoid package-level mutable state:
+
+```go
+type API struct {
+    db                *pgxpool.Pool
+    jwtSecret         string
+    logger            *Logger
+    userRepo          *UserRepository
+    categoryRepo      *CategoryRepository
+    dayRecordRepo     *DayRecordRepository
+    dayService        *DayService
+}
+
+func NewAPI(database *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
+    api := &API{
+        db:            database,
+        jwtSecret:     jwtSecret,
+        logger:        logger,
+        userRepo:      NewUserRepository(database),
+        categoryRepo:  NewCategoryRepository(database),
+        dayRecordRepo: NewDayRecordRepository(database),
+    }
+    api.dayService = NewDayService(api.dayRecordRepo, api.categoryRepo)
+    return api
+}
+```
+
+When adding a dependency, add its field and constructor call here. Do not create repositories inside individual handlers.
+
+## Handler Responsibilities
+
+A handler should authenticate through the route middleware, decode input, validate request-specific rules, call a repository or service, and write one response. Use `HTTPError` for internal failures so logs retain diagnostic details while clients receive a safe public message.
+
+```go
+func (api *API) getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+    userID := userIDFromRequest(r)
+
+    categories, err := api.categoryRepo.FindByUser(r.Context(), userID)
+    if err != nil {
+        HTTPError(
+            w,
+            r,
+            api.logger,
+            http.StatusInternalServerError,
+            "failed to fetch categories",
+            err,
+            map[string]interface{}{"user_id": userID},
+        )
+        return
+    }
+
+    writeJSON(CategoriesResponse{
+        Categories: categories,
+    })
+}
+```
+
+Use `AppError` from `shared_types_error.go` for expected application failures. It carries the public message and HTTP status while preserving an optional cause for `errors.Is` and internal logging. Handlers should call `writeAppError` before falling back to `HTTPError` for unexpected failures.
+
+Return `400` for malformed input, `401` for missing authentication, `404` for missing resources, and `500` for unexpected persistence or infrastructure failures. Do not expose SQL errors, tokens, password hashes, or stack traces in HTTP responses.
+
+Request and response structs belong in the owning handler file. Use explicit JSON tags. To ensure collection fields marshal to `[]` instead of `null`, initialize them in your DTO mapping function rather than in every handler:
+
+```go
+func toCategoriesResponse(models []Category) CategoriesResponse {
+    res := make([]PublicCategory, 0, len(models)) // Initializing ensures [] not null
+    for _, m := range models {
+        res = append(res, toPublicCategory(m))
+    }
+    return CategoriesResponse{Categories: res}
+}
+```
+
+There is intentionally no shared `models.go` file. Persistence models belong in their owning `repository_<resource>.go` file, while request, response, and validation types belong in the relevant `handler_<feature>.go` file. Move a type only when its ownership changes; do not recreate a general-purpose model package for convenience.
+
+## Routing and Middleware
+
+Keep route registration in `router_*.go`. Parse path parameters at the route boundary and pass typed values to handlers when that is the established pattern. Protected routes use `protectedHandler`, which applies the existing authentication middleware:
+
+```go
+router.HandleFunc(
+    "/categories",
+    api.protectedHandler(api.getCategoriesHandler),
+)
+```
+
+The middleware order is:
+
+```text
+logging -> CORS -> authentication -> handler
+```
+
+Authentication should be applied once at the route boundary. Endpoint handlers should still use `getUserID` as a defensive check before accessing user-scoped data.
+
+## Repositories and PostgreSQL
+
+Repositories use `pgxpool.Pool` and parameterized SQL. Every user-scoped query must constrain by the authenticated `userID`; never rely on the handler alone for data isolation. **Crucially, pass `context.Context` from the request to all database calls** so that if a client hangs up, the query is cancelled immediately rather than consuming resources.
+
+```go
+func (repository *CategoryRepository) Delete(
+    ctx context.Context,
+    categoryID int,
+    userID int,
+) error {
+    commandTag, err := repository.db.Exec(ctx, `
+        UPDATE block_categories
+        SET is_deleted = TRUE, updated_at = $3
+        WHERE id = $1 AND user_id = $2
+    `, categoryID, userID, time.Now().UTC())
+    if err != nil {
+        return err
+    }
+    if commandTag.RowsAffected() == 0 {
+        return ErrCategoryNotFound
+    }
+    return nil
+}
+```
+
+Use `QueryRow` for one row, `Query` with `defer rows.Close()` for collections, and always return `rows.Err()` after iteration. Keep SQL columns and scan destinations in the same order. Use transactions for multi-statement operations and pass the transaction through the repository operation. Always use `rows.Err()` to catch iteration errors, not just `error` from `Scan()`.
+
+Repository persistence models may use `time.Time` and PostgreSQL-native values directly.
+
+Convert values only when mapping to a public JSON DTO. Use converter functions to centralize the mapping logic, especially for collections:
+```go
+type PublicRecord struct {
+    CalendarDate string       `json:"calendar_date"`
+    CreatedAt    APITimestamp `json:"created_at"`
+}
+
+func toPublicRecord(record DayRecord) PublicRecord {
+    return PublicRecord{
+        CalendarDate: record.CalendarDate,
+        CreatedAt:    APITimestamp(record.CreatedAt),
+    }
+}
+
+func toPublicRecords(records []DayRecord) []PublicRecord {
+    result := make([]PublicRecord, 0, len(records))
+    for _, record := range records {
+        result = append(result, toPublicRecord(record))
+    }
+    return result
+}
+```
+
+## Domain Services
+
+Use a service when an operation coordinates multiple repositories, performs a
+workflow, or applies domain rules that do not belong to HTTP or SQL. Keep
+simple CRUD operations in the relevant repository.
+
+```go
+type DayService struct {
+    dayRecordRepository *DayRecordRepository
+    categoryRepository  *CategoryRepository
+}
+
+func NewDayService(
+    dayRecordRepository *DayRecordRepository,
+    categoryRepository *CategoryRepository,
+) *DayService {
+    return &DayService{
+        dayRecordRepository: dayRecordRepository,
+        categoryRepository:  categoryRepository,
+    }
+}
+```
+
+Services return domain values and errors. They do not write HTTP responses, inspect headers, or format JSON.
+
+## Error Handling and Logging
+
+Use sentinel or typed errors for expected domain conditions, and wrap lower level errors with context when the caller benefits from it:
+
+```go
+if error != nil {
+    return fmt.Errorf("load categories for user %d: %w", userID, error)
+}
+```
+
+At the HTTP boundary, classify expected errors into public status codes and send unexpected errors through `HTTPError`. Structured logs may include safe identifiers such as `user_id` and `category_id`, but must not include:
+
+- passwords, password hashes, JWTs, authorization headers, or secrets;
+- request bodies containing sensitive credentials;
+- raw database errors in the response body.
+
+Use `Logger.Info`, `Logger.Warn`, and `Logger.Error` for application events. The logger writes structured JSON and includes stack traces for error-level entries.
+
+## Adding a Feature or Table
+
+For a new resource such as `tags`:
+
+1. Add the schema change in `migrations.go` using the existing migration conventions.
+2. Add `repository_tags.go` with `Tag`, `TagInput`, `TagRepository`, and a `NewTagRepository` constructor.
+3. Add `tagRepo *TagRepository` and its constructor call in `API` and `NewAPI`.
+4. Add `handler_tags.go` for request/response types, validation, and handlers.
+   - **Syntactic Validation** (e.g., email format, required fields) belongs in the handler.
+   - **Semantic/Domain Validation** (e.g., does this tag belong to this user, are the dependencies valid?) belongs in the repository or service.
+5. Add `router_tags.go` and register public or protected routes consistently.
+6. Add repository integration tests and handler tests for success, validation, authorization, not-found, and database-error paths.
+
+Keep the change scoped to the feature. Do not introduce a new framework, ORM, package hierarchy, or abstraction layer for a single endpoint.
+
+## Resource and Performance Guidelines
+
+The service runs with a deliberately small connection pool. Configure pool limits in startup code and reuse the pool for the lifetime of the process:
+
+```go
 config.MaxConns = 5
 config.MinConns = 0
 config.MaxConnIdleTime = 2 * time.Minute
 ```
-**Benefit**: Efficient connection reuse, low memory footprint,
 
-## Middleware Chain
-
-All HTTP requests flow through a centralized middleware stack:
-
-```
-Request -> LoggingMiddleware -> CORSMiddleware -> AuthMiddleware -> Handler
-```
-
-1. **LoggingMiddleware** - Logs all requests/responses with timing, captures panics, adds stack traces for errors
-2. **CORSMiddleware** - Handles CORS headers and preflight requests based on `CORS_ALLOWED_ORIGINS`
-3. **AuthMiddleware** - Validates JWT tokens, extracts user context (only on protected routes)
-4. **Handler** - Business logic and response generation
-
-### Error Handling
-
-Use `HTTPError()` to log detailed internal errors while returning generic messages to users:
+Preallocate slices only when you know the exact size or can count it efficiently:
 
 ```go
-HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create user", err, map[string]interface{}{
-    "username": req.Username,
-})
+categories := make([]BlockCategory, 0, len(rows)) // Use the actual row count
 ```
 
-This logs the full error with stack trace internally but returns just "failed to create user" to the client.
+Avoid arbitrary preallocation like `make([]T, 0, 10)`. If you don't know the size, use `var categories []BlockCategory` and let `append` handle growth; it is efficient and idiomatic.
 
-## Security Model
-
-### Authentication
-- **JWT**: Stateless tokens with HMAC-SHA256 signature
-- **Password**: bcrypt hashing (cost 10)
-- **User Isolation**: All queries filtered by authenticated user ID
-
-### Logging Security
-- **No PII in logs**: Tokens, passwords, and authorization headers are never logged
-- **Failed auth attempts**: Logged at WARN level with username and IP (for monitoring)
-- **Successful logins**: Logged at INFO level with user ID and IP
-
-## Repository Pattern Example
-
-### TodoRepository API
-```go
-type TodoRepository struct {
-    db            *pgxpool.Pool
-    encryptionKey []byte
-}
-
-// Clean, simple API
-func (r *TodoRepository) FindByUser(ctx context.Context, userID int) ([]Todo, error)
-func (r *TodoRepository) FindByID(ctx context.Context, id, userID int) (*Todo, error)
-func (r *TodoRepository) Create(ctx context.Context, input TodoInput, userID int) (*Todo, error)
-func (r *TodoRepository) Update(ctx context.Context, id int, input TodoInput, userID int) (*Todo, error)
-func (r *TodoRepository) Delete(ctx context.Context, id, userID int) error
-```
-
-### Handler Simplicity
-```go
-// Before (60+ lines of encryption/DB logic)
-func (api *API) getTodos(w http.ResponseWriter, r *http.Request) {
-    // ... auth check
-    // ... query builder
-    // ... row scanning
-    // ... encrypt/decrypt per field
-    // ... error handling
-}
-
-// After (10 lines)
-func (api *API) getTodos(w http.ResponseWriter, r *http.Request) {
-    userID, _ := getUserID(r.Context())
-    todos, err := api.todoRepo.FindByUser(r.Context(), userID)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    json.NewEncoder(w).Encode(todos)
-}
-```
-
-## Adding New Tables
-
-To add a new table (e.g., `tags`):
-
-1. **Create repository**: `repository_tags.go`
-```go
-type TagRepository struct {
-    db *pgxpool.Pool
-}
-
-func (r *TagRepository) FindAll(ctx context.Context) ([]Tag, error) { ... }
-func (r *TagRepository) Create(ctx context.Context, input TagInput) (*Tag, error) { ... }
-// ... etc
-```
-
-2. **Add to API struct**: `handlers.go`
-```go
-type API struct {
-    db       *pgxpool.Pool
-    userRepo *UserRepository
-    tagRepo  *TagRepository  // <- Add here
-}
-```
-
-3. **Create handlers**: `handler_tags.go`
-```go
-func (api *API) getTags(w http.ResponseWriter, r *http.Request) {
-    tags, err := api.tagRepo.FindAll(r.Context())
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    json.NewEncoder(w).Encode(tags)
-}
-```
-
-4. **Register routes**: `main.go`
-```go
-http.HandleFunc("/tags", api.getTags)
-```
-
-## Memory Profile (Estimated)
-
-| Component | Memory | Notes |
-|-----------|--------|-------|
-| Go runtime | ~10 MB | Minimal overhead |
-| pgx pool (5 conns) | ~5 MB | Lightweight driver |
-| Cipher cache | <1 MB | One AES cipher per key |
-| Request buffers | ~2 MB | JSON encoding/decoding |
-| **Total baseline** | **~20 MB** | Well within .25 CPU limits |
-
-Per request overhead: ~100-200 KB (JSON + crypto buffers)
-
-## Performance Characteristics
-
-- **Cold start**: ~50ms (Go binary + DB connection)
-- **Typical response**: 10-50ms (depending on DB latency)
-- **Encryption overhead**: 1-2ms per request
-- **JWT verification**: <1ms
-- **Memory per request**: 100-200 KB
-
-## Trade-offs
-
-### What We Have
-- Clean code separation
-- Transparent encryption
-- Type-safe CRUD operations
-- Minimal dependencies
-- Low resource usage
-
-### What We Don't Have (by design)
-- Full ORM features (migrations, relations, query builder)
-- Automatic schema generation
-- Complex query DSL
-- Code generation
-
-**Rationale**: Keep it simple and explicit. SQL is readable, repositories are lightweight, and we avoid ORM complexity/overhead.
+Prefer straightforward SQL and bounded queries over speculative caching.
+Measure before optimizing; correctness, cancellation, and user isolation are
+more important than small allocation reductions.
 
 ## Testing Strategy
 
-### AAA Pattern (Arrange-Act-Assert)
+Tests use the Arrange-Act-Assert structure and descriptive names. Repository tests are integration tests against the PostgreSQL test database. Handler tests use `httptest` and verify status codes, JSON, validation, and error handling. Domain logic tests should avoid a database when dependencies can be isolated naturally.
 
-All tests follow the AAA pattern for clarity and consistency:
-1. **Arrange** - Set up test data and preconditions
-2. **Act** - Execute the code under test
-3. **Assert** - Verify the expected outcome
+Each feature should cover:
 
-This pattern makes tests self-documenting and easy to understand at a glance.
+1. the successful operation;
+2. malformed and boundary input;
+3. missing authentication and cross-user access;
+4. missing resources and database errors;
+5. empty collections, null values, and relevant state transitions.
 
-### Test Types
+Use table-driven subtests for related cases:
 
-#### Repository Tests
-Test data access logic in isolation. These are integration tests that use a real test database.
-
-**Example:**
 ```go
-func TestUserSettingsRepository_Update(t *testing.T) {
-    // Arrange
-    db := setupTestDB(t)
-    repo := NewUserSettingsRepository(db)
-    user := createTestUser(t, db, "testuser", "password123")
-    ctx := context.Background()
-    repo.GetOrCreate(ctx, user.ID)
-
-    // Act
-    newTime := "06:30:00"
-    updated, err := repo.Update(ctx, user.ID, newTime)
-
-    // Assert
-    if err != nil {
-        t.Fatalf("Update failed: %v", err)
+func TestParseBlockStartTime(t *testing.T) {
+    testCases := []struct {
+        name      string
+        input     string
+        shouldErr bool
+    }{
+        {name: "seconds", input: "08:30:00"},
+        {name: "minutes", input: "08:30"},
+        {name: "invalid", input: "not-a-time", shouldErr: true},
     }
-    if updated.DayBoundaryTime != newTime {
-        t.Errorf("Expected DayBoundaryTime '%s', got '%s'", newTime, updated.DayBoundaryTime)
+
+    for _, testCase := range testCases {
+        t.Run(testCase.name, func(t *testing.T) {
+            _, err := parseBlockStartTime(testCase.input)
+            if (err != nil) != testCase.shouldErr {
+                t.Fatalf("unexpected error state: %v", err)
+            }
+        })
     }
 }
 ```
 
-#### Handler Tests
-Test HTTP layer behavior using `httptest`. Verify request validation, response formatting, status codes, and error handling.
-
-**Example:**
-```go
-func TestDeleteAccountHandler_Success(t *testing.T) {
-    // Arrange
-    db := setupTestDB(t)
-    api := NewAPI(db, "test-secret")
-    user := createTestUser(t, db, "testuser", "password123")
-
-    reqBody := DeleteAccountInput{Password: "password123"}
-    body, _ := json.Marshal(reqBody)
-    req := httptest.NewRequest(http.MethodDelete, "/account", bytes.NewReader(body))
-    req.Header.Set("Content-Type", "application/json")
-    
-    ctx := withUserID(context.Background(), user.ID)
-    req = req.WithContext(ctx)
-    
-    w := httptest.NewRecorder()
-
-    // Act
-    api.deleteAccountHandler(w, req)
-
-    // Assert
-    if w.Code != http.StatusOK {
-        t.Errorf("Expected status 200, got %d", w.Code)
-    }
-    
-    var response DeleteAccountResponse
-    json.NewDecoder(w.Body).Decode(&response)
-    if !response.Deleted {
-        t.Error("Expected deleted=true in response")
-    }
-}
-```
-
-### Test Helpers
-
-Common setup utilities are centralized in `test_helpers.go`:
-
-- **`setupTestDB(t)`** - Creates isolated test database with migrations
-- **`cleanupTestDB(t, db)`** - Truncates all tables after tests
-- **`createTestUser(t, db, username, password)`** - Creates a test user
-
-### Running Tests
-
-Tests require a test database. Set the connection string:
-
-```bash
-export TEST_DATABASE_URL="postgresql://user:pass@localhost:5432/test_db"
-go test ./...
-```
-
-Tests without `TEST_DATABASE_URL` are automatically skipped.
-
-### Test Coverage Guidelines
-
-Each new feature should include:
-
-1. **Happy path** - Normal successful operation
-2. **Error cases** - Invalid input, missing data, unauthorized access
-3. **Edge cases** - Boundary values, empty strings, null values
-4. **Security** - Authentication, authorization, password verification
-5. **Side effects** - Cascade deletes, state changes, idempotency
-
-### Example Test Suite Structure
-
-```go
-// Repository: user_settings_repository_test.go
-- TestUserSettingsRepository_GetOrCreate
-- TestUserSettingsRepository_GetOrCreate_Idempotent
-- TestUserSettingsRepository_Update
-- TestUserSettingsRepository_Update_BeforeCreate
-- TestUserSettingsRepository_MultipleUsers
-
-// Handler: handler_settings_test.go
-- TestGetSettingsHandler_Success
-- TestGetSettingsHandler_NoAuth
-- TestGetSettingsHandler_WrongMethod
-- TestPutSettingsHandler_Success
-- TestPutSettingsHandler_InvalidTimeFormat
-- TestPutSettingsHandler_ValidTimeFormats
-- TestPutSettingsHandler_NoAuth
-- TestPutSettingsHandler_InvalidJSON
-```
-
-### Best Practices
-
-1. **Isolation** - Each test is independent, cleanup between tests
-2. **Clarity** - Test names describe what's being tested and expected outcome
-3. **Comments** - AAA sections clearly marked with comments
-4. **t.Helper()** - Mark helper functions to improve error reporting
-5. **Subtests** - Use `t.Run()` for testing multiple similar cases
-6. **Minimal mocking** - Use real database for integration tests, only mock external services
+For more details, see [TESTING](./TESTING.md)

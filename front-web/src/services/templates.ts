@@ -1,24 +1,16 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
-export interface SnapshotBlock {
-  id?: number;
-  snapshot_id?: number;
+export interface PlannedBlock {
   category_id: number;
   start_time: string;
   duration_minutes: number;
-}
-
-export interface TemplateSnapshot {
-  id: number;
-  snapshotted_at: string;
-  snapshot_blocks: SnapshotBlock[];
 }
 
 export interface Template {
   id: number;
   name: string;
   template_group_id: number | null;
-  current_snapshot: TemplateSnapshot | null;
+  plan: PlannedBlock[];
   created_at: string;
   updated_at: string;
 }
@@ -26,7 +18,7 @@ export interface Template {
 export interface TemplateInput {
   name: string;
   template_group_id: number | null;
-  snapshot_blocks: Omit<SnapshotBlock, "id" | "snapshot_id">[];
+  plan: PlannedBlock[];
 }
 
 export async function getTemplates(token: string): Promise<Template[]> {

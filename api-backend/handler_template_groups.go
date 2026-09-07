@@ -6,7 +6,27 @@ import (
 )
 
 type TemplateGroupsResponse struct {
-	TemplateGroups []TemplateGroup `json:"template_groups"`
+	Groups []PublicTemplateGroup `json:"groups"`
+}
+
+type PublicTemplateGroup struct {
+	ID        int          `json:"id"`
+	Name      string       `json:"name"`
+	CreatedAt APITimestamp `json:"created_at"`
+	UpdatedAt APITimestamp `json:"updated_at"`
+}
+
+func toPublicTemplateGroup(group TemplateGroup) PublicTemplateGroup {
+	return PublicTemplateGroup{ID: group.ID, Name: group.Name,
+		CreatedAt: APITimestamp(group.CreatedAt), UpdatedAt: APITimestamp(group.UpdatedAt)}
+}
+
+func toPublicTemplateGroups(groups []TemplateGroup) []PublicTemplateGroup {
+	publicGroups := make([]PublicTemplateGroup, 0, len(groups))
+	for _, group := range groups {
+		publicGroups = append(publicGroups, toPublicTemplateGroup(group))
+	}
+	return publicGroups
 }
 
 type TemplateGroupDeleteResponse struct {
@@ -15,11 +35,7 @@ type TemplateGroupDeleteResponse struct {
 }
 
 func (api *API) getTemplateGroupsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	groups, err := api.templateGroupRepo.FindByUser(r.Context(), userID)
 	if err != nil {
@@ -27,16 +43,11 @@ func (api *API) getTemplateGroupsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TemplateGroupsResponse{TemplateGroups: groups})
+	writeJSON(w, TemplateGroupsResponse{Groups: toPublicTemplateGroups(groups)})
 }
 
 func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input TemplateGroupInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -57,17 +68,12 @@ func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(group)
+	writeJSON(w, toPublicTemplateGroup(*group))
 }
 
 func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input TemplateGroupInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -83,36 +89,28 @@ func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	group, err := api.templateGroupRepo.Update(r.Context(), id, input, userID)
-	if err == ErrTemplateGroupNotFound {
-		http.Error(w, "template group not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
+		if writeAppError(w, err) {
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update template group", err, map[string]interface{}{"user_id": userID, "group_id": id})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(group)
+	writeJSON(w, toPublicTemplateGroup(*group))
 }
 
 func (api *API) deleteTemplateGroupHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	err := api.templateGroupRepo.Delete(r.Context(), id, userID)
-	if err == ErrTemplateGroupNotFound {
-		http.Error(w, "template group not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
+		if writeAppError(w, err) {
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete template group", err, map[string]interface{}{"user_id": userID, "group_id": id})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TemplateGroupDeleteResponse{Deleted: true, ID: id})
+	writeJSON(w, TemplateGroupDeleteResponse{Deleted: true, ID: id})
 }

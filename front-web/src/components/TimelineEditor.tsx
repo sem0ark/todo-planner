@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, type MouseEvent } from "react";
-import type { SnapshotBlock } from "../services/templates";
+import type { PlannedBlock } from "../services/templates";
 import type { Category } from "../services/categories";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { getContrastTextColor } from "../utils/colors";
@@ -36,11 +36,11 @@ function BlockEditPopover({
   onDelete,
   onClose,
 }: {
-  block: SnapshotBlock;
+  block: PlannedBlock;
   blockIndex: number;
   categories: Category[];
   anchorRect: DOMRect | null;
-  onUpdate: (index: number, updates: Partial<SnapshotBlock>) => void;
+  onUpdate: (index: number, updates: Partial<PlannedBlock>) => void;
   onDelete: (index: number) => void;
   onClose: () => void;
 }) {
@@ -177,9 +177,9 @@ export default function TimelineEditor({
   categories,
   onChange,
 }: {
-  blocks: SnapshotBlock[];
+  blocks: PlannedBlock[];
   categories: Category[];
-  onChange: (blocks: SnapshotBlock[]) => void;
+  onChange: (blocks: PlannedBlock[]) => void;
 }) {
   const { token } = useAuthStore();
   const { settings, setSettings } = useSettingsStore();
@@ -257,7 +257,7 @@ export default function TimelineEditor({
     );
   };
 
-  const updateBlock = (index: number, updates: Partial<SnapshotBlock>) => {
+  const updateBlock = (index: number, updates: Partial<PlannedBlock>) => {
     onChange(
       blocks.map((block, blockIndex) =>
         blockIndex === index ? { ...block, ...updates } : block,

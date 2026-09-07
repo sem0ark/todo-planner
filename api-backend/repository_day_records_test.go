@@ -42,7 +42,7 @@ func TestDayRecordRepository_Create(t *testing.T) {
 		t.Fatalf("Failed to set up schedule: %v", err)
 	}
 
-	calendarDate := "2026-07-07"
+	calendarDate := mustCalendarDate("2026-07-07")
 
 	// Act
 	record, err := repo.Create(ctx, user.ID, calendarDate)
@@ -71,7 +71,7 @@ func TestDayRecordRepository_Create_NoTemplate(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	calendarDate := "2026-07-07"
+	calendarDate := mustCalendarDate("2026-07-07")
 
 	// Act
 	record, err := repo.Create(ctx, user.ID, calendarDate)
@@ -95,7 +95,7 @@ func TestDayRecordRepository_Create_DuplicateDate(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	calendarDate := "2026-07-07"
+	calendarDate := mustCalendarDate("2026-07-07")
 	_, err := repo.Create(ctx, user.ID, calendarDate)
 	if err != nil {
 		t.Fatalf("First create failed: %v", err)
@@ -117,7 +117,7 @@ func TestDayRecordRepository_FindByID(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	calendarDate := "2026-07-07"
+	calendarDate := mustCalendarDate("2026-07-07")
 	created, err := repo.Create(ctx, user.ID, calendarDate)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -162,7 +162,7 @@ func TestDayRecordRepository_FindByDateRange(t *testing.T) {
 	ctx := context.Background()
 
 	// Create multiple records
-	dates := []string{"2026-07-01", "2026-07-05", "2026-07-10", "2026-07-15"}
+	dates := []CalendarDate{mustCalendarDate("2026-07-01"), mustCalendarDate("2026-07-05"), mustCalendarDate("2026-07-10"), mustCalendarDate("2026-07-15")}
 	for _, date := range dates {
 		_, err := repo.Create(ctx, user.ID, date)
 		if err != nil {
@@ -171,7 +171,7 @@ func TestDayRecordRepository_FindByDateRange(t *testing.T) {
 	}
 
 	// Act
-	records, err := repo.FindByDateRange(ctx, user.ID, "2026-07-05", "2026-07-10")
+	records, err := repo.FindByDateRange(ctx, user.ID, mustCalendarDate("2026-07-05"), mustCalendarDate("2026-07-10"))
 
 	// Assert
 	if err != nil {
@@ -180,10 +180,10 @@ func TestDayRecordRepository_FindByDateRange(t *testing.T) {
 	if len(records) != 2 {
 		t.Errorf("Expected 2 records, got %d", len(records))
 	}
-	if records[0].CalendarDate != "2026-07-05" {
+	if records[0].CalendarDate != mustCalendarDate("2026-07-05") {
 		t.Errorf("Expected first record date '2026-07-05', got '%s'", records[0].CalendarDate)
 	}
-	if records[1].CalendarDate != "2026-07-10" {
+	if records[1].CalendarDate != mustCalendarDate("2026-07-10") {
 		t.Errorf("Expected second record date '2026-07-10', got '%s'", records[1].CalendarDate)
 	}
 }
@@ -196,7 +196,7 @@ func TestDayRecordRepository_FindByDateRange_Empty(t *testing.T) {
 	ctx := context.Background()
 
 	// Act
-	records, err := repo.FindByDateRange(ctx, user.ID, "2026-07-01", "2026-07-31")
+	records, err := repo.FindByDateRange(ctx, user.ID, mustCalendarDate("2026-07-01"), mustCalendarDate("2026-07-31"))
 
 	// Assert
 	if err != nil {
@@ -228,7 +228,7 @@ func TestDayRecordRepository_ResolveTemplateForDate_WithOverride(t *testing.T) {
 	}
 
 	// Set up override
-	date := "2026-07-07"
+	date := mustCalendarDate("2026-07-07")
 	override, err := scheduleRepo.SetOverride(ctx, user.ID, date, &overrideTemplate.ID)
 	if err != nil {
 		t.Fatalf("Failed to set up override: %v", err)
@@ -279,7 +279,7 @@ func TestDayRecordRepository_ResolveTemplateForDate_WithoutOverride(t *testing.T
 	}
 
 	// Act
-	date := "2026-07-07" // Monday
+	date := mustCalendarDate("2026-07-07") // Monday
 	templateID, err := repo.resolveTemplateForDate(ctx, user.ID, date)
 
 	// Assert
@@ -302,7 +302,7 @@ func TestDayRecordRepository_MultipleUsers(t *testing.T) {
 	user2 := createTestUser(t, db, "user2", "password123")
 	ctx := context.Background()
 
-	calendarDate := "2026-07-07"
+	calendarDate := mustCalendarDate("2026-07-07")
 	record1, err := repo.Create(ctx, user1.ID, calendarDate)
 	if err != nil {
 		t.Fatalf("Create for user1 failed: %v", err)
@@ -600,7 +600,7 @@ func TestDayRecordRepository_CreateEvents_RollsBackPartialBatch(t *testing.T) {
 	repo := NewDayRecordRepository(db)
 	user := createTestUser(t, db, "testuser", "password123")
 	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
-	record, _ := repo.Create(context.Background(), user.ID, "2026-07-07")
+	record, _ := repo.Create(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
 	invalidCategoryID := 99999
 	inputs := []DayEventInput{
 		{EventType: "transition", CategoryID: &category.ID, OccurredAt: parseTime("2026-07-07T09:00:00Z")},
@@ -629,9 +629,9 @@ func TestDayRecordRepository_ReplaceActualBlocks_RollsBackPartialBatch(t *testin
 	repo := NewDayRecordRepository(db)
 	user := createTestUser(t, db, "testuser", "password123")
 	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
-	record, _ := repo.Create(context.Background(), user.ID, "2026-07-07")
+	record, _ := repo.Create(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
 	_, err := repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
-		{CategoryID: &category.ID, BlockType: "actual", StartTime: "09:00:00", DurationMinutes: 60},
+		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 60},
 	})
 	if err != nil {
 		t.Fatalf("Failed to create initial actual block: %v", err)
@@ -640,8 +640,8 @@ func TestDayRecordRepository_ReplaceActualBlocks_RollsBackPartialBatch(t *testin
 
 	// Act
 	_, err = repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
-		{CategoryID: &category.ID, BlockType: "actual", StartTime: "10:00:00", DurationMinutes: 60},
-		{CategoryID: &invalidCategoryID, BlockType: "actual", StartTime: "11:00:00", DurationMinutes: 60},
+		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 60},
+		{CategoryID: &invalidCategoryID, BlockType: "actual", StartTime: mustScheduleTime("11:00:00"), DurationMinutes: 60},
 	})
 
 	// Assert

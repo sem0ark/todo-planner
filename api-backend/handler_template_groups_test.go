@@ -34,8 +34,8 @@ func TestGetTemplateGroupsHandler_Success(t *testing.T) {
 
 	var response TemplateGroupsResponse
 	json.NewDecoder(w.Body).Decode(&response)
-	if len(response.TemplateGroups) != 2 {
-		t.Errorf("Expected 2 groups, got %d", len(response.TemplateGroups))
+	if len(response.Groups) != 2 {
+		t.Errorf("Expected 2 groups, got %d", len(response.Groups))
 	}
 }
 
@@ -48,7 +48,7 @@ func TestGetTemplateGroupsHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.getTemplateGroupsHandler(w, req)
+	api.protectedHandler(api.getTemplateGroupsHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

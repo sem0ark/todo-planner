@@ -36,7 +36,10 @@ func createJWT(userID int, username string, secret string) (string, error) {
 		"username": username,
 		"exp":      time.Now().Add(24 * time.Hour).Unix(),
 	}
-	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadBytes)
 
 	message := header + "." + payloadB64
@@ -128,6 +131,15 @@ func (api *API) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
+		if _, err := api.userRepo.FindByUsername(r.Context(), username); err != nil {
+			api.logger.Warn("JWT user no longer exists", map[string]interface{}{
+				"user_id":  userID,
+				"username": username,
+				"path":     r.URL.Path,
+			})
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
 
 		// Store user info in context
 		ctx := r.Context()
@@ -162,8 +174,7 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := api.userRepo.Create(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if errors.Is(err, ErrDuplicateUsername) {
-			http.Error(w, "username already exists", http.StatusConflict)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create user", err, map[string]interface{}{
@@ -180,9 +191,8 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(AuthResponse{Token: token, User: *user})
+	writeJSON(w, AuthResponse{Token: token, User: *user})
 }
 
 func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -231,8 +241,7 @@ func (api *API) loginHandler(w http.ResponseWriter, r *http.Request) {
 		"username": user.Username,
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AuthResponse{Token: token, User: *user})
+	writeJSON(w, AuthResponse{Token: token, User: *user})
 }
 
 const (
