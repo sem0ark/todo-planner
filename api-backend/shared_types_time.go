@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -13,6 +14,16 @@ const (
 	// TimestampFormat is the canonical UTC timestamp format used by the API.
 	TimestampFormat = "2006-01-02T15:04:05Z"
 )
+
+// APIScheduleTime serializes a time of day in HH:MM:SS form.
+type APIScheduleTime string
+
+func parseCalendarDate(value string) (time.Time, error) {
+	if len(value) != len(DateFormat) {
+		return time.Time{}, errors.New("invalid calendar date format")
+	}
+	return time.Parse(DateFormat, value)
+}
 
 // APITimestamp serializes timestamps as UTC values without fractional seconds.
 type APITimestamp time.Time
@@ -29,6 +40,9 @@ func (timestamp *APITimestamp) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &timestampValue); err != nil {
 		return err
 	}
+	if len(timestampValue) != len(TimestampFormat) {
+		return errors.New("invalid timestamp format")
+	}
 
 	parsedTimestamp, err := time.Parse(TimestampFormat, timestampValue)
 	if err != nil {
@@ -38,15 +52,28 @@ func (timestamp *APITimestamp) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// APIScheduleTime serializes a time of day in HH:MM:SS form.
-type APIScheduleTime string
+func parseScheduleTime(value string) (time.Time, error) {
+	if len(value) != len(ScheduleTimeFormat) {
+		return time.Time{}, errors.New("invalid schedule time format")
+	}
+	return time.Parse(ScheduleTimeFormat, value)
+}
+
+func publicScheduleTime(value string) APIScheduleTime {
+	parsedTime, err := parseScheduleTime(value)
+	if err == nil {
+		return APIScheduleTime(parsedTime.Format(ScheduleTimeFormat))
+	}
+	return APIScheduleTime(value)
+}
 
 // MarshalJSON validates and serializes the canonical API schedule time format.
 func (scheduleTime APIScheduleTime) MarshalJSON() ([]byte, error) {
-	if _, err := time.Parse(ScheduleTimeFormat, string(scheduleTime)); err != nil {
+	parsedTime, err := parseScheduleTime(string(scheduleTime))
+	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(string(scheduleTime))
+	return json.Marshal(parsedTime.Format(ScheduleTimeFormat))
 }
 
 // UnmarshalJSON accepts only the canonical HH:MM:SS representation.
@@ -55,11 +82,10 @@ func (scheduleTime *APIScheduleTime) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &scheduleTimeValue); err != nil {
 		return err
 	}
-
-	parsedScheduleTime, err := time.Parse(ScheduleTimeFormat, scheduleTimeValue)
+	parsedTime, err := parseScheduleTime(scheduleTimeValue)
 	if err != nil {
 		return err
 	}
-	*scheduleTime = APIScheduleTime(parsedScheduleTime.Format(ScheduleTimeFormat))
+	*scheduleTime = APIScheduleTime(parsedTime.Format(ScheduleTimeFormat))
 	return nil
 }

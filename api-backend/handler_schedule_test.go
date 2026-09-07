@@ -244,7 +244,7 @@ func TestPutScheduleOverrideHandler_Success(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	reqBody := ScheduleOverrideInput{
 		DayTemplateID: &template.ID,
@@ -282,7 +282,7 @@ func TestPutScheduleOverrideHandler_Delete(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	reqBody := ScheduleOverrideInput{
 		DayTemplateID: nil,
@@ -345,7 +345,7 @@ func TestPutScheduleOverrideHandler_PastDate(t *testing.T) {
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 	user := createTestUser(t, db, "testuser", "password123")
 
-	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format(DateFormat)
 
 	reqBody := ScheduleOverrideInput{
 		DayTemplateID: nil,
@@ -372,7 +372,7 @@ func TestPutScheduleOverrideHandler_NoAuth(t *testing.T) {
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	reqBody := ScheduleOverrideInput{
 		DayTemplateID: nil,

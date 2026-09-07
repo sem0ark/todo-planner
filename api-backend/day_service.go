@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"time"
 )
 
 var (
@@ -16,6 +15,11 @@ type DayService struct {
 	categoryRepository  *CategoryRepository
 }
 
+type DayRangeEntry struct {
+	CalendarDate string
+	Record       *DayRecord
+}
+
 func NewDayService(dayRecordRepository *DayRecordRepository, categoryRepository *CategoryRepository) *DayService {
 	return &DayService{
 		dayRecordRepository: dayRecordRepository,
@@ -23,13 +27,29 @@ func NewDayService(dayRecordRepository *DayRecordRepository, categoryRepository 
 	}
 }
 
-func (service *DayService) GetDays(contextValue context.Context, userID int, fromDate, toDate string) ([]DayRecord, error) {
-	fromTime, fromError := time.Parse("2006-01-02", fromDate)
-	toTime, toError := time.Parse("2006-01-02", toDate)
+func (service *DayService) GetDays(contextValue context.Context, userID int, fromDate, toDate string) ([]DayRangeEntry, error) {
+	fromTime, fromError := parseCalendarDate(fromDate)
+	toTime, toError := parseCalendarDate(toDate)
 	if fromError != nil || toError != nil || toTime.Before(fromTime) {
 		return nil, ErrInvalidDayDateRange
 	}
-	return service.dayRecordRepository.FindByDateRange(contextValue, userID, fromDate, toDate)
+	records, err := service.dayRecordRepository.FindByDateRange(contextValue, userID, fromDate, toDate)
+	if err != nil {
+		return nil, err
+	}
+	recordsByDate := make(map[string]*DayRecord, len(records))
+	for recordIndex := range records {
+		record := &records[recordIndex]
+		recordsByDate[record.CalendarDate] = record
+	}
+
+	dateCount := int(toTime.Sub(fromTime).Hours()/24) + 1
+	entries := make([]DayRangeEntry, 0, dateCount)
+	for currentDate := fromTime; !currentDate.After(toTime); currentDate = currentDate.AddDate(0, 0, 1) {
+		calendarDate := currentDate.Format(DateFormat)
+		entries = append(entries, DayRangeEntry{CalendarDate: calendarDate, Record: recordsByDate[calendarDate]})
+	}
+	return entries, nil
 }
 
 func (service *DayService) GetDay(contextValue context.Context, userID int, calendarDate string) (*DayRecord, error) {
@@ -47,7 +67,13 @@ func (service *DayService) AppendEvents(contextValue context.Context, userID int
 	if err := validateDateEvents(input.Events); err != nil {
 		return nil, err
 	}
-	if err := service.validateCategoryIDs(contextValue, userID, input.Events); err != nil {
+	categoryIDs := make([]int, 0, len(input.Events))
+	for _, event := range input.Events {
+		if event.CategoryID != nil {
+			categoryIDs = append(categoryIDs, *event.CategoryID)
+		}
+	}
+	if err := service.validateCategoryIDs(contextValue, userID, categoryIDs); err != nil {
 		return nil, err
 	}
 	return service.dayRecordRepository.CreateEventsByDate(contextValue, userID, calendarDate, input.DeviceID, input.Events)
@@ -57,7 +83,13 @@ func (service *DayService) ReplaceBlocks(contextValue context.Context, userID in
 	if err := validateActualBlocks(blocks); err != nil {
 		return nil, err
 	}
-	if err := service.validateBlockCategoryIDs(contextValue, userID, blocks); err != nil {
+	categoryIDs := make([]int, 0, len(blocks))
+	for _, block := range blocks {
+		if block.CategoryID != nil {
+			categoryIDs = append(categoryIDs, *block.CategoryID)
+		}
+	}
+	if err := service.validateCategoryIDs(contextValue, userID, categoryIDs); err != nil {
 		return nil, err
 	}
 	record, err := service.dayRecordRepository.FindByDate(contextValue, userID, calendarDate)
@@ -74,25 +106,14 @@ func (service *DayService) UpdateTemplate(contextValue context.Context, userID i
 	return service.dayRecordRepository.UpdateTemplateByDate(contextValue, userID, calendarDate, templateID)
 }
 
-func (service *DayService) validateCategoryIDs(contextValue context.Context, userID int, events []DayEventInput) error {
-	for _, event := range events {
-		if event.CategoryID == nil {
+func (service *DayService) validateCategoryIDs(contextValue context.Context, userID int, categoryIDs []int) error {
+	validatedCategoryIDs := make(map[int]struct{}, len(categoryIDs))
+	for _, categoryID := range categoryIDs {
+		if _, alreadyValidated := validatedCategoryIDs[categoryID]; alreadyValidated {
 			continue
 		}
-		category, err := service.categoryRepository.FindByID(contextValue, *event.CategoryID, userID)
-		if err != nil || category.IsDeleted {
-			return ErrUnknownCategoryID
-		}
-	}
-	return nil
-}
-
-func (service *DayService) validateBlockCategoryIDs(contextValue context.Context, userID int, blocks []ActualBlockInput) error {
-	for _, block := range blocks {
-		if block.CategoryID == nil {
-			continue
-		}
-		category, err := service.categoryRepository.FindByID(contextValue, *block.CategoryID, userID)
+		validatedCategoryIDs[categoryID] = struct{}{}
+		category, err := service.categoryRepository.FindByID(contextValue, categoryID, userID)
 		if err != nil || category.IsDeleted {
 			return ErrUnknownCategoryID
 		}

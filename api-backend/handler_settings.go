@@ -10,6 +10,16 @@ type UserSettingsInput struct {
 	DayBoundaryTime string `json:"day_boundary_time"`
 }
 
+type PublicSettings struct {
+	DayBoundaryTime APIScheduleTime `json:"day_boundary_time"`
+	UpdatedAt       APITimestamp    `json:"updated_at"`
+}
+
+func toPublicSettings(settings UserSettings) PublicSettings {
+	return PublicSettings{DayBoundaryTime: publicScheduleTime(settings.DayBoundaryTime),
+		UpdatedAt: APITimestamp(settings.UpdatedAt)}
+}
+
 var timeFormatRegex = regexp.MustCompile(`^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`)
 
 func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +38,7 @@ func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(settings)
+	json.NewEncoder(w).Encode(toPublicSettings(*settings))
 }
 
 func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +71,7 @@ func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(settings)
+	json.NewEncoder(w).Encode(toPublicSettings(*settings))
 }
 
 func (api *API) settingsHandler(w http.ResponseWriter, r *http.Request) {

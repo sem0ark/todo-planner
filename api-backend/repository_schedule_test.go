@@ -154,8 +154,8 @@ func TestScheduleRepository_GetFutureOverrides(t *testing.T) {
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
-	dayAfter := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
+	dayAfter := time.Now().AddDate(0, 0, 2).Format(DateFormat)
 
 	repo.SetOverride(ctx, user.ID, tomorrow, &template.ID)
 	repo.SetOverride(ctx, user.ID, dayAfter, nil)
@@ -183,7 +183,7 @@ func TestScheduleRepository_SetOverride_Create(t *testing.T) {
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	// Act
 	override, err := repo.SetOverride(ctx, user.ID, tomorrow, &template.ID)
@@ -212,7 +212,7 @@ func TestScheduleRepository_SetOverride_Update(t *testing.T) {
 	template2 := createTestDayTemplate(t, db, user.ID, "Vacation", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	repo.SetOverride(ctx, user.ID, tomorrow, &template1.ID)
 
@@ -236,7 +236,7 @@ func TestScheduleRepository_SetOverride_Delete(t *testing.T) {
 	template := createTestDayTemplate(t, db, user.ID, "Holiday", nil)
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	repo.SetOverride(ctx, user.ID, tomorrow, &template.ID)
 
@@ -265,7 +265,7 @@ func TestScheduleRepository_SetOverride_DeleteNonExistent(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
 
 	// Act
 	override, err := repo.SetOverride(ctx, user.ID, tomorrow, nil)

@@ -29,13 +29,9 @@ func TestGetSettingsHandler_Success(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var settings UserSettings
+	var settings PublicSettings
 	if err := json.NewDecoder(w.Body).Decode(&settings); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
-	}
-
-	if settings.UserID != user.ID {
-		t.Errorf("Expected UserID %d, got %d", user.ID, settings.UserID)
 	}
 
 	if settings.DayBoundaryTime != "04:00:00" {

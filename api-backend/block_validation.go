@@ -15,5 +15,5 @@ func blockExceedsDay(startTime string, durationMinutes int) bool {
 }
 
 func parseBlockStartTime(startTime string) (time.Time, error) {
-	return time.Parse(ScheduleTimeFormat, startTime)
+	return parseScheduleTime(startTime)
 }

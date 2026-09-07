@@ -13,9 +13,9 @@ type initRequest struct {
 }
 
 type initResponse struct {
-	Settings   *UserSettings   `json:"settings"`
+	Settings   PublicSettings  `json:"settings"`
 	Categories []BlockCategory `json:"categories"`
-	DayRecord  publicDayRecord `json:"day_record"`
+	DayRecord  PublicDayRecord `json:"day_record"`
 }
 
 // initHandler returns the small bootstrap payload required by a native client.
@@ -71,7 +71,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		return
 	}
 	writeJSON(responseWriter, initResponse{
-		Settings:   settings,
+		Settings:   toPublicSettings(*settings),
 		Categories: categories,
 		DayRecord:  toPublicDayRecord(record),
 	})

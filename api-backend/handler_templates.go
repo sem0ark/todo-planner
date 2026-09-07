@@ -8,7 +8,82 @@ import (
 )
 
 type DayTemplatesResponse struct {
-	Templates []DayTemplate `json:"templates"`
+	Templates []PublicTemplate `json:"templates"`
+}
+
+type PublicTemplateBlock struct {
+	CategoryID      int             `json:"category_id"`
+	StartTime       APIScheduleTime `json:"start_time"`
+	DurationMinutes int             `json:"duration_minutes"`
+}
+
+type PublicTemplate struct {
+	ID              int                   `json:"id"`
+	Name            string                `json:"name"`
+	TemplateGroupID *int                  `json:"template_group_id"`
+	Plan            []PublicTemplateBlock `json:"plan"`
+	CreatedAt       APITimestamp          `json:"created_at"`
+	UpdatedAt       APITimestamp          `json:"updated_at"`
+}
+
+type dayTemplateRequest struct {
+	Name            string                 `json:"name"`
+	TemplateGroupID *int                   `json:"template_group_id"`
+	Plan            *[]templatePlanRequest `json:"plan"`
+}
+
+type templatePlanRequest struct {
+	CategoryID      int             `json:"category_id"`
+	StartTime       APIScheduleTime `json:"start_time"`
+	DurationMinutes int             `json:"duration_minutes"`
+}
+
+func toPublicTemplateBlocks(blocks []SnapshotBlock) []PublicTemplateBlock {
+	publicBlocks := make([]PublicTemplateBlock, 0, len(blocks))
+	for _, block := range blocks {
+		publicBlocks = append(publicBlocks, PublicTemplateBlock{
+			CategoryID:      block.CategoryID,
+			StartTime:       publicScheduleTime(block.StartTime),
+			DurationMinutes: block.DurationMinutes,
+		})
+	}
+	return publicBlocks
+}
+
+func toPublicTemplate(template DayTemplate) PublicTemplate {
+	plan := make([]PublicTemplateBlock, 0)
+	if template.CurrentSnapshot != nil {
+		plan = toPublicTemplateBlocks(template.CurrentSnapshot.SnapshotBlocks)
+	}
+	return PublicTemplate{template.ID, template.Name, template.TemplateGroupID, plan,
+		APITimestamp(template.CreatedAt), APITimestamp(template.UpdatedAt)}
+}
+
+func toPublicTemplates(templates []DayTemplate) []PublicTemplate {
+	publicTemplates := make([]PublicTemplate, 0, len(templates))
+	for _, template := range templates {
+		publicTemplates = append(publicTemplates, toPublicTemplate(template))
+	}
+	return publicTemplates
+}
+
+func decodeDayTemplateRequest(request *http.Request) (DayTemplateInput, error) {
+	var publicInput dayTemplateRequest
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&publicInput); err != nil {
+		return DayTemplateInput{}, err
+	}
+	if publicInput.Plan == nil {
+		return DayTemplateInput{}, errors.New("plan is required")
+	}
+	plan := make([]SnapshotBlockInput, 0, len(*publicInput.Plan))
+	for _, block := range *publicInput.Plan {
+		plan = append(plan, SnapshotBlockInput{CategoryID: block.CategoryID,
+			StartTime: string(block.StartTime), DurationMinutes: block.DurationMinutes})
+	}
+	return DayTemplateInput{Name: publicInput.Name, TemplateGroupID: publicInput.TemplateGroupID,
+		SnapshotBlocks: plan}, nil
 }
 
 type DayTemplateDeleteResponse struct {
@@ -30,7 +105,7 @@ func (api *API) getDayTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(DayTemplatesResponse{Templates: templates})
+	json.NewEncoder(w).Encode(DayTemplatesResponse{Templates: toPublicTemplates(templates)})
 }
 
 func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request) {
@@ -40,8 +115,8 @@ func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var input DayTemplateInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	input, err := decodeDayTemplateRequest(r)
+	if err != nil {
 		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
 			"user_id": userID,
 		})
@@ -69,7 +144,9 @@ func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(template)
+	if err := json.NewEncoder(w).Encode(toPublicTemplate(*template)); err != nil {
+		api.logger.Error("failed to encode template response", err, nil)
+	}
 }
 
 func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request, id int) {
@@ -79,8 +156,8 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	var input DayTemplateInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	input, err := decodeDayTemplateRequest(r)
+	if err != nil {
 		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
 			"user_id": userID,
 		})
@@ -111,7 +188,9 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(template)
+	if err := json.NewEncoder(w).Encode(toPublicTemplate(*template)); err != nil {
+		api.logger.Error("failed to encode template response", err, nil)
+	}
 }
 
 func (api *API) deleteDayTemplateHandler(w http.ResponseWriter, r *http.Request, id int) {

@@ -10,6 +10,15 @@ import (
 	"testing"
 )
 
+func publicTemplateRequestForTest(input DayTemplateInput) dayTemplateRequest {
+	plan := make([]templatePlanRequest, 0, len(input.SnapshotBlocks))
+	for _, block := range input.SnapshotBlocks {
+		plan = append(plan, templatePlanRequest{CategoryID: block.CategoryID,
+			StartTime: APIScheduleTime(block.StartTime), DurationMinutes: block.DurationMinutes})
+	}
+	return dayTemplateRequest{Name: input.Name, TemplateGroupID: input.TemplateGroupID, Plan: &plan}
+}
+
 func TestGetDayTemplatesHandler_Success(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
@@ -69,7 +78,7 @@ func TestCreateDayTemplateHandler_Success(t *testing.T) {
 			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 480},
 		},
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(publicTemplateRequestForTest(reqBody))
 	req := httptest.NewRequest(http.MethodPost, "/templates", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -85,13 +94,15 @@ func TestCreateDayTemplateHandler_Success(t *testing.T) {
 		t.Errorf("Expected status 201, got %d", w.Code)
 	}
 
-	var template DayTemplate
-	json.NewDecoder(w.Body).Decode(&template)
+	var template PublicTemplate
+	if err := json.NewDecoder(w.Body).Decode(&template); err != nil {
+		t.Fatalf("failed to decode response: %v; body=%s", err, w.Body.String())
+	}
 	if template.Name != reqBody.Name {
 		t.Errorf("Expected name '%s', got '%s'", reqBody.Name, template.Name)
 	}
-	if len(template.CurrentSnapshot.SnapshotBlocks) != 1 {
-		t.Errorf("Expected 1 planned block, got %d", len(template.CurrentSnapshot.SnapshotBlocks))
+	if len(template.Plan) != 1 {
+		t.Errorf("Expected 1 planned block, got %d", len(template.Plan))
 	}
 }
 
@@ -107,7 +118,7 @@ func TestCreateDayTemplateHandler_WithTemplateGroup(t *testing.T) {
 		TemplateGroupID: &group.ID,
 		SnapshotBlocks:  []SnapshotBlockInput{},
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(publicTemplateRequestForTest(reqBody))
 	req := httptest.NewRequest(http.MethodPost, "/templates", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -137,7 +148,7 @@ func TestCreateDayTemplateHandler_MissingName(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayTemplateInput{Name: "", SnapshotBlocks: []SnapshotBlockInput{}}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(publicTemplateRequestForTest(reqBody))
 	req := httptest.NewRequest(http.MethodPost, "/templates", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -176,7 +187,7 @@ func TestUpdateDayTemplateHandler_Success(t *testing.T) {
 			{CategoryID: category1.ID, StartTime: "14:00:00", DurationMinutes: 120},
 		},
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(publicTemplateRequestForTest(reqBody))
 	req := httptest.NewRequest(http.MethodPut, "/templates", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -192,13 +203,15 @@ func TestUpdateDayTemplateHandler_Success(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var updated DayTemplate
-	json.NewDecoder(w.Body).Decode(&updated)
+	var updated PublicTemplate
+	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
+		t.Fatalf("failed to decode response: %v; body=%s", err, w.Body.String())
+	}
 	if updated.Name != reqBody.Name {
 		t.Errorf("Expected name '%s', got '%s'", reqBody.Name, updated.Name)
 	}
-	if len(updated.CurrentSnapshot.SnapshotBlocks) != 2 {
-		t.Errorf("Expected 2 planned blocks, got %d", len(updated.CurrentSnapshot.SnapshotBlocks))
+	if len(updated.Plan) != 2 {
+		t.Errorf("Expected 2 planned blocks, got %d", len(updated.Plan))
 	}
 }
 
@@ -209,7 +222,7 @@ func TestUpdateDayTemplateHandler_NotFound(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 
 	reqBody := DayTemplateInput{Name: "Updated", SnapshotBlocks: []SnapshotBlockInput{}}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(publicTemplateRequestForTest(reqBody))
 	req := httptest.NewRequest(http.MethodPut, "/templates/99999", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -306,7 +319,7 @@ func TestDayTemplatesHandler_RouteDispatch(t *testing.T) {
 			var body *bytes.Reader
 			if tc.method == http.MethodPost || tc.method == http.MethodPut {
 				reqBody := DayTemplateInput{Name: "Test", SnapshotBlocks: []SnapshotBlockInput{}}
-				jsonBody, _ := json.Marshal(reqBody)
+				jsonBody, _ := json.Marshal(publicTemplateRequestForTest(reqBody))
 				body = bytes.NewReader(jsonBody)
 			} else {
 				body = bytes.NewReader([]byte{})

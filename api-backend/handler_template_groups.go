@@ -6,7 +6,27 @@ import (
 )
 
 type TemplateGroupsResponse struct {
-	TemplateGroups []TemplateGroup `json:"template_groups"`
+	Groups []PublicTemplateGroup `json:"groups"`
+}
+
+type PublicTemplateGroup struct {
+	ID        int          `json:"id"`
+	Name      string       `json:"name"`
+	CreatedAt APITimestamp `json:"created_at"`
+	UpdatedAt APITimestamp `json:"updated_at"`
+}
+
+func toPublicTemplateGroup(group TemplateGroup) PublicTemplateGroup {
+	return PublicTemplateGroup{ID: group.ID, Name: group.Name,
+		CreatedAt: APITimestamp(group.CreatedAt), UpdatedAt: APITimestamp(group.UpdatedAt)}
+}
+
+func toPublicTemplateGroups(groups []TemplateGroup) []PublicTemplateGroup {
+	publicGroups := make([]PublicTemplateGroup, 0, len(groups))
+	for _, group := range groups {
+		publicGroups = append(publicGroups, toPublicTemplateGroup(group))
+	}
+	return publicGroups
 }
 
 type TemplateGroupDeleteResponse struct {
@@ -28,7 +48,7 @@ func (api *API) getTemplateGroupsHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TemplateGroupsResponse{TemplateGroups: groups})
+	json.NewEncoder(w).Encode(TemplateGroupsResponse{Groups: toPublicTemplateGroups(groups)})
 }
 
 func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +79,7 @@ func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(group)
+	json.NewEncoder(w).Encode(toPublicTemplateGroup(*group))
 }
 
 func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Request, id int) {
@@ -93,7 +113,7 @@ func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(group)
+	json.NewEncoder(w).Encode(toPublicTemplateGroup(*group))
 }
 
 func (api *API) deleteTemplateGroupHandler(w http.ResponseWriter, r *http.Request, id int) {

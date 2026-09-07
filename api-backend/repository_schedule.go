@@ -143,7 +143,7 @@ func (r *ScheduleRepository) ReplaceWeeklySchedule(ctx context.Context, userID i
 
 // GetFutureOverrides returns all overrides from today onward
 func (r *ScheduleRepository) GetFutureOverrides(ctx context.Context, userID int) ([]ScheduleOverride, error) {
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().Format(DateFormat)
 
 	rows, err := r.db.Query(ctx, `
 		SELECT id, user_id, calendar_date::text, day_template_id, created_at
@@ -184,7 +184,7 @@ func (r *ScheduleRepository) GetTemplateForDate(ctx context.Context, userID int,
 		return nil, err
 	}
 
-	parsedDate, err := time.Parse("2006-01-02", calendarDate)
+	parsedDate, err := parseCalendarDate(calendarDate)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID in
 	if err != pgx.ErrNoRows {
 		return nil, err
 	}
-	parsedDate, err := time.Parse("2006-01-02", calendarDate)
+	parsedDate, err := parseCalendarDate(calendarDate)
 	if err != nil {
 		return nil, err
 	}

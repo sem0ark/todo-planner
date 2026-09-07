@@ -316,7 +316,7 @@ func (r *DayRecordRepository) resolveTemplateForDate(ctx context.Context, userID
 
 	// Fall back to weekly schedule
 	// Convert date to day of week (0=Monday, 6=Sunday)
-	t, err := time.Parse("2006-01-02", calendarDate)
+	t, err := parseCalendarDate(calendarDate)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +355,7 @@ func (r *DayRecordRepository) getLatestSnapshot(ctx context.Context, templateID 
 // Helper: get snapshot blocks for a snapshot
 func (r *DayRecordRepository) getSnapshotBlocks(ctx context.Context, snapshotID int) ([]SnapshotBlock, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, snapshot_id, category_id, start_time, duration_minutes
+		SELECT id, snapshot_id, category_id, start_time::text, duration_minutes
 		FROM snapshot_blocks
 		WHERE snapshot_id = $1
 		ORDER BY start_time ASC
@@ -380,7 +380,7 @@ func (r *DayRecordRepository) getSnapshotBlocks(ctx context.Context, snapshotID 
 // Helper: get actual blocks for a day record
 func (r *DayRecordRepository) getActualBlocks(ctx context.Context, dayRecordID int) ([]ActualBlock, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
+		SELECT id, day_record_id, category_id, block_type, start_time::text, duration_minutes, updated_at, is_open
 		FROM actual_blocks
 		WHERE day_record_id = $1
 		ORDER BY start_time ASC
@@ -622,8 +622,8 @@ func (r *DayRecordRepository) addUntrackedGaps(blocks []ActualBlock) []ActualBlo
 		if index == len(blocks)-1 {
 			continue
 		}
-		currentStart, currentError := time.Parse("15:04:05", block.StartTime)
-		nextStart, nextError := time.Parse("15:04:05", blocks[index+1].StartTime)
+		currentStart, currentError := parseScheduleTime(block.StartTime)
+		nextStart, nextError := parseScheduleTime(blocks[index+1].StartTime)
 		if currentError != nil || nextError != nil {
 			continue
 		}
@@ -633,7 +633,7 @@ func (r *DayRecordRepository) addUntrackedGaps(blocks []ActualBlock) []ActualBlo
 			result = append(result, ActualBlock{
 				DayRecordID:     block.DayRecordID,
 				BlockType:       "untracked",
-				StartTime:       gapStart.Format("15:04:05"),
+				StartTime:       gapStart.Format(ScheduleTimeFormat),
 				DurationMinutes: gapMinutes,
 				UpdatedAt:       block.UpdatedAt,
 			})
@@ -673,7 +673,7 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
-		`, dayRecordID, computed.CategoryID, computed.BlockType, computed.StartTime.Format("15:04:05"), computed.DurationMinutes, now, computed.IsOpen).Scan(
+		`, dayRecordID, computed.CategoryID, computed.BlockType, computed.StartTime.Format(ScheduleTimeFormat), computed.DurationMinutes, now, computed.IsOpen).Scan(
 			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt, &block.IsOpen,
 		)
 		if err != nil {
@@ -706,20 +706,20 @@ func getDayResolutionWindow(ctx context.Context, transaction pgx.Tx, dayRecordID
 		return time.Time{}, time.Time{}, false, settingsError
 	}
 
-	date, err := time.ParseInLocation("2006-01-02", calendarDate, time.UTC)
+	date, err := parseCalendarDate(calendarDate)
 	if err != nil {
 		return time.Time{}, time.Time{}, false, err
 	}
-	clock, err := time.Parse("15:04:05", boundaryClock)
+	clock, err := parseScheduleTime(boundaryClock)
 	if err != nil {
 		return time.Time{}, time.Time{}, false, err
 	}
 	boundaryStart := time.Date(date.Year(), date.Month(), date.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
 	boundaryEnd := boundaryStart.AddDate(0, 0, 1)
-	currentTrackingDate := now.Format("2006-01-02")
+	currentTrackingDate := now.Format(DateFormat)
 	currentDayBoundary := time.Date(now.Year(), now.Month(), now.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
 	if now.Before(currentDayBoundary) {
-		currentTrackingDate = now.AddDate(0, 0, -1).Format("2006-01-02")
+		currentTrackingDate = now.AddDate(0, 0, -1).Format(DateFormat)
 	}
 	return boundaryStart, boundaryEnd, calendarDate < currentTrackingDate, nil
 }

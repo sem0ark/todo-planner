@@ -1,9 +1,6 @@
 package main
 
-import (
-	"errors"
-	"time"
-)
+import "errors"
 
 var (
 	ErrUnknownCategoryID           = errors.New("unknown category_id")
@@ -82,10 +79,7 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 		if block.BlockType == "blank" && block.CategoryID != nil {
 			return ErrBlankBlockCategoryForbidden
 		}
-		parsedTime, err := time.Parse("15:04:05", block.StartTime)
-		if err != nil {
-			parsedTime, err = time.Parse("15:04", block.StartTime)
-		}
+		parsedTime, err := parseScheduleTime(block.StartTime)
 		if err != nil || parsedTime.Second() != 0 {
 			return ErrInvalidBlockStartTime
 		}
@@ -105,6 +99,6 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 }
 
 func isValidCalendarDate(date string) bool {
-	_, err := time.Parse("2006-01-02", date)
+	_, err := parseCalendarDate(date)
 	return err == nil
 }

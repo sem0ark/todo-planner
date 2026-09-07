@@ -44,7 +44,7 @@ func TestInitCreatesAndLoadsDayRecord(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
 	var payload struct {
-		DayRecord publicDayRecord `json:"day_record"`
+		DayRecord PublicDayRecord `json:"day_record"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("failed to decode init response: %v", err)

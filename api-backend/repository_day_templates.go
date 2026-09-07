@@ -32,7 +32,7 @@ type DayTemplate struct {
 type DayTemplateInput struct {
 	Name            string               `json:"name"`
 	TemplateGroupID *int                 `json:"template_group_id"`
-	SnapshotBlocks  []SnapshotBlockInput `json:"snapshot_blocks"`
+	SnapshotBlocks  []SnapshotBlockInput `json:"-"`
 }
 
 // SnapshotBlockInput describes a block in a newly-created snapshot.
@@ -152,7 +152,7 @@ func (r *DayTemplateRepository) loadCurrentSnapshot(ctx context.Context, templat
 	}
 
 	rows, err := r.db.Query(ctx, `
-		SELECT id, snapshot_id, category_id, start_time, duration_minutes
+		SELECT id, snapshot_id, category_id, start_time::text, duration_minutes
 		FROM snapshot_blocks
 		WHERE snapshot_id = $1
 		ORDER BY start_time ASC, id ASC

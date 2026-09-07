@@ -137,13 +137,13 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Validate date format
-	if _, err := time.Parse("2006-01-02", dateStr); err != nil {
+	if _, err := parseCalendarDate(dateStr); err != nil {
 		http.Error(w, "invalid date format, expected YYYY-MM-DD", http.StatusBadRequest)
 		return
 	}
 
 	// Validate not in the past
-	if dateStr < time.Now().Format("2006-01-02") {
+	if dateStr < time.Now().Format(DateFormat) {
 		http.Error(w, "cannot set override for past date", http.StatusBadRequest)
 		return
 	}
@@ -184,7 +184,7 @@ func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Req
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if _, err := time.Parse("2006-01-02", dateString); err != nil || dateString < time.Now().Format("2006-01-02") {
+	if _, err := parseCalendarDate(dateString); err != nil || dateString < time.Now().Format(DateFormat) {
 		http.Error(w, "invalid date", http.StatusBadRequest)
 		return
 	}
