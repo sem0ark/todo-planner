@@ -100,6 +100,7 @@ struct ContentView: View {
             .frame(width: 112)
         }
         .task {
+          await widgetState.synchronizeOnStartup()
           await widgetState.initialize()
           widgetState.startPeriodicRefresh()
         }
@@ -487,6 +488,11 @@ struct RightRailView: View {
         actionButton(title: "Reload", systemImage: "arrow.clockwise") {
           isMenuExpanded = false
           Task { await widgetState.reload() }
+        }
+
+        actionButton(title: "Sync", systemImage: "arrow.triangle.2.circlepath") {
+          isMenuExpanded = false
+          Task { await widgetState.synchronize() }
         }
 
         actionButton(title: "Open Web", systemImage: "safari") {

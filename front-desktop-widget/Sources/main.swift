@@ -165,6 +165,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     removeKeyboardMonitor()
+    let semaphore = DispatchSemaphore(value: 0)
+    Task.detached {
+      try? await RepositoryFactory.createRepository().synchronize()
+      semaphore.signal()
+    }
+    _ = semaphore.wait(timeout: .now() + 5)
   }
 
   @objc func handleGetURLEvent(

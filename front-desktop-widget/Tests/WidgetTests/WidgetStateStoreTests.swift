@@ -359,6 +359,27 @@ final class WidgetStateStoreTests {
     try h.assertNoSubmitEvents()
   }
 
+  func test_init_withPlannedCategory_picksCategoryAndLogsTransition() async throws {
+    let plannedBlock = Fixtures.blockCoveringNow(categoryId: Fixtures.categoryA.id)
+    let dayRecord = DayRecord(
+      calendarDate: Fixtures.today,
+      plan: [plannedBlock],
+      actual: [],
+      createdAt: Date(),
+      updatedAt: Date()
+    )
+    let h = WidgetTestHarness(existingRecord: dayRecord)
+    await h.initialize()
+
+    try assertEqual(h.store.currentCategory?.id, Fixtures.categoryA.id)
+    try h.assertSubmitEventsCount(1)
+    try h.assertSubmitEventDetails(
+      index: 0,
+      expectedType: "transition",
+      expectedIncomingId: Fixtures.categoryA.id
+    )
+  }
+
   func test_init_existingRecord_doesNotCreate() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initialize()
@@ -703,6 +724,42 @@ final class WidgetStateStoreTests {
     try assert(h.store.displayState == .active, "Should remain active when no boundary")
   }
 
+  func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
+    let pomodoroCategory = Category(
+      id: 10,
+      name: "Pomodoro Task",
+      color: "#000000",
+      pomodoroConfig: PomodoroConfig(workDuration: 1, restDuration: 1),
+      createdAt: Fixtures.now,
+      updatedAt: Fixtures.now
+    )
+    let plannedBlock = Fixtures.blockCoveringNow(categoryId: pomodoroCategory.id)
+    let dayRecord = DayRecord(
+      calendarDate: Fixtures.today,
+      plan: [plannedBlock],
+      actual: [],
+      createdAt: Date(),
+      updatedAt: Date()
+    )
+    let h = WidgetTestHarness(categories: [pomodoroCategory], existingRecord: dayRecord)
+    await h.initializeAndResetCalls()
+    h.store.context.pomodoroPhase = .work
+    h.store.context.pomodoroElapsed = 58
+
+    let result = h.store.currentState.onTick(
+      context: h.store.context,
+      currentPlannedBlock: plannedBlock
+    )
+    await h.store.apply(result)
+
+    try h.assertSubmitEventsCount(1)
+    try h.assertSubmitEventDetails(
+      index: 0,
+      expectedType: "confirmation",
+      expectedIncomingId: pomodoroCategory.id
+    )
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Group 11: Event Validation — All Fields Correct
   // ─────────────────────────────────────────────────────────────
@@ -753,6 +810,7 @@ struct TestRunner {
 
     let testMethods: [(String, () async throws -> Void)] = [
       ("test_init_freshDay_createsRecord", { try await tests.test_init_freshDay_createsRecord() }),
+      ("test_init_withPlannedCategory_picksCategoryAndLogsTransition", { try await tests.test_init_withPlannedCategory_picksCategoryAndLogsTransition() }),
       ("test_initResponse_decodesCurrentAPIShape", { try tests.test_initResponse_decodesCurrentAPIShape() }),
       ("test_dayEventsResponse_decodesNullAcceptedEventCategory", { try tests.test_dayEventsResponse_decodesNullAcceptedEventCategory() }),
       ("test_dayEventsResponse_missingRequiredArrayFailsDecoding", { try tests.test_dayEventsResponse_missingRequiredArrayFailsDecoding() }),
@@ -786,6 +844,7 @@ struct TestRunner {
       ("test_submitEvents_useCorrectCalendarDate", { try await tests.test_submitEvents_useCorrectCalendarDate() }),
       ("test_transitionEvent_populatesEventFields", { try await tests.test_transitionEvent_populatesEventFields() }),
       ("test_confirmationEvent_populatesEventFields", { try await tests.test_confirmationEvent_populatesEventFields() }),
+      ("test_pomodoroCompleted_sendsConfirmationEvent", { try await tests.test_pomodoroCompleted_sendsConfirmationEvent() }),
       ("test_submitEventsCall_usesCorrectCalendarDateAndEventSequence", { try await tests.test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() }),
     ]
 

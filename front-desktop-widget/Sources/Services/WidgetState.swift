@@ -321,36 +321,20 @@ final class InitializingState: WidgetStateLogic {
     let currentPlanned = TimeLogic.getCurrentPlannedBlock(at: now, from: ctx.currentPlannedBlocks)
     let planned =
       currentPlanned ?? TimeLogic.getNextPlannedBlock(at: now, from: ctx.currentPlannedBlocks)
-    ctx.plannedCategory = ctx.categories.first { $0.id == planned?.categoryId }
-
-    if let record = ctx.currentDayRecord,
-      let actual = TimeLogic.getCurrentActualBlock(at: now, from: record.actual),
-      let actualId = actual.categoryId
-    {
-      guard let actualCategory = ctx.categories.first(where: { $0.id == actualId }) else {
-        WidgetLogger.error(
-          "Actual block references an unknown category", context: ["categoryId": String(actualId)])
-        ctx.currentCategory = nil
-        return StateResult(nextState: ActiveState(), updatedContext: ctx, effects: [])
-      }
-      ctx.currentCategory = actualCategory
-    } else if let record = ctx.currentDayRecord,
-      TimeLogic.getCurrentActualBlock(at: now, from: record.actual) != nil
-    {
-      WidgetLogger.error("Actual block is missing its category")
-      ctx.currentCategory = nil
-    } else {
-      ctx.currentCategory = ctx.plannedCategory
-    }
+    let plannedCategory = ctx.categories.first { $0.id == planned?.categoryId }
+    ctx.plannedCategory = plannedCategory
+    ctx.currentCategory = plannedCategory
 
     ctx.lastEventTime = Date()
 
-    let isOnSchedule = ctx.currentCategory?.id == ctx.plannedCategory?.id
-    print(
-      "[INIT] System Status: \(isOnSchedule ? "ON-SCHEDULE" : "OFF-SCHEDULE"). Transitioning to ActiveState."
-    )
+    print("[INIT] System Status: Picked planned category on startup. Transitioning to ActiveState.")
 
-    return StateResult(nextState: ActiveState(), updatedContext: ctx, effects: [])
+    var effects: [WidgetEffect] = [.updateMenuBarIcon]
+    if let category = plannedCategory {
+      effects.append(.logTransition(category: category, occurredAt: nil))
+    }
+
+    return StateResult(nextState: ActiveState(), updatedContext: ctx, effects: effects)
   }
 }
 
@@ -415,10 +399,14 @@ final class ActiveState: WidgetStateLogic {
     // Pomodoro Logic
     if ctx.currentCategory?.hasPomodoroEnabled == true {
       if tickPomodoro(&ctx) {
+        var effects: [WidgetEffect] = [.postNotification(.pomodoroCompleted)]
+        if let category = ctx.currentCategory {
+          effects.append(.logConfirmation(category: category))
+        }
         return StateResult(
           nextState: self,
           updatedContext: ctx,
-          effects: [.postNotification(.pomodoroCompleted)]
+          effects: effects
         )
       }
     }
@@ -465,6 +453,7 @@ class WidgetStateStore {
   var context = WidgetContext()
   private let repository: TodoPlannerRepository
   private var tick = 0
+  private var didSynchronizeAtStartup = false
 
   // --- UI Projections (Glanceable Data) ---
   var displayState: WidgetStateIdentity { currentState.identity }
@@ -623,6 +612,24 @@ class WidgetStateStore {
   func handlePrimaryAction() async { await dispatch(.primaryAction) }
   func adjustOffset(minutes: Int) async { await dispatch(.adjustOffset(minutes)) }
 
+  func synchronize() async {
+    do {
+      try await repository.synchronize()
+      lastError = nil
+    } catch {
+      lastError = String(describing: error)
+      WidgetLogger.error("Synchronization failed", context: ["error": lastError!])
+    }
+  }
+
+  func synchronizeOnStartup() async {
+    guard !didSynchronizeAtStartup else { return }
+    await synchronize()
+    if lastError == nil {
+      didSynchronizeAtStartup = true
+    }
+  }
+
   // MARK: - State Application & Projection
 
   func apply(_ result: StateResult) async {
@@ -653,7 +660,9 @@ class WidgetStateStore {
           repo: repository
         )
         context.lastEventClientId = eventResult.clientEventId
-        updateDayRecord(&context, with: eventResult.blocks)
+        if !eventResult.blocks.isEmpty {
+          updateDayRecord(&context, with: eventResult.blocks)
+        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
@@ -672,7 +681,9 @@ class WidgetStateStore {
           repo: repository
         )
         context.lastEventClientId = eventResult.clientEventId
-        updateDayRecord(&context, with: eventResult.blocks)
+        if !eventResult.blocks.isEmpty {
+          updateDayRecord(&context, with: eventResult.blocks)
+        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
@@ -693,7 +704,9 @@ class WidgetStateStore {
           targetClientEventId: targetClientEventId,
           correctedAt: correctedAt
         )
-        updateDayRecord(&context, with: eventResult.blocks)
+        if !eventResult.blocks.isEmpty {
+          updateDayRecord(&context, with: eventResult.blocks)
+        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(

@@ -38,6 +38,9 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
   }
 
   func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse {
+    for event in events {
+      try LocalEventStore.shared.append(calendarDate: calendarDate, event: event)
+    }
     let actual = events.filter { $0.eventType == "transition" }.map {
       ActualBlock(
         categoryId: $0.categoryId, blockType: "actual", startTime: timeString($0.occurredAt),
@@ -51,7 +54,9 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
       createdAt: dayRecord.createdAt, updatedAt: dayRecord.updatedAt)
   }
 
-  func hasPendingSync() async -> Bool { false }
+  func hasPendingSync() async -> Bool {
+    (try? !LocalEventStore.shared.pendingEvents().isEmpty) ?? false
+  }
   func synchronize() async throws {}
 
   private static func seedCategories() -> [Category] {
