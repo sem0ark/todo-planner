@@ -7,13 +7,7 @@ describe("templateStore", () => {
     id: 1,
     name: "Weekday Schedule",
     template_group_id: null,
-    current_snapshot: {
-      id: 1,
-      snapshot_blocks: [
-        { id: 1, category_id: 1, start_time: "09:00", duration_minutes: 60 },
-      ],
-      snapshotted_at: "2024-01-01T00:00:00Z",
-    },
+    plan: [{ category_id: 1, start_time: "09:00:00", duration_minutes: 60 }],
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   };

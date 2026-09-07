@@ -1,8 +1,8 @@
 import type { Category } from "../services/categories";
-import type { SnapshotBlock } from "../services/templates";
+import type { PlannedBlock } from "../services/templates";
 
 interface TemplateSummaryProps {
-  snapshotBlocks: SnapshotBlock[];
+  plan: PlannedBlock[];
   categories: Category[];
 }
 
@@ -38,7 +38,7 @@ export function formatDuration(durationMinutes: number): string {
 }
 
 function buildCategoryTotals(
-  snapshotBlocks: SnapshotBlock[],
+  plan: PlannedBlock[],
   categories: Category[],
 ): CategoryTotal[] {
   const categoryById = new Map(
@@ -46,7 +46,7 @@ function buildCategoryTotals(
   );
   const totals = new Map<number, number>();
 
-  snapshotBlocks.forEach((block) => {
+  plan.forEach((block) => {
     const blockStart = timeToMinutes(block.start_time);
     const visibleStart = Math.max(DAY_START_MINUTES, blockStart);
     const visibleEnd = Math.min(
@@ -79,13 +79,13 @@ function buildCategoryTotals(
 }
 
 function buildBarSegments(
-  snapshotBlocks: SnapshotBlock[],
+  plan: PlannedBlock[],
   categories: Category[],
 ): BarSegment[] {
   const categoryById = new Map(
     categories.map((category) => [category.id, category]),
   );
-  const blocks = [...snapshotBlocks].sort(
+  const blocks = [...plan].sort(
     (first, second) =>
       timeToMinutes(first.start_time) - timeToMinutes(second.start_time),
   );
@@ -116,7 +116,7 @@ function buildBarSegments(
     }
 
     segments.push({
-      key: `block-${block.id ?? index}`,
+      key: `block-${index}`,
       durationMinutes: visibleDuration,
       color: categoryById.get(block.category_id)?.color ?? MUTED_COLOR,
       isGap: false,
@@ -137,10 +137,10 @@ function buildBarSegments(
 }
 
 export default function TemplateSummary({
-  snapshotBlocks,
+  plan,
   categories,
 }: TemplateSummaryProps) {
-  if (snapshotBlocks.length === 0) {
+  if (plan.length === 0) {
     return (
       <div className="mt-2">
         <div className="h-2 overflow-hidden rounded bg-slate-blue/15" />
@@ -151,8 +151,8 @@ export default function TemplateSummary({
     );
   }
 
-  const totals = buildCategoryTotals(snapshotBlocks, categories);
-  const segments = buildBarSegments(snapshotBlocks, categories);
+  const totals = buildCategoryTotals(plan, categories);
+  const segments = buildBarSegments(plan, categories);
 
   return (
     <div className="mt-2">

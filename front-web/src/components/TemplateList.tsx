@@ -76,12 +76,7 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
           >
             <div className="flex-1">
               <h3 className="text-snow font-medium">{template.name}</h3>
-              <TemplateSummary
-                snapshotBlocks={
-                  template.current_snapshot?.snapshot_blocks ?? []
-                }
-                categories={categories}
-              />
+              <TemplateSummary plan={template.plan} categories={categories} />
             </div>
             <button
               onClick={() => onEdit(template.id)}

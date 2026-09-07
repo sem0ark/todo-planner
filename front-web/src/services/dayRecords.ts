@@ -1,4 +1,4 @@
-import type { SnapshotBlock } from "./templates";
+import type { PlannedBlock } from "./templates";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
@@ -12,17 +12,11 @@ export interface ActualBlock {
   is_open: boolean;
 }
 
-export interface DaySnapshot {
-  snapshot_id: number;
-  snapshotted_at: string;
-  blocks: SnapshotBlock[];
-}
-
 export interface DayRecord {
   calendar_date: string;
   day_template_id: number | null;
-  snapshot: DaySnapshot | null;
-  actual_blocks: ActualBlock[];
+  plan: PlannedBlock[];
+  actual: ActualBlock[];
   created_at: string;
   updated_at: string;
 }
@@ -52,11 +46,13 @@ export async function getDayRecords(
   from: string,
   to: string,
 ): Promise<DayRecord[]> {
-  const data = await request<{ day_records: DayRecord[] }>(
+  const data = await request<{
+    days: Array<{ calendar_date: string; day_record: DayRecord | null }>;
+  }>(
     token,
     `/days?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
   );
-  return data.day_records;
+  return data.days.flatMap((day) => (day.day_record ? [day.day_record] : []));
 }
 
 export function getDayRecord(token: string, date: string): Promise<DayRecord> {
@@ -80,7 +76,7 @@ export interface ActualBlockInput {
 }
 
 export interface UpdateDayBlocksInput {
-  actual_blocks: ActualBlockInput[];
+  actual: ActualBlockInput[];
 }
 
 export function updateDayBlocks(

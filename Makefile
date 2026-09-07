@@ -2,6 +2,7 @@
 
 local:
 	-colima start
+	docker-compose down
 	docker-compose up --build --force-recreate
 	@echo "Application started. Backend: http://localhost:8080, Frontend: http://localhost:5173"
 
