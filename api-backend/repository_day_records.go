@@ -23,11 +23,11 @@ type TemplateSnapshot struct {
 }
 
 type SnapshotBlock struct {
-	ID              int    `json:"id"`
-	SnapshotID      int    `json:"snapshot_id"`
-	CategoryID      int    `json:"category_id"`
-	StartTime       string `json:"start_time"` // HH:MM:SS
-	DurationMinutes int    `json:"duration_minutes"`
+	ID              int          `json:"id"`
+	SnapshotID      int          `json:"snapshot_id"`
+	CategoryID      int          `json:"category_id"`
+	StartTime       ScheduleTime `json:"-"`
+	DurationMinutes int          `json:"duration_minutes"`
 }
 
 type DayRecord struct {
@@ -35,12 +35,17 @@ type DayRecord struct {
 	UserID         int             `json:"user_id"`
 	SnapshotID     *int            `json:"snapshot_id"`
 	DayTemplateID  *int            `json:"day_template_id"`
-	CalendarDate   string          `json:"calendar_date"` // YYYY-MM-DD
+	CalendarDate   CalendarDate    `json:"calendar_date"`
 	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks"`
 	ActualBlocks   []ActualBlock   `json:"actual_blocks"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	SnapshottedAt  time.Time       `json:"-"`
+}
+
+type DayRangeEntry struct {
+	CalendarDate CalendarDate
+	Record       *DayRecord
 }
 
 type DayEventInput struct {
@@ -70,14 +75,14 @@ type DayEvent struct {
 }
 
 type ActualBlock struct {
-	ID              int       `json:"id"`
-	DayRecordID     int       `json:"day_record_id"`
-	CategoryID      *int      `json:"category_id"`
-	BlockType       string    `json:"block_type"` // actual | blank | untracked
-	StartTime       string    `json:"start_time"` // HH:MM:SS
-	DurationMinutes int       `json:"duration_minutes"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	IsOpen          bool      `json:"is_open"`
+	ID              int          `json:"id"`
+	DayRecordID     int          `json:"day_record_id"`
+	CategoryID      *int         `json:"category_id"`
+	BlockType       string       `json:"block_type"` // actual | blank | untracked
+	StartTime       ScheduleTime `json:"-"`
+	DurationMinutes int          `json:"duration_minutes"`
+	UpdatedAt       time.Time    `json:"updated_at"`
+	IsOpen          bool         `json:"is_open"`
 }
 
 type DateEventResult struct {
@@ -98,9 +103,9 @@ func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
 	return &DayRecordRepository{db: db}
 }
 
-func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, fromDate, toDate string) ([]DayRecord, error) {
+func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, fromDate, toDate CalendarDate) ([]DayRecord, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, day_template_id, snapshot_id, calendar_date::text, created_at, updated_at
+		SELECT id, user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at
 		FROM day_records
 		WHERE user_id = $1 AND calendar_date >= $2 AND calendar_date <= $3
 		ORDER BY calendar_date ASC
@@ -127,9 +132,28 @@ func (r *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, f
 	return records, nil
 }
 
-func (r *DayRecordRepository) FindByDate(ctx context.Context, userID int, calendarDate string) (*DayRecord, error) {
+func (r *DayRecordRepository) FindDateRange(ctx context.Context, userID int, fromDate, toDate CalendarDate) ([]DayRangeEntry, error) {
+	records, err := r.FindByDateRange(ctx, userID, fromDate, toDate)
+	if err != nil {
+		return nil, err
+	}
+	recordsByDate := make(map[CalendarDate]*DayRecord, len(records))
+	for recordIndex := range records {
+		record := &records[recordIndex]
+		recordsByDate[record.CalendarDate] = record
+	}
+
+	dateCount := int(toDate.Sub(fromDate).Hours()/24) + 1
+	entries := make([]DayRangeEntry, 0, dateCount)
+	for currentDate := fromDate; !currentDate.After(toDate); currentDate = currentDate.AddDate(0, 0, 1) {
+		entries = append(entries, DayRangeEntry{CalendarDate: currentDate, Record: recordsByDate[currentDate]})
+	}
+	return entries, nil
+}
+
+func (r *DayRecordRepository) FindByDate(ctx context.Context, userID int, calendarDate CalendarDate) (*DayRecord, error) {
 	var record DayRecord
-	err := r.db.QueryRow(ctx, `SELECT id, user_id, day_template_id, snapshot_id, calendar_date::text, created_at, updated_at FROM day_records WHERE user_id = $1 AND calendar_date = $2`, userID, calendarDate).Scan(&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID, &record.CalendarDate, &record.CreatedAt, &record.UpdatedAt)
+	err := r.db.QueryRow(ctx, `SELECT id, user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at FROM day_records WHERE user_id = $1 AND calendar_date = $2`, userID, calendarDate).Scan(&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID, &record.CalendarDate, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +185,7 @@ func (r *DayRecordRepository) populateRecord(ctx context.Context, record *DayRec
 func (r *DayRecordRepository) FindByID(ctx context.Context, id, userID int) (*DayRecord, error) {
 	var rec DayRecord
 	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, day_template_id, snapshot_id, calendar_date::text, created_at, updated_at
+		SELECT id, user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at
 		FROM day_records
 		WHERE id = $1 AND user_id = $2
 	`, id, userID).Scan(&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.CreatedAt, &rec.UpdatedAt)
@@ -173,14 +197,14 @@ func (r *DayRecordRepository) FindByID(ctx context.Context, id, userID int) (*Da
 }
 
 // Create creates a new day record and pins the current template snapshot
-func (r *DayRecordRepository) Create(ctx context.Context, userID int, calendarDate string) (*DayRecord, error) {
+func (r *DayRecordRepository) Create(ctx context.Context, userID int, calendarDate CalendarDate) (*DayRecord, error) {
 	// Check if a record already exists for this date
 	var existingID int
 	err := r.db.QueryRow(ctx, `
 		SELECT id FROM day_records WHERE user_id = $1 AND calendar_date = $2
 	`, userID, calendarDate).Scan(&existingID)
 	if err == nil {
-		return nil, fmt.Errorf("%w for date %s", ErrDayRecordAlreadyExists, calendarDate)
+		return nil, fmt.Errorf("%w for date %s", ErrDayRecordAlreadyExists, calendarDate.Format(DateFormat))
 	}
 
 	// Resolve the active template for this date
@@ -207,7 +231,7 @@ func (r *DayRecordRepository) Create(ctx context.Context, userID int, calendarDa
 	err = r.db.QueryRow(ctx, `
 		INSERT INTO day_records (user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, user_id, day_template_id, snapshot_id, calendar_date::text, created_at, updated_at
+		RETURNING id, user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at
 	`, userID, templateID, snapshotID, calendarDate, now, now).Scan(
 		&rec.ID, &rec.UserID, &rec.DayTemplateID, &rec.SnapshotID, &rec.CalendarDate, &rec.CreatedAt, &rec.UpdatedAt,
 	)
@@ -236,7 +260,7 @@ func (r *DayRecordRepository) UpdateTemplate(ctx context.Context, userID, record
 }
 
 // UpdateTemplateByDate is retained for schedule-based internal operations.
-func (r *DayRecordRepository) UpdateTemplateByDate(ctx context.Context, userID int, calendarDate string, requestedTemplateID *int) (*DayRecord, error) {
+func (r *DayRecordRepository) UpdateTemplateByDate(ctx context.Context, userID int, calendarDate CalendarDate, requestedTemplateID *int) (*DayRecord, error) {
 	if requestedTemplateID != nil {
 		var exists bool
 		if err := r.db.QueryRow(ctx, `
@@ -303,7 +327,7 @@ func (r *DayRecordRepository) UpdateTemplateByDate(ctx context.Context, userID i
 }
 
 // Helper: resolve the active template for a date
-func (r *DayRecordRepository) resolveTemplateForDate(ctx context.Context, userID int, calendarDate string) (*int, error) {
+func (r *DayRecordRepository) resolveTemplateForDate(ctx context.Context, userID int, calendarDate CalendarDate) (*int, error) {
 	// Check for schedule override first
 	var templateID *int
 	err := r.db.QueryRow(ctx, `
@@ -316,11 +340,7 @@ func (r *DayRecordRepository) resolveTemplateForDate(ctx context.Context, userID
 
 	// Fall back to weekly schedule
 	// Convert date to day of week (0=Monday, 6=Sunday)
-	t, err := parseCalendarDate(calendarDate)
-	if err != nil {
-		return nil, err
-	}
-	dayOfWeek := int(t.Weekday())
+	dayOfWeek := int(calendarDate.Weekday())
 	// Adjust: Go uses 0=Sunday, we use 0=Monday
 	dayOfWeek = (dayOfWeek + 6) % 7
 
@@ -355,7 +375,7 @@ func (r *DayRecordRepository) getLatestSnapshot(ctx context.Context, templateID 
 // Helper: get snapshot blocks for a snapshot
 func (r *DayRecordRepository) getSnapshotBlocks(ctx context.Context, snapshotID int) ([]SnapshotBlock, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, snapshot_id, category_id, start_time::text, duration_minutes
+		SELECT id, snapshot_id, category_id, start_time, duration_minutes
 		FROM snapshot_blocks
 		WHERE snapshot_id = $1
 		ORDER BY start_time ASC
@@ -380,7 +400,7 @@ func (r *DayRecordRepository) getSnapshotBlocks(ctx context.Context, snapshotID 
 // Helper: get actual blocks for a day record
 func (r *DayRecordRepository) getActualBlocks(ctx context.Context, dayRecordID int) ([]ActualBlock, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, day_record_id, category_id, block_type, start_time::text, duration_minutes, updated_at, is_open
+		SELECT id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
 		FROM actual_blocks
 		WHERE day_record_id = $1
 		ORDER BY start_time ASC
@@ -451,7 +471,7 @@ func (r *DayRecordRepository) CreateEvents(ctx context.Context, dayRecordID, use
 }
 
 // CreateEventsByDate creates the date record when needed and persists a retry-safe batch.
-func (r *DayRecordRepository) CreateEventsByDate(ctx context.Context, userID int, calendarDate string, deviceID int, inputs []DayEventInput) (*DateEventResult, error) {
+func (r *DayRecordRepository) CreateEventsByDate(ctx context.Context, userID int, calendarDate CalendarDate, deviceID int, inputs []DayEventInput) (*DateEventResult, error) {
 	transaction, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -539,7 +559,7 @@ func nullableEventReference(reference string) *string {
 	return &reference
 }
 
-func findOrCreateDayRecord(ctx context.Context, transaction pgx.Tx, userID int, calendarDate string) (int, error) {
+func findOrCreateDayRecord(ctx context.Context, transaction pgx.Tx, userID int, calendarDate CalendarDate) (int, error) {
 	var dayRecordID int
 	err := transaction.QueryRow(ctx, `SELECT id FROM day_records WHERE user_id = $1 AND calendar_date = $2`, userID, calendarDate).Scan(&dayRecordID)
 	if err == nil {
@@ -622,18 +642,15 @@ func (r *DayRecordRepository) addUntrackedGaps(blocks []ActualBlock) []ActualBlo
 		if index == len(blocks)-1 {
 			continue
 		}
-		currentStart, currentError := parseScheduleTime(block.StartTime)
-		nextStart, nextError := parseScheduleTime(blocks[index+1].StartTime)
-		if currentError != nil || nextError != nil {
-			continue
-		}
+		currentStart := block.StartTime
+		nextStart := blocks[index+1].StartTime
 		gapStart := currentStart.Add(time.Duration(block.DurationMinutes) * time.Minute)
 		gapMinutes := int(nextStart.Sub(gapStart).Minutes())
 		if gapMinutes > 0 {
 			result = append(result, ActualBlock{
 				DayRecordID:     block.DayRecordID,
 				BlockType:       "untracked",
-				StartTime:       gapStart.Format(ScheduleTimeFormat),
+				StartTime:       gapStart,
 				DurationMinutes: gapMinutes,
 				UpdatedAt:       block.UpdatedAt,
 			})
@@ -673,7 +690,7 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
-		`, dayRecordID, computed.CategoryID, computed.BlockType, computed.StartTime.Format(ScheduleTimeFormat), computed.DurationMinutes, now, computed.IsOpen).Scan(
+		`, dayRecordID, computed.CategoryID, computed.BlockType, computed.StartTime, computed.DurationMinutes, now, computed.IsOpen).Scan(
 			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt, &block.IsOpen,
 		)
 		if err != nil {
@@ -686,10 +703,10 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 }
 
 func getDayResolutionWindow(ctx context.Context, transaction pgx.Tx, dayRecordID int, now time.Time) (time.Time, time.Time, bool, error) {
-	var calendarDate string
+	var calendarDate CalendarDate
 	var userID int
 	if err := transaction.QueryRow(ctx, `
-		SELECT calendar_date::text, user_id
+		SELECT calendar_date, user_id
 		FROM day_records
 		WHERE day_records.id = $1
 	`, dayRecordID).Scan(&calendarDate, &userID); err != nil {
@@ -698,7 +715,7 @@ func getDayResolutionWindow(ctx context.Context, transaction pgx.Tx, dayRecordID
 
 	boundaryClock := "04:00:00"
 	settingsError := transaction.QueryRow(ctx, `
-		SELECT day_boundary_time::text
+		SELECT day_boundary_time
 		FROM user_settings
 		WHERE user_id = $1
 	`, userID).Scan(&boundaryClock)
@@ -706,22 +723,19 @@ func getDayResolutionWindow(ctx context.Context, transaction pgx.Tx, dayRecordID
 		return time.Time{}, time.Time{}, false, settingsError
 	}
 
-	date, err := parseCalendarDate(calendarDate)
-	if err != nil {
-		return time.Time{}, time.Time{}, false, err
-	}
+	date := calendarDate
 	clock, err := parseScheduleTime(boundaryClock)
 	if err != nil {
 		return time.Time{}, time.Time{}, false, err
 	}
 	boundaryStart := time.Date(date.Year(), date.Month(), date.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
 	boundaryEnd := boundaryStart.AddDate(0, 0, 1)
-	currentTrackingDate := now.Format(DateFormat)
+	currentTrackingDate := CalendarDate(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC))
 	currentDayBoundary := time.Date(now.Year(), now.Month(), now.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
 	if now.Before(currentDayBoundary) {
-		currentTrackingDate = now.AddDate(0, 0, -1).Format(DateFormat)
+		currentTrackingDate = CalendarDate(time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC))
 	}
-	return boundaryStart, boundaryEnd, calendarDate < currentTrackingDate, nil
+	return boundaryStart, boundaryEnd, calendarDate.Before(currentTrackingDate), nil
 }
 
 func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.Tx, dayRecordID int) ([]DayEvent, error) {

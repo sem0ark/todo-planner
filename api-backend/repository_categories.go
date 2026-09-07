@@ -69,6 +69,21 @@ func (r *CategoryRepository) FindByID(ctx context.Context, id, userID int) (*Blo
 	return &cat, nil
 }
 
+func (r *CategoryRepository) ValidateIDs(ctx context.Context, userID int, categoryIDs []int) error {
+	validatedCategoryIDs := make(map[int]struct{}, len(categoryIDs))
+	for _, categoryID := range categoryIDs {
+		if _, alreadyValidated := validatedCategoryIDs[categoryID]; alreadyValidated {
+			continue
+		}
+		validatedCategoryIDs[categoryID] = struct{}{}
+		category, err := r.FindByID(ctx, categoryID, userID)
+		if err != nil || category.IsDeleted {
+			return ErrUnknownCategoryID
+		}
+	}
+	return nil
+}
+
 func (r *CategoryRepository) Create(ctx context.Context, input CategoryInput, userID int) (*BlockCategory, error) {
 	now := time.Now()
 	var cat BlockCategory

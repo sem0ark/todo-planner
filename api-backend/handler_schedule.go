@@ -34,7 +34,7 @@ type WeeklyScheduleResponse struct {
 }
 
 type TodayScheduleResponse struct {
-	CalendarDate  string       `json:"calendar_date"`
+	CalendarDate  CalendarDate `json:"calendar_date"`
 	DayTemplateID *int         `json:"day_template_id"`
 	Template      *DayTemplate `json:"template"`
 }
@@ -137,13 +137,15 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Validate date format
-	if _, err := parseCalendarDate(dateStr); err != nil {
+	parsedDate, err := parseCalendarDate(dateStr)
+	if err != nil {
 		http.Error(w, "invalid date format, expected YYYY-MM-DD", http.StatusBadRequest)
 		return
 	}
 
 	// Validate not in the past
-	if dateStr < time.Now().Format(DateFormat) {
+	today := CalendarDate(time.Now().UTC().Truncate(24 * time.Hour))
+	if parsedDate.Before(today) {
 		http.Error(w, "cannot set override for past date", http.StatusBadRequest)
 		return
 	}
@@ -160,7 +162,7 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Set the override. Removal has its own DELETE endpoint.
-	override, err := api.scheduleRepo.SetOverride(r.Context(), userID, dateStr, input.DayTemplateID)
+	override, err := api.scheduleRepo.SetOverride(r.Context(), userID, parsedDate, input.DayTemplateID)
 	if err != nil {
 		if errors.Is(err, ErrDayTemplateNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -184,11 +186,12 @@ func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Req
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if _, err := parseCalendarDate(dateString); err != nil || dateString < time.Now().Format(DateFormat) {
+	parsedDate, err := parseCalendarDate(dateString)
+	if err != nil || parsedDate.Before(CalendarDate(time.Now().UTC().Truncate(24*time.Hour))) {
 		http.Error(w, "invalid date", http.StatusBadRequest)
 		return
 	}
-	if err := api.scheduleRepo.DeleteOverride(r.Context(), userID, dateString); err != nil {
+	if err := api.scheduleRepo.DeleteOverride(r.Context(), userID, parsedDate); err != nil {
 		if errors.Is(err, ErrScheduleOverrideNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return

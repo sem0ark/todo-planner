@@ -16,15 +16,15 @@ func NewUserSettingsRepository(db *pgxpool.Pool) *UserSettingsRepository {
 }
 
 type UserSettings struct {
-	ID              int       `json:"id"`
-	UserID          int       `json:"user_id"`
-	DayBoundaryTime string    `json:"day_boundary_time"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              int          `json:"id"`
+	UserID          int          `json:"user_id"`
+	DayBoundaryTime ScheduleTime `json:"-"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
 func (r *UserSettingsRepository) GetOrCreate(ctx context.Context, userID int) (*UserSettings, error) {
 	var settings UserSettings
-	query := `SELECT id, user_id, day_boundary_time::time(0)::text, updated_at
+	query := `SELECT id, user_id, day_boundary_time, updated_at
 	          FROM user_settings WHERE user_id = $1`
 	err := r.db.QueryRow(ctx, query, userID).Scan(
 		&settings.ID,
@@ -45,10 +45,11 @@ func (r *UserSettingsRepository) GetOrCreate(ctx context.Context, userID int) (*
 
 func (r *UserSettingsRepository) create(ctx context.Context, userID int) (*UserSettings, error) {
 	var settings UserSettings
+	defaultBoundaryTime := time.Date(0, time.January, 1, 4, 0, 0, 0, time.UTC)
 	query := `INSERT INTO user_settings (user_id, day_boundary_time, updated_at)
-	          VALUES ($1, '04:00:00', now())
-	          RETURNING id, user_id, day_boundary_time::time(0)::text, updated_at`
-	err := r.db.QueryRow(ctx, query, userID).Scan(
+	          VALUES ($1, $2, now())
+	          RETURNING id, user_id, day_boundary_time, updated_at`
+	err := r.db.QueryRow(ctx, query, userID, defaultBoundaryTime).Scan(
 		&settings.ID,
 		&settings.UserID,
 		&settings.DayBoundaryTime,
@@ -62,13 +63,13 @@ func (r *UserSettingsRepository) create(ctx context.Context, userID int) (*UserS
 	return &settings, nil
 }
 
-func (r *UserSettingsRepository) Update(ctx context.Context, userID int, dayBoundaryTime string) (*UserSettings, error) {
+func (r *UserSettingsRepository) Update(ctx context.Context, userID int, dayBoundaryTime ScheduleTime) (*UserSettings, error) {
 	var settings UserSettings
 	query := `UPDATE user_settings
 	          SET day_boundary_time = $1, updated_at = now()
 	          WHERE user_id = $2
-	          RETURNING id, user_id, day_boundary_time::time(0)::text, updated_at`
-	err := r.db.QueryRow(ctx, query, dayBoundaryTime, userID).Scan(
+	          RETURNING id, user_id, day_boundary_time, updated_at`
+	err := r.db.QueryRow(ctx, query, time.Time(dayBoundaryTime), userID).Scan(
 		&settings.ID,
 		&settings.UserID,
 		&settings.DayBoundaryTime,

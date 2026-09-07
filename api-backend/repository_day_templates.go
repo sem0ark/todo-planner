@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -13,8 +12,6 @@ import (
 var ErrDayTemplateNotFound = errors.New("day template not found")
 var ErrInvalidTemplateBlock = errors.New("invalid snapshot block")
 var ErrTemplateCategoryNotFound = errors.New("unknown category_id")
-
-var templateTimePattern = regexp.MustCompile(`^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`)
 
 // DayTemplate contains metadata and the latest immutable snapshot.
 type DayTemplate struct {
@@ -37,9 +34,9 @@ type DayTemplateInput struct {
 
 // SnapshotBlockInput describes a block in a newly-created snapshot.
 type SnapshotBlockInput struct {
-	CategoryID      int    `json:"category_id"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
+	CategoryID      int          `json:"category_id"`
+	StartTime       ScheduleTime `json:"-"`
+	DurationMinutes int          `json:"duration_minutes"`
 }
 
 type DayTemplateRepository struct {
@@ -52,7 +49,7 @@ func NewDayTemplateRepository(db *pgxpool.Pool) *DayTemplateRepository {
 
 func (r *DayTemplateRepository) validateInput(ctx context.Context, input DayTemplateInput, userID int) error {
 	for _, block := range input.SnapshotBlocks {
-		if !templateTimePattern.MatchString(block.StartTime) ||
+		if block.StartTime.IsZero() || block.StartTime.Second() != 0 ||
 			block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 ||
 			blockExceedsDay(block.StartTime, block.DurationMinutes) {
 			return ErrInvalidTemplateBlock
@@ -152,7 +149,7 @@ func (r *DayTemplateRepository) loadCurrentSnapshot(ctx context.Context, templat
 	}
 
 	rows, err := r.db.Query(ctx, `
-		SELECT id, snapshot_id, category_id, start_time::text, duration_minutes
+		SELECT id, snapshot_id, category_id, start_time, duration_minutes
 		FROM snapshot_blocks
 		WHERE snapshot_id = $1
 		ORDER BY start_time ASC, id ASC

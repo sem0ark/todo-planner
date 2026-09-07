@@ -116,3 +116,19 @@ func createTestDayTemplate(t *testing.T, db *pgxpool.Pool, userID int, name stri
 
 	return template
 }
+
+func mustScheduleTime(value string) ScheduleTime {
+	parsedTime, err := parseScheduleTime(value)
+	if err != nil {
+		panic(err)
+	}
+	return parsedTime
+}
+
+func mustCalendarDate(value string) CalendarDate {
+	parsedDate, err := parseCalendarDate(value)
+	if err != nil {
+		panic(err)
+	}
+	return parsedDate
+}

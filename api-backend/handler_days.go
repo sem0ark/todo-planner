@@ -8,15 +8,15 @@ import (
 )
 
 type PublicTimelineBlock struct {
-	CategoryID      *int            `json:"category_id"`
-	BlockType       string          `json:"block_type"`
-	StartTime       APIScheduleTime `json:"start_time"`
-	DurationMinutes int             `json:"duration_minutes"`
-	IsOpen          bool            `json:"is_open"`
+	CategoryID      *int         `json:"category_id"`
+	BlockType       string       `json:"block_type"`
+	StartTime       ScheduleTime `json:"start_time"`
+	DurationMinutes int          `json:"duration_minutes"`
+	IsOpen          bool         `json:"is_open"`
 }
 
 type PublicDayRecord struct {
-	CalendarDate  string                `json:"calendar_date"`
+	CalendarDate  CalendarDate          `json:"calendar_date"`
 	DayTemplateID *int                  `json:"day_template_id"`
 	Plan          []PublicTemplateBlock `json:"plan"`
 	Actual        []PublicTimelineBlock `json:"actual"`
@@ -25,7 +25,7 @@ type PublicDayRecord struct {
 }
 
 type PublicDayRangeEntry struct {
-	CalendarDate string           `json:"calendar_date"`
+	CalendarDate CalendarDate     `json:"calendar_date"`
 	DayRecord    *PublicDayRecord `json:"day_record"`
 }
 
@@ -38,7 +38,7 @@ func toPublicDayRecord(record *DayRecord) PublicDayRecord {
 	actualBlocks := make([]PublicTimelineBlock, 0, len(record.ActualBlocks))
 	for _, block := range record.ActualBlocks {
 		actualBlocks = append(actualBlocks, PublicTimelineBlock{CategoryID: block.CategoryID,
-			BlockType: block.BlockType, StartTime: publicScheduleTime(block.StartTime),
+			BlockType: block.BlockType, StartTime: formatScheduleTime(block.StartTime),
 			DurationMinutes: block.DurationMinutes, IsOpen: block.IsOpen})
 	}
 	return PublicDayRecord{CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
@@ -47,11 +47,13 @@ func toPublicDayRecord(record *DayRecord) PublicDayRecord {
 }
 
 func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Request, userID int) {
-	records, err := api.dayService.GetDays(request.Context(), userID, request.URL.Query().Get("from"), request.URL.Query().Get("to"))
-	if errors.Is(err, ErrInvalidDayDateRange) {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
+	fromDate, fromError := parseCalendarDate(request.URL.Query().Get("from"))
+	toDate, toError := parseCalendarDate(request.URL.Query().Get("to"))
+	if fromError != nil || toError != nil || toDate.Before(fromDate) {
+		http.Error(responseWriter, ErrInvalidDayDateRange.Error(), http.StatusBadRequest)
 		return
 	}
+	records, err := api.dayRecordRepo.FindDateRange(request.Context(), userID, fromDate, toDate)
 	if err != nil {
 		HTTPError(responseWriter, request, api.logger, 500, "failed to fetch days", err, nil)
 		return
@@ -72,7 +74,12 @@ func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Reques
 }
 
 func (api *API) getDay(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
-	record, err := api.dayService.GetDay(request.Context(), userID, calendarDate)
+	parsedDate, err := parseCalendarDate(calendarDate)
+	if err != nil {
+		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
+		return
+	}
+	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
 	if errors.Is(err, ErrDayRecordNotFound) {
 		http.Error(responseWriter, "day record not found", 404)
 		return

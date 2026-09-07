@@ -56,6 +56,11 @@ func toInternalDayEventsRequest(request dayEventsRequest) DayEventsInput {
 }
 
 func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
+	parsedDate, err := parseCalendarDate(calendarDate)
+	if err != nil {
+		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
+		return
+	}
 	var publicInput dayEventsRequest
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
@@ -64,21 +69,27 @@ func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http
 		return
 	}
 	input := toInternalDayEventsRequest(publicInput)
-	result, err := api.dayService.AppendEvents(request.Context(), userID, calendarDate, input)
-	if errors.Is(err, ErrDeviceIDRequired) || errors.Is(err, ErrUnknownCategoryID) || errors.Is(err, ErrMissingEventCategory) || errors.Is(err, ErrInvalidEventType) || errors.Is(err, ErrIncompleteAmendment) || errors.Is(err, ErrMissingEventTimestamp) || errors.Is(err, ErrUnsortedEvents) || errors.Is(err, ErrMissingClientEventID) {
+	if input.DeviceID <= 0 {
+		http.Error(responseWriter, ErrDeviceIDRequired.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateDateEvents(input.Events); err != nil {
+		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
+		return
+	}
+	categoryIDs := make([]int, 0, len(input.Events))
+	for _, event := range input.Events {
+		if event.CategoryID != nil {
+			categoryIDs = append(categoryIDs, *event.CategoryID)
+		}
+	}
+	if err := api.categoryRepo.ValidateIDs(request.Context(), userID, categoryIDs); err != nil {
+		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
+		return
+	}
+	result, err := api.dayRecordRepo.CreateEventsByDate(request.Context(), userID, parsedDate, input.DeviceID, input.Events)
+	if errors.Is(err, ErrDeviceIDRequired) || errors.Is(err, ErrUnknownCategoryID) || errors.Is(err, ErrMissingEventCategory) || errors.Is(err, ErrInvalidEventType) || errors.Is(err, ErrIncompleteAmendment) || errors.Is(err, ErrMissingEventTimestamp) || errors.Is(err, ErrUnsortedEvents) || errors.Is(err, ErrMissingClientEventID) || errors.Is(err, ErrDeviceNotFound) || errors.Is(err, ErrAmendmentTargetNotFound) || errors.Is(err, ErrNonMonotonicTransitions) {
 		http.Error(responseWriter, err.Error(), 400)
-		return
-	}
-	if errors.Is(err, ErrDeviceNotFound) {
-		http.Error(responseWriter, err.Error(), 404)
-		return
-	}
-	if errors.Is(err, ErrAmendmentTargetNotFound) {
-		http.Error(responseWriter, err.Error(), 400)
-		return
-	}
-	if errors.Is(err, ErrNonMonotonicTransitions) {
-		http.Error(responseWriter, err.Error(), 409)
 		return
 	}
 	if err != nil {

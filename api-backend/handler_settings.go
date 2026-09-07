@@ -3,24 +3,23 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"regexp"
 )
 
 type UserSettingsInput struct {
-	DayBoundaryTime string `json:"day_boundary_time"`
+	DayBoundaryTime ScheduleTime `json:"day_boundary_time"`
 }
 
 type PublicSettings struct {
-	DayBoundaryTime APIScheduleTime `json:"day_boundary_time"`
-	UpdatedAt       APITimestamp    `json:"updated_at"`
+	DayBoundaryTime ScheduleTime `json:"day_boundary_time"`
+	UpdatedAt       APITimestamp `json:"updated_at"`
 }
 
 func toPublicSettings(settings UserSettings) PublicSettings {
-	return PublicSettings{DayBoundaryTime: publicScheduleTime(settings.DayBoundaryTime),
-		UpdatedAt: APITimestamp(settings.UpdatedAt)}
+	return PublicSettings{
+		DayBoundaryTime: formatScheduleTime(settings.DayBoundaryTime),
+		UpdatedAt: APITimestamp(settings.UpdatedAt),
+	}
 }
-
-var timeFormatRegex = regexp.MustCompile(`^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$`)
 
 func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := getUserID(r.Context())
@@ -53,11 +52,6 @@ func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		HTTPError(w, r, api.logger, http.StatusBadRequest, "invalid request body", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		return
-	}
-
-	if !timeFormatRegex.MatchString(input.DayBoundaryTime) {
-		http.Error(w, "invalid time format, expected HH:MM:SS", http.StatusBadRequest)
 		return
 	}
 

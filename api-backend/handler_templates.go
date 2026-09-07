@@ -12,9 +12,9 @@ type DayTemplatesResponse struct {
 }
 
 type PublicTemplateBlock struct {
-	CategoryID      int             `json:"category_id"`
-	StartTime       APIScheduleTime `json:"start_time"`
-	DurationMinutes int             `json:"duration_minutes"`
+	CategoryID      int          `json:"category_id"`
+	StartTime       ScheduleTime `json:"start_time"`
+	DurationMinutes int          `json:"duration_minutes"`
 }
 
 type PublicTemplate struct {
@@ -33,9 +33,9 @@ type dayTemplateRequest struct {
 }
 
 type templatePlanRequest struct {
-	CategoryID      int             `json:"category_id"`
-	StartTime       APIScheduleTime `json:"start_time"`
-	DurationMinutes int             `json:"duration_minutes"`
+	CategoryID      int          `json:"category_id"`
+	StartTime       ScheduleTime `json:"start_time"`
+	DurationMinutes int          `json:"duration_minutes"`
 }
 
 func toPublicTemplateBlocks(blocks []SnapshotBlock) []PublicTemplateBlock {
@@ -43,7 +43,7 @@ func toPublicTemplateBlocks(blocks []SnapshotBlock) []PublicTemplateBlock {
 	for _, block := range blocks {
 		publicBlocks = append(publicBlocks, PublicTemplateBlock{
 			CategoryID:      block.CategoryID,
-			StartTime:       publicScheduleTime(block.StartTime),
+			StartTime:       formatScheduleTime(block.StartTime),
 			DurationMinutes: block.DurationMinutes,
 		})
 	}
@@ -80,7 +80,7 @@ func decodeDayTemplateRequest(request *http.Request) (DayTemplateInput, error) {
 	plan := make([]SnapshotBlockInput, 0, len(*publicInput.Plan))
 	for _, block := range *publicInput.Plan {
 		plan = append(plan, SnapshotBlockInput{CategoryID: block.CategoryID,
-			StartTime: string(block.StartTime), DurationMinutes: block.DurationMinutes})
+			StartTime: block.StartTime, DurationMinutes: block.DurationMinutes})
 	}
 	return DayTemplateInput{Name: publicInput.Name, TemplateGroupID: publicInput.TemplateGroupID,
 		SnapshotBlocks: plan}, nil

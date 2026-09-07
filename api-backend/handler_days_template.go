@@ -7,12 +7,17 @@ import (
 )
 
 func (api *API) putDateTemplate(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
+	parsedDate, err := parseCalendarDate(calendarDate)
+	if err != nil {
+		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
+		return
+	}
 	var input DayRecordTemplateInput
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 		http.Error(responseWriter, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	record, err := api.dayService.UpdateTemplate(request.Context(), userID, calendarDate, input.DayTemplateID)
+	record, err := api.dayRecordRepo.UpdateTemplateByDate(request.Context(), userID, parsedDate, input.DayTemplateID)
 	if errors.Is(err, ErrDayRecordPast) {
 		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
 		return

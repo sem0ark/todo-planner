@@ -34,6 +34,11 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
 		return
 	}
+	calendarDate, err := parseCalendarDate(input.CalendarDate)
+	if err != nil {
+		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
+		return
+	}
 	transaction, err := api.db.Begin(request.Context())
 	if err != nil {
 		http.Error(responseWriter, "failed to initialize client", http.StatusInternalServerError)
@@ -56,7 +61,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		http.Error(responseWriter, "failed to load categories", http.StatusInternalServerError)
 		return
 	}
-	dayRecordID, err := findOrCreateDayRecord(request.Context(), transaction, userID, input.CalendarDate)
+	dayRecordID, err := findOrCreateDayRecord(request.Context(), transaction, userID, calendarDate)
 	if err != nil {
 		http.Error(responseWriter, "failed to load day", http.StatusInternalServerError)
 		return
@@ -81,12 +86,12 @@ func loadSettingsForInit(request *http.Request, transaction pgx.Tx, userID int) 
 	var settings UserSettings
 	err := transaction.QueryRow(
 		request.Context(),
-		`SELECT id, user_id, day_boundary_time::time(0)::text, updated_at FROM user_settings WHERE user_id = $1`, userID,
+		`SELECT id, user_id, day_boundary_time, updated_at FROM user_settings WHERE user_id = $1`, userID,
 	).Scan(&settings.ID, &settings.UserID, &settings.DayBoundaryTime, &settings.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		err = transaction.QueryRow(
 			request.Context(),
-			`INSERT INTO user_settings(user_id) VALUES($1) RETURNING id, user_id, day_boundary_time::time(0)::text, updated_at`, userID,
+			`INSERT INTO user_settings(user_id) VALUES($1) RETURNING id, user_id, day_boundary_time, updated_at`, userID,
 		).Scan(&settings.ID, &settings.UserID, &settings.DayBoundaryTime, &settings.UpdatedAt)
 	}
 	return &settings, err
