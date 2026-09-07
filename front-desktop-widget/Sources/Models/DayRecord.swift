@@ -85,14 +85,21 @@ struct DayRecordsResponse: Decodable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     if let records = try container.decodeIfPresent([DayRecord].self, forKey: .dayRecords) {
       dayRecords = records
-    } else {
-      let entries = try container.decodeIfPresent([DayRangeEntry].self, forKey: .days) ?? []
-      dayRecords = entries.compactMap(\.dayRecord)
+      return
     }
+    guard container.contains(.days) else {
+      throw DecodingError.keyNotFound(
+        CodingKeys.dayRecords,
+        DecodingError.Context(
+          codingPath: decoder.codingPath,
+          debugDescription: "Response must contain day_records or days"))
+    }
+    let entries = try container.decode([DayRangeEntry].self, forKey: .days)
+    dayRecords = try entries.map(\.dayRecord)
   }
 }
 
 private struct DayRangeEntry: Decodable {
-  let dayRecord: DayRecord?
+  let dayRecord: DayRecord
   enum CodingKeys: String, CodingKey { case dayRecord = "day_record" }
 }

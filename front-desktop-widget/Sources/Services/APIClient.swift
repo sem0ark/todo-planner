@@ -19,7 +19,7 @@ final class APIClient: @unchecked Sendable {
   private var initializationCache: [String: InitResponse] = [:]
   private var deviceId: Int?
 
-  var currentDeviceId: Int { deviceId ?? 0 }
+  var currentDeviceId: Int? { deviceId }
 
   private init() {
     // Load API_BASE_URL from build configuration (set via Makefile)
@@ -36,7 +36,14 @@ final class APIClient: @unchecked Sendable {
       print("[AUTH] No saved JWT found in app data")
     }
 
-    self.deviceId = UserDefaults.standard.object(forKey: deviceKey) as? Int
+    let storedDevice = UserDefaults.standard.object(forKey: deviceKey)
+    if let storedDeviceId = storedDevice as? Int, storedDeviceId > 0 {
+      self.deviceId = storedDeviceId
+    } else if storedDevice != nil {
+      WidgetLogger.error(
+        "Ignoring malformed stored device ID", context: ["value": String(describing: storedDevice)])
+      UserDefaults.standard.removeObject(forKey: deviceKey)
+    }
   }
 
   func setAuthToken(_ token: String) {
@@ -82,7 +89,7 @@ final class APIClient: @unchecked Sendable {
   // MARK: - Token Validation
 
   /// Validates if the current token is still valid by checking device registration
-  func validateToken() async -> Bool {
+  func validateToken() async throws -> Bool {
     guard authToken != nil else {
       print("[AUTH] No token to validate")
       return false
@@ -98,8 +105,8 @@ final class APIClient: @unchecked Sendable {
       clearAuthToken()
       return false
     } catch {
-      print("[ERROR] Token validation failed: \(error)")
-      return false
+      WidgetLogger.error("Token validation failed", context: ["error": String(describing: error)])
+      throw error
     }
   }
 
@@ -152,7 +159,8 @@ final class APIClient: @unchecked Sendable {
 
       print("[IN] Response status: \(httpResponse.statusCode)")
 
-      let responseString = String(data: data, encoding: .utf8) ?? ""
+      let responseString =
+        String(data: data, encoding: .utf8) ?? "<non-UTF8 body: \(data.base64EncodedString())>"
       print("[IN] Response body (\(data.count) bytes): '\(responseString)'")
 
       switch httpResponse.statusCode {
@@ -198,9 +206,6 @@ final class APIClient: @unchecked Sendable {
   }
 
   func initialize(calendarDate: String) async throws -> InitResponse {
-    if let cachedResponse = initializationCache[calendarDate] {
-      return cachedResponse
-    }
     let currentDeviceId = try await registerDeviceIfNeeded()
     struct InitRequest: Encodable {
       let device_id: Int
@@ -215,16 +220,11 @@ final class APIClient: @unchecked Sendable {
         body: InitRequest(device_id: currentDeviceId, calendar_date: calendarDate)
       )
     } catch APIError.serverError(404, let message) where message.contains("device not found") {
-      deviceId = nil
-      UserDefaults.standard.removeObject(forKey: deviceKey)
-      let replacementDeviceId = try await registerDeviceIfNeeded()
-      response = try await makeRequest(
-        endpoint: "/init",
-        method: "POST",
-        body: InitRequest(device_id: replacementDeviceId, calendar_date: calendarDate)
-      )
+      WidgetLogger.error(
+        "Registered device was rejected by server",
+        context: ["calendarDate": calendarDate, "deviceId": String(currentDeviceId)])
+      throw APIError.serverError(404, message)
     }
-    initializationCache[calendarDate] = response
     return response
   }
 

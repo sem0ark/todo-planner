@@ -94,46 +94,62 @@ protocol WidgetStateLogic {
 
 struct TimeLogic {
   static func getCurrentPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
-    let current = secondsSinceStartOfDay(for: time)
+    guard let current = secondsSinceStartOfDay(for: time) else { return nil }
     return blocks.first { block in
-      let begin = parseSeconds(from: block.startTime)
+      guard let begin = parseSeconds(from: block.startTime) else { return false }
       return current >= begin && current < begin + block.durationMinutes * 60
     }
   }
 
   static func getNextPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
-    let current = secondsSinceStartOfDay(for: time)
-    return blocks.filter { parseSeconds(from: $0.startTime) > current }
-      .min { parseSeconds(from: $0.startTime) < parseSeconds(from: $1.startTime) }
+    guard let current = secondsSinceStartOfDay(for: time) else { return nil }
+    return blocks.compactMap { block -> (PlannedBlock, Int)? in
+      guard let start = parseSeconds(from: block.startTime), start > current else { return nil }
+      return (block, start)
+    }.min { $0.1 < $1.1 }?.0
   }
 
   static func getCurrentActualBlock(at time: Date, from blocks: [ActualBlock]) -> ActualBlock? {
-    let current = secondsSinceStartOfDay(for: time)
+    guard let current = secondsSinceStartOfDay(for: time) else { return nil }
     return blocks.last { block in
-      let begin = parseSeconds(from: block.startTime)
+      guard let begin = parseSeconds(from: block.startTime) else { return false }
       let isOpenEnded = block.durationMinutes <= 0
       return current >= begin && (isOpenEnded || current < begin + block.durationMinutes * 60)
     }
   }
 
   static func calculateProgress(for block: PlannedBlock, at time: Date) -> Double {
-    let elapsed = max(0, secondsSinceStartOfDay(for: time) - parseSeconds(from: block.startTime))
+    guard let current = secondsSinceStartOfDay(for: time),
+      let begin = parseSeconds(from: block.startTime)
+    else { return 0 }
+    let elapsed = max(0, current - begin)
     return min(1, Double(elapsed) / Double(max(1, block.durationMinutes * 60)))
   }
 
   static func isWithinConfirmationWindow(for block: PlannedBlock, at time: Date) -> Bool {
-    let elapsed = secondsSinceStartOfDay(for: time) - parseSeconds(from: block.startTime)
+    guard let current = secondsSinceStartOfDay(for: time),
+      let begin = parseSeconds(from: block.startTime)
+    else { return false }
+    let elapsed = current - begin
     return elapsed >= 0 && elapsed < 60
   }
 
-  static func secondsSinceStartOfDay(for date: Date) -> Int {
+  static func secondsSinceStartOfDay(for date: Date) -> Int? {
     let components = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
-    return (components.hour ?? 0) * 3600 + (components.minute ?? 0) * 60
-      + (components.second ?? 0)
+    guard let hour = components.hour, let minute = components.minute, let second = components.second
+    else {
+      WidgetLogger.error("Calendar date is missing time components")
+      return nil
+    }
+    return hour * 3600 + minute * 60 + second
   }
 
-  static func parseSeconds(from timeString: String) -> Int {
-    TimeFormats.secondsSinceDayStart(timeString) ?? 0
+  static func parseSeconds(from timeString: String) -> Int? {
+    guard let seconds = TimeFormats.secondsSinceDayStart(timeString) else {
+      WidgetLogger.error("Unable to parse schedule time", context: ["value": timeString])
+      return nil
+    }
+    return seconds
   }
 }
 
@@ -146,6 +162,12 @@ extension DateFormatter {
 }
 
 // MARK: - Pure State Helpers
+
+enum EventLoggingError: Error {
+  case missingCalendarDate
+  case missingCategory(eventType: DayEventType)
+  case incompleteAmendment
+}
 
 func tickPomodoro(_ context: inout WidgetContext) -> Bool {
   guard let config = context.currentCategory?.pomodoroConfig else { return false }
@@ -212,10 +234,11 @@ func transitionResult(context: WidgetContext, category: Category) -> StateResult
 @MainActor
 func confirmationResult(context: WidgetContext, nextState: WidgetStateLogic) -> StateResult {
   var updatedContext = context
-  updatedContext.lastEventTime = Date()
   guard let plannedCategory = updatedContext.plannedCategory else {
-    return StateResult(nextState: nextState, updatedContext: updatedContext, effects: [])
+    WidgetLogger.error("Cannot confirm without a planned category")
+    return StateResult(nextState: nextState, updatedContext: context, effects: [])
   }
+  updatedContext.lastEventTime = Date()
   updatedContext.currentCategory = plannedCategory
   updatedContext.pomodoroPhase = .work
   updatedContext.pomodoroElapsed = 0
@@ -244,26 +267,34 @@ func logEvent(
   category: Category?,
   occurredAt: Date?,
   calendarDate: String?,
-  repo: TodoPlannerRepository
-) async -> (blocks: [ActualBlock], clientEventId: String?) {
-  guard let calendarDate else { return ([], nil) }
+  repo: TodoPlannerRepository,
+  targetClientEventId: String? = nil,
+  correctedAt: Date? = nil
+) async throws -> (blocks: [ActualBlock], clientEventId: String) {
+  guard let calendarDate else {
+    throw EventLoggingError.missingCalendarDate
+  }
   let categoryId = category?.id
-  guard type == .amendment || categoryId != nil else { return ([], nil) }
+  guard type == .amendment || categoryId != nil else {
+    throw EventLoggingError.missingCategory(eventType: type)
+  }
+  guard type != .amendment || targetClientEventId != nil,
+    type != .amendment || correctedAt != nil
+  else {
+    throw EventLoggingError.incompleteAmendment
+  }
 
   let event = DayEvent(
     eventType: type.rawValue,
     categoryId: type == .amendment ? nil : categoryId,
-    occurredAt: occurredAt ?? Date()
+    occurredAt: occurredAt ?? Date(),
+    targetClientEventId: targetClientEventId,
+    correctedAt: correctedAt
   )
 
-  do {
-    let response = try await repo.submitEvents(calendarDate: calendarDate, events: [event])
-    print("[SYNC] Event persisted: \(type.rawValue), blocks=\(response.actual.count)")
-    return (response.actual, event.clientEventId)
-  } catch {
-    print("[SYNC ERROR] Failed to log \(type): \(error.localizedDescription)")
-    return ([], nil)
-  }
+  let response = try await repo.submitEvents(calendarDate: calendarDate, events: [event])
+  print("[SYNC] Event persisted: \(type.rawValue), blocks=\(response.actual.count)")
+  return (response.actual, event.clientEventId)
 }
 
 // MARK: - Concrete State: Initializing
@@ -296,7 +327,18 @@ final class InitializingState: WidgetStateLogic {
       let actual = TimeLogic.getCurrentActualBlock(at: now, from: record.actual),
       let actualId = actual.categoryId
     {
-      ctx.currentCategory = ctx.categories.first { $0.id == actualId }
+      guard let actualCategory = ctx.categories.first(where: { $0.id == actualId }) else {
+        WidgetLogger.error(
+          "Actual block references an unknown category", context: ["categoryId": String(actualId)])
+        ctx.currentCategory = nil
+        return StateResult(nextState: ActiveState(), updatedContext: ctx, effects: [])
+      }
+      ctx.currentCategory = actualCategory
+    } else if let record = ctx.currentDayRecord,
+      TimeLogic.getCurrentActualBlock(at: now, from: record.actual) != nil
+    {
+      WidgetLogger.error("Actual block is missing its category")
+      ctx.currentCategory = nil
     } else {
       ctx.currentCategory = ctx.plannedCategory
     }
@@ -334,19 +376,20 @@ final class ActiveState: WidgetStateLogic {
       return transitionResult(context: ctx, category: category)
 
     case .adjustOffset(let minutes):
+      guard ctx.currentCategory != nil, let lastEventClientId = ctx.lastEventClientId else {
+        WidgetLogger.error(
+          "Cannot adjust offset without a persisted event", context: ["minutes": String(minutes)])
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
+      }
       let retroactiveTime = ctx.lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
       ctx.offsetMinutes += minutes
       ctx.lastEventTime = retroactiveTime
-
-      guard let category = ctx.currentCategory else {
-        return StateResult(nextState: self, updatedContext: ctx, effects: [])
-      }
       return StateResult(
         nextState: self,
         updatedContext: ctx,
-        effects: ctx.lastEventClientId.map {
-          [.logAmendment(targetClientEventId: $0, correctedAt: retroactiveTime)]
-        } ?? []
+        effects: [
+          .logAmendment(targetClientEventId: lastEventClientId, correctedAt: retroactiveTime)
+        ]
       )
 
     case .returnToPlan:
@@ -429,7 +472,7 @@ class WidgetStateStore {
   var currentDayRecord: DayRecord? { context.currentDayRecord }
   var currentCategory: Category? { context.currentCategory }
   var isOnSchedule: Bool {
-    guard let current = context.currentCategory, let planned = plannedCategory else { return true }
+    guard let current = context.currentCategory, let planned = plannedCategory else { return false }
     return current.id == planned.id
   }
   var scheduleDeviation: ScheduleDeviation? {
@@ -455,10 +498,12 @@ class WidgetStateStore {
   var plannedDurationMinutes: Int { currentPlannedBlock?.durationMinutes ?? 0 }
   var remainingPlannedMinutes: Int {
     guard let plannedBlock = currentPlannedBlock else { return 0 }
+    guard let currentSeconds = TimeLogic.secondsSinceStartOfDay(for: Date()),
+      let plannedStartSeconds = TimeLogic.parseSeconds(from: plannedBlock.startTime)
+    else { return 0 }
     let elapsedSeconds = max(
       0,
-      TimeLogic.secondsSinceStartOfDay(for: Date())
-        - TimeLogic.parseSeconds(from: plannedBlock.startTime)
+      currentSeconds - plannedStartSeconds
     )
     let remainingSeconds = max(0, plannedBlock.durationMinutes * 60 - elapsedSeconds)
     return Int(ceil(Double(remainingSeconds) / 60.0))
@@ -481,6 +526,7 @@ class WidgetStateStore {
 
   // --- Internal State ---
   private var ticker: AnyCancellable?
+  var lastError: String?
 
   var pomodoroActive: Bool {
     displayState == .active && context.currentCategory?.hasPomodoroEnabled == true
@@ -518,7 +564,9 @@ class WidgetStateStore {
       try await loadData()
       await dispatch(.initialize)
     } catch {
-      print("[ERROR] Initialization error: \(error)")
+      lastError = String(describing: error)
+      WidgetLogger.error(
+        "Initialization failed; widget remains inactive", context: ["error": lastError!])
     }
   }
 
@@ -529,18 +577,44 @@ class WidgetStateStore {
       try await loadData()
       await dispatch(.initialize)
     } catch {
-      print("[ERROR] Reload error: \(error)")
-      await dispatch(.initialize)
+      lastError = String(describing: error)
+      WidgetLogger.error("Reload failed; widget remains inactive", context: ["error": lastError!])
     }
   }
 
   private func loadData() async throws {
     let today = DateFormatter.yyyyMMdd.string(from: Date())
     let bootstrap = try await repository.initialize(calendarDate: today)
+    try validateBootstrap(bootstrap, requestedDate: today)
 
     context.categories = bootstrap.categories
     context.currentPlannedBlocks = bootstrap.dayRecord.plan
     context.currentDayRecord = bootstrap.dayRecord
+  }
+
+  private func validateBootstrap(_ bootstrap: InitResponse, requestedDate: String) throws {
+    guard bootstrap.dayRecord.calendarDate == requestedDate else {
+      throw StorageError.invalidContract("day_record calendar date does not match request")
+    }
+    let categoryIds = Set(bootstrap.categories.map(\.id))
+    for block in bootstrap.dayRecord.plan {
+      guard categoryIds.contains(block.categoryId), block.durationMinutes > 0,
+        TimeLogic.parseSeconds(from: block.startTime) != nil
+      else {
+        throw StorageError.invalidContract("invalid planned block \(block.id)")
+      }
+    }
+    for block in bootstrap.dayRecord.actual {
+      let hasValidCategory =
+        if let categoryId = block.categoryId {
+          categoryIds.contains(categoryId)
+        } else {
+          block.blockType == "untracked"
+        }
+      guard hasValidCategory, TimeLogic.parseSeconds(from: block.startTime) != nil else {
+        throw StorageError.invalidContract("invalid actual block \(block.id)")
+      }
+    }
   }
 
   func handleSelectCategory(_ category: Category) async {
@@ -552,55 +626,79 @@ class WidgetStateStore {
   // MARK: - State Application & Projection
 
   func apply(_ result: StateResult) async {
+    let previousContext = context
+    let previousState = currentState
     self.context = result.updatedContext
-
     self.currentState = result.nextState
 
     for effect in result.effects {
-      await execute(effect)
+      guard await execute(effect) else {
+        context = previousContext
+        currentState = previousState
+        return
+      }
     }
   }
 
-  private func execute(_ effect: WidgetEffect) async {
+  private func execute(_ effect: WidgetEffect) async -> Bool {
     switch effect {
     case .logTransition(let category, let occurredAt):
       logEffectContext("logTransition", eventCategory: category)
-      let eventResult = await logEvent(
-        type: .transition,
-        category: category,
-        occurredAt: occurredAt,
-        calendarDate: context.currentDayRecord?.calendarDate,
-        repo: repository
-      )
-      context.lastEventClientId = eventResult.clientEventId
-      updateDayRecord(&context, with: eventResult.blocks)
+      do {
+        let eventResult = try await logEvent(
+          type: .transition,
+          category: category,
+          occurredAt: occurredAt,
+          calendarDate: context.currentDayRecord?.calendarDate,
+          repo: repository
+        )
+        context.lastEventClientId = eventResult.clientEventId
+        updateDayRecord(&context, with: eventResult.blocks)
+      } catch {
+        lastError = String(describing: error)
+        WidgetLogger.error(
+          "Failed to log transition; local state rolled back", context: ["error": lastError!])
+        return false
+      }
 
     case .logConfirmation(let category):
       logEffectContext("logConfirmation", eventCategory: category)
-      let eventResult = await logEvent(
-        type: .confirmation,
-        category: category,
-        occurredAt: nil,
-        calendarDate: context.currentDayRecord?.calendarDate,
-        repo: repository
-      )
-      updateDayRecord(&context, with: eventResult.blocks)
+      do {
+        let eventResult = try await logEvent(
+          type: .confirmation,
+          category: category,
+          occurredAt: nil,
+          calendarDate: context.currentDayRecord?.calendarDate,
+          repo: repository
+        )
+        context.lastEventClientId = eventResult.clientEventId
+        updateDayRecord(&context, with: eventResult.blocks)
+      } catch {
+        lastError = String(describing: error)
+        WidgetLogger.error(
+          "Failed to log confirmation; local state rolled back", context: ["error": lastError!])
+        return false
+      }
 
     case .logAmendment(let targetClientEventId, let correctedAt):
-      guard let calendarDate = context.currentDayRecord?.calendarDate else { return }
-      let event = DayEvent(
-        eventType: DayEventType.amendment.rawValue,
-        categoryId: nil,
-        occurredAt: correctedAt,
-        targetClientEventId: targetClientEventId,
-        correctedAt: correctedAt
-      )
       do {
-        let response = try await repository.submitEvents(
-          calendarDate: calendarDate, events: [event])
-        updateDayRecord(&context, with: response.actual)
+        let eventResult = try await logEvent(
+          type: .amendment,
+          category: nil,
+          // Keep amendment ordering separate from the corrected timestamp. The
+          // server uses occurred_at to select the latest amendment for a target.
+          occurredAt: Date(),
+          calendarDate: context.currentDayRecord?.calendarDate,
+          repo: repository,
+          targetClientEventId: targetClientEventId,
+          correctedAt: correctedAt
+        )
+        updateDayRecord(&context, with: eventResult.blocks)
       } catch {
-        print("[SYNC ERROR] Failed to amend event: \(error.localizedDescription)")
+        lastError = String(describing: error)
+        WidgetLogger.error(
+          "Failed to amend event; local state rolled back", context: ["error": lastError!])
+        return false
       }
 
     case .postNotification(let name):
@@ -609,6 +707,7 @@ class WidgetStateStore {
     case .updateMenuBarIcon:
       updateMenuBarIcon()
     }
+    return true
   }
 
   private func logEffectContext(_ effectName: String, eventCategory: Category) {

@@ -1,5 +1,13 @@
 import Foundation
 
+enum WidgetLogger {
+  static func error(_ message: String, context: [String: String] = [:]) {
+    let details = context.sorted { $0.key < $1.key }
+      .map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+    print("[ERROR] \(message)\(details.isEmpty ? "" : " | \(details)")")
+  }
+}
+
 /// Errors specific to the storage and retrieval layer.
 enum StorageError: Error {
   case unauthorized
@@ -7,6 +15,7 @@ enum StorageError: Error {
   case databaseError(String)
   case notFound
   case decodingError
+  case invalidContract(String)
 }
 
 /// The universal interface for data operations.

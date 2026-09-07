@@ -43,7 +43,7 @@ struct DayEventsRequest: Codable {
     case events
   }
 
-  init(deviceId: Int = 0, events: [DayEvent]) {
+  init(deviceId: Int, events: [DayEvent]) {
     self.deviceId = deviceId
     self.events = events
   }
@@ -71,14 +71,12 @@ struct DayEventsResponse: Decodable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    acceptedEvents =
-      try container.decodeIfPresent([AcceptedEvent].self, forKey: .acceptedEvents) ?? []
-    duplicateClientEventIds =
-      try container.decodeIfPresent([String].self, forKey: .duplicateClientEventIds) ?? []
+    acceptedEvents = try container.decode([AcceptedEvent].self, forKey: .acceptedEvents)
+    duplicateClientEventIds = try container.decode([String].self, forKey: .duplicateClientEventIds)
     calendarDate = try container.decode(String.self, forKey: .calendarDate)
     dayTemplateId = try container.decodeIfPresent(Int.self, forKey: .dayTemplateId)
-    plan = try container.decodeIfPresent([PlannedBlock].self, forKey: .plan) ?? []
-    actual = try container.decodeIfPresent([ActualBlock].self, forKey: .actual) ?? []
+    plan = try container.decode([PlannedBlock].self, forKey: .plan)
+    actual = try container.decode([ActualBlock].self, forKey: .actual)
     createdAt = try container.decode(Date.self, forKey: .createdAt)
     updatedAt = try container.decode(Date.self, forKey: .updatedAt)
   }
@@ -105,7 +103,7 @@ struct DayEventsResponse: Decodable {
 struct AcceptedEvent: Codable {
   let clientEventId: String
   let eventType: String
-  let categoryId: Int
+  let categoryId: Int?
   let occurredAt: Date
   enum CodingKeys: String, CodingKey {
     case clientEventId = "client_event_id"

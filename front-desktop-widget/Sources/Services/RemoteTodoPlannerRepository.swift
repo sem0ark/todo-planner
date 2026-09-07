@@ -16,7 +16,7 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
   }
 
   func validateAuth() async throws -> Bool {
-    return await api.validateToken()
+    return try await api.validateToken()
   }
 
   func initialize(calendarDate: String) async throws -> InitResponse {
@@ -27,6 +27,13 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
     return try await api.postDayEvents(date: calendarDate, events: events)
   }
 
-  func hasPendingSync() async -> Bool { return false }  // Remote is always "synced"
-  func synchronize() async throws {}
+  func hasPendingSync() async -> Bool {
+    // This repository has no local event queue, so there is nothing to sync.
+    return false
+  }
+
+  func synchronize() async throws {
+    WidgetLogger.error("Remote synchronization was requested but no local queue exists")
+    throw StorageError.invalidContract("remote synchronization is not supported")
+  }
 }

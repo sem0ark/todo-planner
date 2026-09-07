@@ -285,6 +285,52 @@ final class WidgetStateStoreTests {
     try assertEqual(response.dayRecord.actual[0].isOpen, false)
   }
 
+  func test_dayEventsResponse_decodesNullAcceptedEventCategory() throws {
+    let json = """
+    {
+      "calendar_date": "2026-09-07",
+      "day_template_id": null,
+      "plan": [],
+      "actual": [],
+      "accepted_events": [
+        {
+          "client_event_id": "event-1",
+          "event_type": "amendment",
+          "category_id": null,
+          "occurred_at": "2026-09-07T10:55:04Z"
+        }
+      ],
+      "duplicate_client_event_ids": [],
+      "created_at": "2026-09-07T10:00:00Z",
+      "updated_at": "2026-09-07T10:55:04Z"
+    }
+    """.data(using: .utf8)!
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+
+    let response = try decoder.decode(DayEventsResponse.self, from: json)
+
+    try assert(response.acceptedEvents[0].categoryId == nil, "category_id should allow null")
+  }
+
+  func test_dayEventsResponse_missingRequiredArrayFailsDecoding() throws {
+    let json = """
+    {"calendar_date":"2026-09-07","plan":[],"actual":[],
+     "created_at":"2026-09-07T10:00:00Z","updated_at":"2026-09-07T10:00:00Z"}
+    """.data(using: .utf8)!
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+
+    try assert((try? decoder.decode(DayEventsResponse.self, from: json)) == nil,
+      "Missing accepted_events and duplicate_client_event_ids must fail decoding")
+  }
+
+  func test_dayRecordsResponse_missingContainerFailsDecoding() throws {
+    let json = "{}".data(using: .utf8)!
+    try assert((try? JSONDecoder().decode(DayRecordsResponse.self, from: json)) == nil,
+      "Missing day_records and days must fail decoding")
+  }
+
   func test_dayEventEncodesIdempotencyAndAmendmentFields() throws {
     let event = DayEvent(
       clientEventId: "event-1",
@@ -317,6 +363,36 @@ final class WidgetStateStoreTests {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initialize()
     try h.assertNoSubmitEvents()
+  }
+
+  func test_invalidScheduleTime_doesNotSelectBlock() throws {
+    let block = PlannedBlock(categoryId: 1, startTime: "not-a-time", durationMinutes: 60)
+    try assert(TimeLogic.getCurrentPlannedBlock(at: Date(), from: [block]) == nil,
+      "Malformed schedule times must not be interpreted as midnight")
+  }
+
+  func test_invalidBootstrap_keepsStoreInitializing() async throws {
+    let invalidRecord = DayRecord(
+      calendarDate: Fixtures.today,
+      plan: [PlannedBlock(categoryId: 1, startTime: "not-a-time", durationMinutes: 60)],
+      createdAt: Fixtures.now,
+      updatedAt: Fixtures.now
+    )
+    let h = WidgetTestHarness(existingRecord: invalidRecord)
+    await h.initialize()
+    try assert(h.store.displayState == .initializing,
+      "A contract-breaking bootstrap must not activate the widget")
+    try assert(h.store.lastError != nil, "Bootstrap failure must be exposed")
+  }
+
+  func test_untrackedActualBlock_withoutCategoryIsValid() async throws {
+    let record = Fixtures.record(actual: [
+      Fixtures.actualBlock(categoryId: nil, blockType: "untracked", startTime: "04:00:00")
+    ])
+    let h = WidgetTestHarness(existingRecord: record)
+    await h.initialize()
+    try assert(h.store.displayState == .active,
+      "Untracked actual blocks are valid without a category")
   }
 
   func test_selectCategory_logsTransition() async throws {
@@ -411,6 +487,7 @@ final class WidgetStateStoreTests {
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     h.mock.resetCalls()
+    let initialEventTime = h.store.lastEventTime
 
     await h.store.dispatch(.adjustOffset(5))
     await h.store.dispatch(.adjustOffset(5))
@@ -418,6 +495,17 @@ final class WidgetStateStoreTests {
     try h.assertSubmitEventsCount(2)
     try h.assertSubmitEventDetails(index: 0, expectedType: "amendment", expectedIncomingId: nil)
     try h.assertSubmitEventDetails(index: 1, expectedType: "amendment", expectedIncomingId: nil)
+    let amendments = h.mock.submitEventsCalls.map { $0.events[0] }
+    try assertEqual(amendments[0].targetClientEventId, amendments[1].targetClientEventId)
+    let expectedCorrectedTime = initialEventTime.addingTimeInterval(-10 * 60)
+    try assert(
+      abs(amendments[1].correctedAt!.timeIntervalSince(expectedCorrectedTime)) < 2,
+      "Repeated offsets should apply cumulatively to the target event"
+    )
+    try assert(
+      amendments[1].occurredAt > amendments[0].occurredAt,
+      "Amendments should be ordered by submission time"
+    )
     try assert(h.store.offsetMinutes == 10, "Offset should accumulate to 10")
   }
 
@@ -428,6 +516,15 @@ final class WidgetStateStoreTests {
     await h.store.dispatch(.adjustOffset(5))
 
     try h.assertNoSubmitEvents()
+  }
+
+  func test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.record())
+    await h.initializeAndResetCalls()
+    let originalTime = h.store.lastEventTime
+    await h.store.dispatch(.adjustOffset(5))
+    try assertEqual(h.store.offsetMinutes, 0)
+    try assertEqual(h.store.lastEventTime, originalTime)
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -517,6 +614,24 @@ final class WidgetStateStoreTests {
 
     try h.assertSubmitEventsCount(1)
     // Store should handle error gracefully
+  }
+
+  func test_submitEventsThrows_rollsBackOptimisticTransition() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+    let originalCategory = h.store.currentCategory
+    h.mock.shouldThrowOnSubmitEvents = true
+
+    await h.store.dispatch(.selectCategory(Fixtures.categoryB))
+
+    try assertEqual(h.store.currentCategory?.id, originalCategory?.id)
+    try assert(h.store.lastError != nil, "Submission failure must be exposed")
+  }
+
+  func test_missingScheduleData_isNotOnSchedule() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.record())
+    await h.initialize()
+    try assert(!h.store.isOnSchedule, "Missing schedule data must not be presented as on schedule")
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -639,8 +754,14 @@ struct TestRunner {
     let testMethods: [(String, () async throws -> Void)] = [
       ("test_init_freshDay_createsRecord", { try await tests.test_init_freshDay_createsRecord() }),
       ("test_initResponse_decodesCurrentAPIShape", { try tests.test_initResponse_decodesCurrentAPIShape() }),
+      ("test_dayEventsResponse_decodesNullAcceptedEventCategory", { try tests.test_dayEventsResponse_decodesNullAcceptedEventCategory() }),
+      ("test_dayEventsResponse_missingRequiredArrayFailsDecoding", { try tests.test_dayEventsResponse_missingRequiredArrayFailsDecoding() }),
+      ("test_dayRecordsResponse_missingContainerFailsDecoding", { try tests.test_dayRecordsResponse_missingContainerFailsDecoding() }),
       ("test_dayEventEncodesIdempotencyAndAmendmentFields", { try tests.test_dayEventEncodesIdempotencyAndAmendmentFields() }),
       ("test_init_existingRecord_doesNotCreate", { try await tests.test_init_existingRecord_doesNotCreate() }),
+      ("test_invalidScheduleTime_doesNotSelectBlock", { try tests.test_invalidScheduleTime_doesNotSelectBlock() }),
+      ("test_invalidBootstrap_keepsStoreInitializing", { try await tests.test_invalidBootstrap_keepsStoreInitializing() }),
+      ("test_untrackedActualBlock_withoutCategoryIsValid", { try await tests.test_untrackedActualBlock_withoutCategoryIsValid() }),
       ("test_selectCategory_logsTransition", { try await tests.test_selectCategory_logsTransition() }),
       ("test_initialState_isInitializing", { try await tests.test_initialState_isInitializing() }),
       ("test_afterInitialize_isActive", { try await tests.test_afterInitialize_isActive() }),
@@ -651,12 +772,15 @@ struct TestRunner {
       ("test_adjustOffset_forward", { try await tests.test_adjustOffset_forward() }),
       ("test_adjustOffset_multipleAccumulate", { try await tests.test_adjustOffset_multipleAccumulate() }),
       ("test_adjustOffset_noCurrentCategory_noSubmit", { try await tests.test_adjustOffset_noCurrentCategory_noSubmit() }),
+      ("test_adjustOffset_withoutPersistedEvent_doesNotMutateContext", { try await tests.test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() }),
       ("test_returnToPlan_whenOffSchedule", { try await tests.test_returnToPlan_whenOffSchedule() }),
       ("test_returnToPlan_whenOnSchedule_noSubmit", { try await tests.test_returnToPlan_whenOnSchedule_noSubmit() }),
       ("test_returnToPlan_noPlannedCategory_noSubmit", { try await tests.test_returnToPlan_noPlannedCategory_noSubmit() }),
       ("test_flow_selectMultipleCategoriesInSequence", { try await tests.test_flow_selectMultipleCategoriesInSequence() }),
       ("test_flow_offsetThenSelectCategory", { try await tests.test_flow_offsetThenSelectCategory() }),
       ("test_submitEventsThrows_doesNotCrash", { try await tests.test_submitEventsThrows_doesNotCrash() }),
+      ("test_submitEventsThrows_rollsBackOptimisticTransition", { try await tests.test_submitEventsThrows_rollsBackOptimisticTransition() }),
+      ("test_missingScheduleData_isNotOnSchedule", { try await tests.test_missingScheduleData_isNotOnSchedule() }),
       ("test_stateTransition_initialToActive", { try await tests.test_stateTransition_initialToActive() }),
       ("test_selectCategory_inActive_staysActive", { try await tests.test_selectCategory_inActive_staysActive() }),
       ("test_submitEvents_useCorrectCalendarDate", { try await tests.test_submitEvents_useCorrectCalendarDate() }),

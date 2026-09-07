@@ -6,11 +6,20 @@ enum TimeFormats {
   static let timestamp = "yyyy-MM-dd'T'HH:mm:ssXXXXX"
 
   static func parseScheduleTime(_ value: String) -> Date? {
-    guard value.count == scheduleTime.count else { return nil }
+    guard value.count == scheduleTime.count else {
+      WidgetLogger.error(
+        "Invalid schedule time", context: ["value": value, "expected": scheduleTime])
+      return nil
+    }
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = scheduleTime
-    return formatter.date(from: value)
+    guard let date = formatter.date(from: value) else {
+      WidgetLogger.error(
+        "Invalid schedule time", context: ["value": value, "expected": scheduleTime])
+      return nil
+    }
+    return date
   }
 
   static func secondsSinceDayStart(_ value: String) -> Int? {

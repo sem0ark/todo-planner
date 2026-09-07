@@ -526,9 +526,10 @@ struct RightRailView: View {
       .foregroundColor(StyleTokens.secondaryText)
       .frame(maxWidth: .infinity)
       .padding(.vertical, 8)
+      .background(StyleTokens.baseVoid)
+      .contentShape(Rectangle())
     }
     .buttonStyle(PlainButtonStyle())
-    .background(StyleTokens.baseVoid)
     .overlay(
       Rectangle()
         .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
