@@ -22,8 +22,8 @@ func TestUserSettingsRepository_GetOrCreate(t *testing.T) {
 	if settings.UserID != user.ID {
 		t.Errorf("Expected UserID %d, got %d", user.ID, settings.UserID)
 	}
-	if settings.DayBoundaryTime != "04:00:00" {
-		t.Errorf("Expected default DayBoundaryTime '04:00:00', got '%s'", settings.DayBoundaryTime)
+	if settings.DayBoundaryTime != mustScheduleTime("04:00:00") {
+		t.Errorf("Expected default DayBoundaryTime '04:00:00', got '%v'", settings.DayBoundaryTime)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestUserSettingsRepository_Update(t *testing.T) {
 	}
 
 	// Act
-	newTime := "06:30:00"
+	newTime := mustScheduleTime("06:30:00")
 	updated, err := repo.Update(ctx, user.ID, newTime)
 
 	// Assert
@@ -70,7 +70,7 @@ func TestUserSettingsRepository_Update(t *testing.T) {
 		t.Fatalf("Update failed: %v", err)
 	}
 	if updated.DayBoundaryTime != newTime {
-		t.Errorf("Expected DayBoundaryTime '%s', got '%s'", newTime, updated.DayBoundaryTime)
+		t.Errorf("Expected DayBoundaryTime '%v', got '%v'", newTime, updated.DayBoundaryTime)
 	}
 	if updated.UserID != user.ID {
 		t.Errorf("Expected UserID %d, got %d", user.ID, updated.UserID)
@@ -85,7 +85,7 @@ func TestUserSettingsRepository_Update_BeforeCreate(t *testing.T) {
 	ctx := context.Background()
 
 	// Act
-	_, err := repo.Update(ctx, user.ID, "05:00:00")
+	_, err := repo.Update(ctx, user.ID, mustScheduleTime("05:00:00"))
 
 	// Assert
 	if err == nil {
@@ -104,8 +104,8 @@ func TestUserSettingsRepository_MultipleUsers(t *testing.T) {
 	// Act
 	settings1, _ := repo.GetOrCreate(ctx, user1.ID)
 	settings2, _ := repo.GetOrCreate(ctx, user2.ID)
-	repo.Update(ctx, user1.ID, "05:00:00")
-	repo.Update(ctx, user2.ID, "07:00:00")
+	repo.Update(ctx, user1.ID, mustScheduleTime("05:00:00"))
+	repo.Update(ctx, user2.ID, mustScheduleTime("07:00:00"))
 
 	updated1, err1 := repo.GetOrCreate(ctx, user1.ID)
 	updated2, err2 := repo.GetOrCreate(ctx, user2.ID)
@@ -117,10 +117,10 @@ func TestUserSettingsRepository_MultipleUsers(t *testing.T) {
 	if settings1.ID == settings2.ID {
 		t.Error("Expected different settings IDs for different users")
 	}
-	if updated1.DayBoundaryTime != "05:00:00" {
-		t.Errorf("User1: expected '05:00:00', got '%s'", updated1.DayBoundaryTime)
+	if updated1.DayBoundaryTime != mustScheduleTime("05:00:00") {
+		t.Errorf("User1: expected '05:00:00', got '%v'", updated1.DayBoundaryTime)
 	}
-	if updated2.DayBoundaryTime != "07:00:00" {
-		t.Errorf("User2: expected '07:00:00', got '%s'", updated2.DayBoundaryTime)
+	if updated2.DayBoundaryTime != mustScheduleTime("07:00:00") {
+		t.Errorf("User2: expected '07:00:00', got '%v'", updated2.DayBoundaryTime)
 	}
 }

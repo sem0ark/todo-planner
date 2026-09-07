@@ -267,49 +267,13 @@ func TestPutScheduleOverrideHandler_Success(t *testing.T) {
 
 	var response ScheduleOverride
 	json.NewDecoder(w.Body).Decode(&response)
-	if response.CalendarDate != tomorrow {
+	if response.CalendarDate != mustCalendarDate(tomorrow) {
 		t.Errorf("Expected date %s, got %s", tomorrow, response.CalendarDate)
 	}
 	if response.DayTemplateID == nil || *response.DayTemplateID != template.ID {
 		t.Error("Expected template ID to be set")
 	}
 }
-
-/* Legacy PUT-based override deletion was replaced by DELETE /schedule/overrides/{date}.
-func TestPutScheduleOverrideHandler_Delete(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	api := NewAPI(db, "test-secret", NewLogger("test"))
-	user := createTestUser(t, db, "testuser", "password123")
-
-	tomorrow := time.Now().AddDate(0, 0, 1).Format(DateFormat)
-
-	reqBody := ScheduleOverrideInput{
-		DayTemplateID: nil,
-	}
-	body, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPut, "/schedule/overrides/"+tomorrow, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-
-	ctx := withUserID(context.Background(), user.ID)
-	req = req.WithContext(ctx)
-	w := httptest.NewRecorder()
-
-	// Act
-	api.putScheduleOverrideHandler(w, req, tomorrow)
-
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	var response ScheduleOverride
-	json.NewDecoder(w.Body).Decode(&response)
-	if response.DayTemplateID != nil {
-		t.Error("Expected template ID to be nil (deleted)")
-	}
-}
-*/
 
 func TestPutScheduleOverrideHandler_InvalidDateFormat(t *testing.T) {
 	// Arrange

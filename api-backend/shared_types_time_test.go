@@ -20,7 +20,7 @@ func TestAPIScheduleTimeJSON(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			var value APIScheduleTime
+			var value ScheduleTime
 			err := json.Unmarshal([]byte(testCase.input), &value)
 			if (err != nil) != testCase.shouldErr {
 				t.Fatalf("unexpected error state: %v", err)
@@ -30,7 +30,7 @@ func TestAPIScheduleTimeJSON(t *testing.T) {
 }
 
 func TestAPIScheduleTimeMarshalJSON(t *testing.T) {
-	encoded, err := json.Marshal(APIScheduleTime("08:00:00"))
+	encoded, err := json.Marshal(mustScheduleTime("08:00:00"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -190,7 +190,7 @@ func TestEmptyListSerialization_DayRecordWithEmptyBlocks(t *testing.T) {
 	user := createTestUser(t, db, "testuser", "password123")
 
 	// Create a day record with no snapshot (no template assigned)
-	_, err := api.dayRecordRepo.Create(context.Background(), user.ID, "2026-07-08")
+	_, err := api.dayRecordRepo.Create(context.Background(), user.ID, mustCalendarDate("2026-07-08"))
 	if err != nil {
 		t.Fatalf("Failed to create day record: %v", err)
 	}

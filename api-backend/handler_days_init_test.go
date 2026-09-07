@@ -49,7 +49,7 @@ func TestInitCreatesAndLoadsDayRecord(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("failed to decode init response: %v", err)
 	}
-	if payload.DayRecord.CalendarDate != "2026-09-06" {
+	if payload.DayRecord.CalendarDate != mustCalendarDate("2026-09-06") {
 		t.Fatalf("expected initialized date, got %s", payload.DayRecord.CalendarDate)
 	}
 }

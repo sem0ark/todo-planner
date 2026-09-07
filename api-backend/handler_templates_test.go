@@ -14,7 +14,7 @@ func publicTemplateRequestForTest(input DayTemplateInput) dayTemplateRequest {
 	plan := make([]templatePlanRequest, 0, len(input.SnapshotBlocks))
 	for _, block := range input.SnapshotBlocks {
 		plan = append(plan, templatePlanRequest{CategoryID: block.CategoryID,
-			StartTime: APIScheduleTime(block.StartTime), DurationMinutes: block.DurationMinutes})
+			StartTime: formatScheduleTime(block.StartTime), DurationMinutes: block.DurationMinutes})
 	}
 	return dayTemplateRequest{Name: input.Name, TemplateGroupID: input.TemplateGroupID, Plan: &plan}
 }
@@ -75,7 +75,7 @@ func TestCreateDayTemplateHandler_Success(t *testing.T) {
 	reqBody := DayTemplateInput{
 		Name: "Weekday",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category.ID, StartTime: "09:00:00", DurationMinutes: 480},
+			{CategoryID: category.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 480},
 		},
 	}
 	body, _ := json.Marshal(publicTemplateRequestForTest(reqBody))
@@ -176,15 +176,15 @@ func TestUpdateDayTemplateHandler_Success(t *testing.T) {
 	template, _ := api.dayTemplateRepo.Create(context.Background(), DayTemplateInput{
 		Name: "Original",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category1.ID, StartTime: "09:00:00", DurationMinutes: 480},
+			{CategoryID: category1.ID, StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 480},
 		},
 	}, user.ID)
 
 	reqBody := DayTemplateInput{
 		Name: "Updated",
 		SnapshotBlocks: []SnapshotBlockInput{
-			{CategoryID: category2.ID, StartTime: "10:00:00", DurationMinutes: 240},
-			{CategoryID: category1.ID, StartTime: "14:00:00", DurationMinutes: 120},
+			{CategoryID: category2.ID, StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 240},
+			{CategoryID: category1.ID, StartTime: mustScheduleTime("14:00:00"), DurationMinutes: 120},
 		},
 	}
 	body, _ := json.Marshal(publicTemplateRequestForTest(reqBody))

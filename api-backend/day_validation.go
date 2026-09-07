@@ -17,7 +17,11 @@ var (
 	ErrInvalidBlockGranularity     = errors.New("blocks must use 15-minute increments and last at least 30 minutes")
 	ErrBlockExceedsDay             = errors.New("block must end by 24:00")
 	ErrActualBlocksOverlap         = errors.New("actual blocks must not overlap")
+	ErrInvalidDayDateRange         = errors.New("invalid date range")
+	ErrDeviceIDRequired            = errors.New("device_id is required")
 )
+
+const minutesPerDay = 24 * 60
 
 type DayRecordBlocksInput struct {
 	ActualBlocks []ActualBlockInput `json:"actual_blocks"`
@@ -28,10 +32,10 @@ type DayRecordTemplateInput struct {
 }
 
 type ActualBlockInput struct {
-	CategoryID      *int   `json:"category_id"`
-	BlockType       string `json:"block_type"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
+	CategoryID      *int         `json:"category_id"`
+	BlockType       string       `json:"block_type"`
+	StartTime       ScheduleTime `json:"-"`
+	DurationMinutes int          `json:"duration_minutes"`
 }
 
 func validateDayEvents(events []DayEventInput) error {
@@ -79,11 +83,10 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 		if block.BlockType == "blank" && block.CategoryID != nil {
 			return ErrBlankBlockCategoryForbidden
 		}
-		parsedTime, err := parseScheduleTime(block.StartTime)
-		if err != nil || parsedTime.Second() != 0 {
+		if block.StartTime.IsZero() || block.StartTime.Second() != 0 {
 			return ErrInvalidBlockStartTime
 		}
-		minuteOfDay := parsedTime.Hour()*60 + parsedTime.Minute()
+		minuteOfDay := block.StartTime.Hour()*60 + block.StartTime.Minute()
 		if minuteOfDay%15 != 0 || block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 {
 			return ErrInvalidBlockGranularity
 		}
@@ -96,6 +99,11 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 		previousEndMinute = minuteOfDay + block.DurationMinutes
 	}
 	return nil
+}
+
+func blockExceedsDay(startTime ScheduleTime, durationMinutes int) bool {
+	startMinute := startTime.Hour()*60 + startTime.Minute()
+	return startMinute+durationMinutes > minutesPerDay
 }
 
 func isValidCalendarDate(date string) bool {

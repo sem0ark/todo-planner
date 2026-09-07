@@ -18,7 +18,6 @@ type API struct {
 	dayTemplateRepo   *DayTemplateRepository
 	scheduleRepo      *ScheduleRepository
 	dayRecordRepo     *DayRecordRepository
-	dayService        *DayService
 }
 
 func NewAPI(db *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
@@ -35,7 +34,6 @@ func NewAPI(db *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
 		scheduleRepo:      NewScheduleRepository(db),
 		dayRecordRepo:     NewDayRecordRepository(db),
 	}
-	api.dayService = NewDayService(api.dayRecordRepo, api.categoryRepo)
 	return api
 }
 
