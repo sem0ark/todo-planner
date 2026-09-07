@@ -17,19 +17,12 @@ protocol TodoPlannerRepository: Sendable {
   func clearAuth() async throws
   func validateAuth() async throws -> Bool
 
-  // MARK: - Categories
-  func fetchCategories() async throws -> [Category]
-
-  // MARK: - Day Records
-  func fetchDayRecord(date: String) async throws -> DayRecord?
-  func createDayRecord(date: String) async throws -> DayRecord
-
-  // MARK: - Schedule
-  func fetchTodaySchedule() async throws -> TodaySchedule
+  // MARK: - Client Bootstrap
+  func initialize(calendarDate: String) async throws -> InitResponse
 
   // MARK: - Events & Reality Logging
-  /// Submits events and returns the updated state of actual blocks.
-  func submitEvents(dayRecordId: Int, events: [DayEvent]) async throws -> DayEventsResponse
+  /// Submits events for a calendar date and returns derived actual blocks.
+  func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse
 
   // MARK: - Sync & Persistence (For SQLite/Offline)
   func hasPendingSync() async -> Bool

@@ -45,11 +45,7 @@ func (api *API) getScheduleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	// Get weekly schedule
 	weeklySchedule, err := api.scheduleRepo.GetWeeklySchedule(r.Context(), userID)
@@ -70,8 +66,7 @@ func (api *API) getScheduleHandler(w http.ResponseWriter, r *http.Request) {
 		Overrides:      overrides,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // putWeeklyScheduleHandler replaces all 7 day-of-week assignments
@@ -81,11 +76,7 @@ func (api *API) putWeeklyScheduleHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input WeeklyScheduleInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -113,8 +104,7 @@ func (api *API) putWeeklyScheduleHandler(w http.ResponseWriter, r *http.Request)
 		WeeklySchedule: updated,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // putScheduleOverrideHandler sets or removes override for a specific date
@@ -124,11 +114,7 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	// Validate date format
 	parsedDate, err := parseCalendarDate(dateStr)
@@ -165,8 +151,7 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(override)
+	writeJSON(w, override)
 }
 
 func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Request, dateString string) {
@@ -174,11 +159,7 @@ func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Req
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	userID, authenticated := getUserID(r.Context())
-	if !authenticated {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 	parsedDate, err := parseCalendarDate(dateString)
 	if err != nil || parsedDate.Before(CalendarDate(time.Now().UTC().Truncate(24*time.Hour))) {
 		http.Error(w, "invalid date", http.StatusBadRequest)
@@ -193,5 +174,3 @@ func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Req
 	}
 	writeJSON(w, ScheduleOverrideDeleteResponse{CalendarDate: dateString, Deleted: true})
 }
-
-// scheduleHandler routes to the appropriate schedule handler based on path

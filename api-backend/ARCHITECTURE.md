@@ -107,11 +107,7 @@ A handler should authenticate through the route middleware, decode input, valida
 
 ```go
 func (api *API) getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
-    userID, authenticated := getUserID(r.Context())
-    if !authenticated {
-        http.Error(w, "unauthorized", http.StatusUnauthorized)
-        return
-    }
+    userID := userIDFromRequest(r)
 
     categories, err := api.categoryRepo.FindByUser(r.Context(), userID)
     if err != nil {
@@ -127,8 +123,7 @@ func (api *API) getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(CategoriesResponse{
+    writeJSON(CategoriesResponse{
         Categories: categories,
     })
 }

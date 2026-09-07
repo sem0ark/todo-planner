@@ -48,7 +48,7 @@ func TestGetTemplateGroupsHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.getTemplateGroupsHandler(w, req)
+	api.protectedHandler(api.getTemplateGroupsHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

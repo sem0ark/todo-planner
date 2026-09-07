@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
 )
 
@@ -87,14 +85,4 @@ func (api *API) getDay(responseWriter http.ResponseWriter, request *http.Request
 		return
 	}
 	writeJSON(responseWriter, toPublicDayRecord(record))
-}
-
-func writeJSON(responseWriter http.ResponseWriter, value interface{}) {
-	var encodedValue bytes.Buffer
-	if err := json.NewEncoder(&encodedValue).Encode(value); err != nil {
-		http.Error(responseWriter, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
-	responseWriter.Header().Set("Content-Type", "application/json")
-	_, _ = responseWriter.Write(encodedValue.Bytes())
 }

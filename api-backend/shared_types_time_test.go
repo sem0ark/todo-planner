@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestAPIScheduleTimeJSON(t *testing.T) {
@@ -36,6 +38,42 @@ func TestAPIScheduleTimeMarshalJSON(t *testing.T) {
 	}
 	if string(encoded) != `"08:00:00"` {
 		t.Fatalf("unexpected JSON: %s", encoded)
+	}
+}
+
+func TestScheduleTimeScanAcceptsPostgresTimeValues(t *testing.T) {
+	testCases := []struct {
+		name           string
+		databaseValue  any
+		expectedHour   int
+		expectedMinute int
+		expectedSecond int
+	}{
+		{
+			name:          "time.Time",
+			databaseValue: time.Date(0, time.January, 1, 4, 30, 15, 0, time.UTC),
+			expectedHour:  4, expectedMinute: 30, expectedSecond: 15,
+		},
+		{
+			name:          "pgtype.Time",
+			databaseValue: pgtype.Time{Microseconds: (4*60*60 + 30*60 + 15) * 1_000_000, Valid: true},
+			expectedHour:  4, expectedMinute: 30, expectedSecond: 15,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var scheduleTime ScheduleTime
+			err := scheduleTime.Scan(testCase.databaseValue)
+			if err != nil {
+				t.Fatalf("expected database time to scan: %v", err)
+			}
+			if scheduleTime.Hour() != testCase.expectedHour ||
+				scheduleTime.Minute() != testCase.expectedMinute ||
+				scheduleTime.Second() != testCase.expectedSecond {
+				t.Fatalf("unexpected schedule time: %02d:%02d:%02d", scheduleTime.Hour(), scheduleTime.Minute(), scheduleTime.Second())
+			}
+		})
 	}
 }
 

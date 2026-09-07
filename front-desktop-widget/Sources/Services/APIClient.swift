@@ -16,8 +16,10 @@ final class APIClient: @unchecked Sendable {
   private var authToken: String?
   private let tokenKey = "com.todoplanner.widget.jwt_token"
   private let deviceKey = "com.todoplanner.widget.device_id"
-  private var initializedDay: InitResponse?
+  private var initializationCache: [String: InitResponse] = [:]
   private var deviceId: Int?
+
+  var currentDeviceId: Int { deviceId ?? 0 }
 
   private init() {
     // Load API_BASE_URL from build configuration (set via Makefile)
@@ -39,11 +41,17 @@ final class APIClient: @unchecked Sendable {
 
   func setAuthToken(_ token: String) {
     self.authToken = token
+    self.deviceId = nil
+    self.initializationCache.removeAll()
+    UserDefaults.standard.removeObject(forKey: deviceKey)
     saveTokenToAppData(token)
   }
 
   func clearAuthToken() {
     self.authToken = nil
+    self.deviceId = nil
+    self.initializationCache.removeAll()
+    UserDefaults.standard.removeObject(forKey: deviceKey)
     deleteTokenFromAppData()
   }
 
@@ -73,7 +81,7 @@ final class APIClient: @unchecked Sendable {
 
   // MARK: - Token Validation
 
-  /// Validates if the current token is still valid by making a test API call
+  /// Validates if the current token is still valid by checking device registration
   func validateToken() async -> Bool {
     guard authToken != nil else {
       print("[AUTH] No token to validate")
@@ -81,8 +89,8 @@ final class APIClient: @unchecked Sendable {
     }
 
     do {
-      // Try to fetch categories as a validation check
-      _ = try await fetchCategories()
+      // Validate by attempting device registration or init
+      _ = try await registerDeviceIfNeeded()
       print("[OK] Token is valid")
       return true
     } catch APIError.unauthorized {
@@ -144,9 +152,8 @@ final class APIClient: @unchecked Sendable {
 
       print("[IN] Response status: \(httpResponse.statusCode)")
 
-      if let responseString = String(data: data, encoding: .utf8) {
-        print("[IN] Response body: \(responseString)")
-      }
+      let responseString = String(data: data, encoding: .utf8) ?? ""
+      print("[IN] Response body (\(data.count) bytes): '\(responseString)'")
 
       switch httpResponse.statusCode {
       case 200...299:
@@ -190,24 +197,34 @@ final class APIClient: @unchecked Sendable {
     }
   }
 
-  func fetchCategories() async throws -> [Category] {
-    let response: CategoriesResponse = try await makeRequest(endpoint: "/categories")
-    return response.categories
-  }
-
   func initialize(calendarDate: String) async throws -> InitResponse {
+    if let cachedResponse = initializationCache[calendarDate] {
+      return cachedResponse
+    }
     let currentDeviceId = try await registerDeviceIfNeeded()
     struct InitRequest: Encodable {
       let device_id: Int
       let calendar_date: String
     }
 
-    let response: InitResponse = try await makeRequest(
-      endpoint: "/init",
-      method: "POST",
-      body: InitRequest(device_id: currentDeviceId, calendar_date: calendarDate)
-    )
-    initializedDay = response
+    let response: InitResponse
+    do {
+      response = try await makeRequest(
+        endpoint: "/init",
+        method: "POST",
+        body: InitRequest(device_id: currentDeviceId, calendar_date: calendarDate)
+      )
+    } catch APIError.serverError(404, let message) where message.contains("device not found") {
+      deviceId = nil
+      UserDefaults.standard.removeObject(forKey: deviceKey)
+      let replacementDeviceId = try await registerDeviceIfNeeded()
+      response = try await makeRequest(
+        endpoint: "/init",
+        method: "POST",
+        body: InitRequest(device_id: replacementDeviceId, calendar_date: calendarDate)
+      )
+    }
+    initializationCache[calendarDate] = response
     return response
   }
 
@@ -225,29 +242,11 @@ final class APIClient: @unchecked Sendable {
     return registration.deviceId
   }
 
-  func fetchDayRecords(from: String, to: String) async throws -> [DayRecord] {
-    let response: DayRecordsResponse = try await makeRequest(
-      endpoint: "/days?from=\(from)&to=\(to)"
-    )
-    return response.dayRecords
-  }
-
-  func createDayRecord(date: String) async throws -> DayRecord {
-    return try await makeRequest(
-      endpoint: "/days/\(date)", method: "POST"
-    )
-  }
-
-  func fetchDay(date: String) async throws -> DayRecord {
-    return try await makeRequest(endpoint: "/days/\(date)")
-  }
-
   func postDayEvents(
     date: String,
-    deviceId: Int,
     events: [DayEvent]
   ) async throws -> DayEventsResponse {
-    let request = DayEventsRequest(deviceId: deviceId, events: events)
+    let request = DayEventsRequest(deviceId: try await registerDeviceIfNeeded(), events: events)
     return try await makeRequest(
       endpoint: "/days/\(date)/events",
       method: "POST",
@@ -255,30 +254,4 @@ final class APIClient: @unchecked Sendable {
     )
   }
 
-  func postCurrentDayEvents(events: [DayEvent]) async throws -> DayEventsResponse {
-    guard let initializedDay else { throw APIError.invalidResponse }
-    let currentDeviceId = try await registerDeviceIfNeeded()
-    let request = DayEventsRequest(deviceId: currentDeviceId, events: events)
-    return try await makeRequest(
-      endpoint: "/days/\(initializedDay.dayRecord.calendarDate)/events",
-      method: "POST",
-      body: request
-    )
-  }
-
-  // Kept for the offline repository's sync queue. The server identifies the
-  // day by date, so the cached /init response supplies the current date.
-  func postDayEvents(dayRecordId: Int, events: [DayEvent]) async throws -> DayEventsResponse {
-    _ = dayRecordId
-    return try await postCurrentDayEvents(events: events)
-  }
-
-  func fetchTodaySchedule() async throws -> TodaySchedule {
-    let day = try await fetchDay(date: DateFormatter.yyyyMMdd.string(from: Date()))
-    return TodaySchedule(
-      calendarDate: day.calendarDate,
-      dayTemplateId: day.dayTemplateId,
-      template: nil
-    )
-  }
 }

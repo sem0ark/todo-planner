@@ -19,11 +19,7 @@ func (api *API) deleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input DeleteAccountInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -56,6 +52,5 @@ func (api *API) deleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 		"user_id": userID,
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(DeleteAccountResponse{Deleted: true})
+	writeJSON(w, DeleteAccountResponse{Deleted: true})
 }

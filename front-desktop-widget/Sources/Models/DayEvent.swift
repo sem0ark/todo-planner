@@ -3,7 +3,7 @@ import Foundation
 struct DayEvent: Codable {
   let clientEventId: String
   let eventType: String  // "confirmation" | "transition"
-  let categoryId: Int
+  let categoryId: Int?
   let occurredAt: Date
   let targetClientEventId: String?
   let correctedAt: Date?
@@ -20,7 +20,7 @@ struct DayEvent: Codable {
   init(
     clientEventId: String = UUID().uuidString,
     eventType: String,
-    categoryId: Int,
+    categoryId: Int?,
     occurredAt: Date,
     targetClientEventId: String? = nil,
     correctedAt: Date? = nil
@@ -49,29 +49,56 @@ struct DayEventsRequest: Codable {
   }
 }
 
-struct DayEventsResponse: Codable {
+struct DayEventsResponse: Decodable {
   let acceptedEvents: [AcceptedEvent]
   let duplicateClientEventIds: [String]
-  let actualBlocks: [ActualBlock]
-  let createdEvents: [CreatedEvent]
+  let calendarDate: String
+  let dayTemplateId: Int?
+  let plan: [PlannedBlock]
+  let actual: [ActualBlock]
+  let createdAt: Date
+  let updatedAt: Date
 
   enum CodingKeys: String, CodingKey {
     case acceptedEvents = "accepted_events"
     case duplicateClientEventIds = "duplicate_client_event_ids"
-    case createdEvents = "created_events"
-    case actualBlocks = "actual_blocks"
+    case calendarDate = "calendar_date"
+    case dayTemplateId = "day_template_id"
+    case plan, actual
+    case createdAt = "created_at"
+    case updatedAt = "updated_at"
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    acceptedEvents =
+      try container.decodeIfPresent([AcceptedEvent].self, forKey: .acceptedEvents) ?? []
+    duplicateClientEventIds =
+      try container.decodeIfPresent([String].self, forKey: .duplicateClientEventIds) ?? []
+    calendarDate = try container.decode(String.self, forKey: .calendarDate)
+    dayTemplateId = try container.decodeIfPresent(Int.self, forKey: .dayTemplateId)
+    plan = try container.decodeIfPresent([PlannedBlock].self, forKey: .plan) ?? []
+    actual = try container.decodeIfPresent([ActualBlock].self, forKey: .actual) ?? []
+    createdAt = try container.decode(Date.self, forKey: .createdAt)
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
   }
 
   init(
     acceptedEvents: [AcceptedEvent] = [],
     duplicateClientEventIds: [String] = [],
-    createdEvents: [CreatedEvent] = [],
-    actualBlocks: [ActualBlock]
+    calendarDate: String = "",
+    dayTemplateId: Int? = nil,
+    plan: [PlannedBlock] = [], actual: [ActualBlock] = [],
+    createdAt: Date = Date(), updatedAt: Date = Date()
   ) {
     self.acceptedEvents = acceptedEvents
     self.duplicateClientEventIds = duplicateClientEventIds
-    self.createdEvents = createdEvents
-    self.actualBlocks = actualBlocks
+    self.calendarDate = calendarDate
+    self.dayTemplateId = dayTemplateId
+    self.plan = plan
+    self.actual = actual
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
   }
 }
 
@@ -82,20 +109,6 @@ struct AcceptedEvent: Codable {
   let occurredAt: Date
   enum CodingKeys: String, CodingKey {
     case clientEventId = "client_event_id"
-    case eventType = "event_type"
-    case categoryId = "category_id"
-    case occurredAt = "occurred_at"
-  }
-}
-
-struct CreatedEvent: Codable {
-  let id: Int
-  let eventType: String
-  let categoryId: Int
-  let occurredAt: Date
-
-  enum CodingKeys: String, CodingKey {
-    case id
     case eventType = "event_type"
     case categoryId = "category_id"
     case occurredAt = "occurred_at"

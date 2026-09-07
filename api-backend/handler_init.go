@@ -24,11 +24,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		http.Error(responseWriter, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	userID, authenticated := getUserID(request.Context())
-	if !authenticated {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(request)
 	var input initRequest
 	if json.NewDecoder(request.Body).Decode(&input) != nil || input.DeviceID <= 0 || !isValidCalendarDate(input.CalendarDate) {
 		http.Error(responseWriter, "invalid date", http.StatusBadRequest)

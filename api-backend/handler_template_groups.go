@@ -35,11 +35,7 @@ type TemplateGroupDeleteResponse struct {
 }
 
 func (api *API) getTemplateGroupsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	groups, err := api.templateGroupRepo.FindByUser(r.Context(), userID)
 	if err != nil {
@@ -47,16 +43,11 @@ func (api *API) getTemplateGroupsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TemplateGroupsResponse{Groups: toPublicTemplateGroups(groups)})
+	writeJSON(w, TemplateGroupsResponse{Groups: toPublicTemplateGroups(groups)})
 }
 
 func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input TemplateGroupInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -77,17 +68,12 @@ func (api *API) createTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(toPublicTemplateGroup(*group))
+	writeJSON(w, toPublicTemplateGroup(*group))
 }
 
 func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input TemplateGroupInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -111,16 +97,11 @@ func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(toPublicTemplateGroup(*group))
+	writeJSON(w, toPublicTemplateGroup(*group))
 }
 
 func (api *API) deleteTemplateGroupHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	err := api.templateGroupRepo.Delete(r.Context(), id, userID)
 	if err != nil {
@@ -131,6 +112,5 @@ func (api *API) deleteTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TemplateGroupDeleteResponse{Deleted: true, ID: id})
+	writeJSON(w, TemplateGroupDeleteResponse{Deleted: true, ID: id})
 }

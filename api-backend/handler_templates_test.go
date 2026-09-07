@@ -57,7 +57,7 @@ func TestGetDayTemplatesHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.getDayTemplatesHandler(w, req)
+	api.protectedHandler(api.getDayTemplatesHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

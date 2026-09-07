@@ -11,6 +11,7 @@ import (
 
 var ErrInvalidWeeklySchedule = NewBadRequestError("invalid weekly schedule")
 var ErrScheduleOverrideNotFound = NewNotFoundError("schedule override not found")
+var ErrIncompleteWeeklySchedule = NewAppError(500, "incomplete weekly schedule")
 
 type ScheduleRepository struct {
 	db *pgxpool.Pool
@@ -66,20 +67,17 @@ func (r *ScheduleRepository) GetWeeklySchedule(ctx context.Context, userID int) 
 		existing[ws.DayOfWeek] = ws
 	}
 
-	// Ensure all 7 days are present
-	result := make([]WeeklySchedule, 7)
-	for i := 0; i < 7; i++ {
-		if ws, ok := existing[i]; ok {
-			result[i] = ws
-		} else {
-			result[i] = WeeklySchedule{
-				UserID:        userID,
-				DayOfWeek:     i,
-				DayTemplateID: nil,
-			}
-		}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(existing) != 7 {
+		return nil, fmt.Errorf("%w: expected 7 entries, got %d", ErrIncompleteWeeklySchedule, len(existing))
 	}
 
+	result := make([]WeeklySchedule, 0, len(existing))
+	for dayOfWeek := 0; dayOfWeek < 7; dayOfWeek++ {
+		result = append(result, existing[dayOfWeek])
+	}
 	return result, nil
 }
 

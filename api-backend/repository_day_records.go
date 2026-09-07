@@ -341,6 +341,9 @@ func (r *DayRecordRepository) resolveTemplateForDate(ctx context.Context, userID
 	if err == nil {
 		return templateID, nil
 	}
+	if err != pgx.ErrNoRows {
+		return nil, err
+	}
 
 	// Fall back to weekly schedule
 	// Convert date to day of week (0=Monday, 6=Sunday)
@@ -352,8 +355,11 @@ func (r *DayRecordRepository) resolveTemplateForDate(ctx context.Context, userID
 		SELECT day_template_id FROM weekly_schedule
 		WHERE user_id = $1 AND day_of_week = $2
 	`, userID, dayOfWeek).Scan(&templateID)
-	if err != nil {
+	if err == pgx.ErrNoRows {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return templateID, nil
@@ -369,8 +375,11 @@ func (r *DayRecordRepository) getLatestSnapshot(ctx context.Context, templateID 
 		ORDER BY snapshotted_at DESC
 		LIMIT 1
 	`, templateID).Scan(&snapshot.ID, &snapshot.DayTemplateID, &snapshot.UserID, &snapshot.SnapshottedAt)
-	if err != nil {
+	if err == pgx.ErrNoRows {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return &snapshot, nil
@@ -717,21 +726,22 @@ func getDayResolutionWindow(ctx context.Context, transaction pgx.Tx, dayRecordID
 		return time.Time{}, time.Time{}, false, err
 	}
 
-	boundaryClock := "04:00:00"
+	var boundaryClock ScheduleTime
 	settingsError := transaction.QueryRow(ctx, `
 		SELECT day_boundary_time
 		FROM user_settings
 		WHERE user_id = $1
 	`, userID).Scan(&boundaryClock)
-	if settingsError != nil && settingsError != pgx.ErrNoRows {
-		return time.Time{}, time.Time{}, false, settingsError
+	if settingsError != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf(
+			"failed to load day boundary time for user %d: %w",
+			userID,
+			settingsError,
+		)
 	}
 
 	date := calendarDate
-	clock, err := parseScheduleTime(boundaryClock)
-	if err != nil {
-		return time.Time{}, time.Time{}, false, err
-	}
+	clock := boundaryClock
 	boundaryStart := time.Date(date.Year(), date.Month(), date.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
 	boundaryEnd := boundaryStart.AddDate(0, 0, 1)
 	currentTrackingDate := CalendarDate(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC))

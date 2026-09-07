@@ -48,7 +48,7 @@ func TestGetScheduleHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.getScheduleHandler(w, req)
+	api.protectedHandler(api.getScheduleHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {
@@ -229,7 +229,7 @@ func TestPutWeeklyScheduleHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.putWeeklyScheduleHandler(w, req)
+	api.protectedHandler(api.putWeeklyScheduleHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {
@@ -348,7 +348,9 @@ func TestPutScheduleOverrideHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.putScheduleOverrideHandler(w, req, tomorrow)
+	api.protectedHandler(func(responseWriter http.ResponseWriter, request *http.Request) {
+		api.putScheduleOverrideHandler(responseWriter, request, tomorrow)
+	})(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

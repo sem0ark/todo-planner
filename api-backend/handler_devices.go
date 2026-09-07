@@ -21,11 +21,7 @@ func (api *API) registerDeviceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input DeviceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -65,7 +61,5 @@ func (api *API) registerDeviceHandler(w http.ResponseWriter, r *http.Request) {
 		RegisteredAt: device.RegisteredAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }

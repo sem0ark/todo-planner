@@ -48,7 +48,7 @@ func TestGetCategoriesHandler_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Act
-	api.getCategoriesHandler(w, req)
+	api.protectedHandler(api.getCategoriesHandler)(w, req)
 
 	// Assert
 	if w.Code != http.StatusUnauthorized {

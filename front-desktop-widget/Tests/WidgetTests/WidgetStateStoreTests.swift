@@ -30,19 +30,15 @@ func assertEqual<T: Equatable>(_ lhs: T, _ rhs: T) throws {
 // ═══════════════════════════════════════════════════════════════════
 
 enum RecordedCall: CustomStringConvertible {
-  case fetchCategories
-  case fetchDayRecord(date: String)
-  case createDayRecord(date: String)
-  case submitEvents(dayRecordId: Int, events: [DayEvent])
+  case initialize(date: String)
+  case submitEvents(calendarDate: String, events: [DayEvent])
 
   var description: String {
     switch self {
-    case .fetchCategories: return "fetchCategories"
-    case .fetchDayRecord(let d): return "fetchDayRecord(\(d))"
-    case .createDayRecord(let d): return "createDayRecord(\(d))"
-    case .submitEvents(let id, let e):
+    case .initialize(let date): return "initialize(\(date))"
+    case .submitEvents(let date, let e):
       let types = e.map(\.eventType).joined(separator: ",")
-      return "submitEvents(record:\(id), types:[\(types)])"
+      return "submitEvents(date:\(date), types:[\(types)])"
     }
   }
 }
@@ -62,10 +58,10 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
 
   func resetCalls() { calls.removeAll() }
 
-  var submitEventsCalls: [(dayRecordId: Int, events: [DayEvent])] {
+  var submitEventsCalls: [(calendarDate: String, events: [DayEvent])] {
     calls.compactMap {
-      guard case .submitEvents(let id, let events) = $0 else { return nil }
-      return (id, events)
+      guard case .submitEvents(let date, let events) = $0 else { return nil }
+      return (date, events)
     }
   }
 
@@ -74,35 +70,33 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
   func clearAuth() async throws {}
   func validateAuth() async throws -> Bool { true }
 
-  func fetchCategories() async throws -> [Category] {
-    calls.append(.fetchCategories)
-    return stubbedCategories
+  func initialize(calendarDate: String) async throws -> InitResponse {
+    calls.append(.initialize(date: calendarDate))
+    let dayRecord: DayRecord
+    if let existingRecord = stubbedDayRecord {
+      dayRecord = existingRecord
+    } else if let createdRecord = stubbedCreatedRecord {
+      dayRecord = createdRecord
+    } else {
+      throw StorageError.notFound
+    }
+    return InitResponse(
+      settings: UserSettings(dayBoundaryTime: "04:00:00", updatedAt: Fixtures.now),
+      categories: stubbedCategories,
+      dayRecord: dayRecord
+    )
   }
 
-  func fetchDayRecord(date: String) async throws -> DayRecord? {
-    calls.append(.fetchDayRecord(date: date))
-    return stubbedDayRecord
-  }
-
-  func createDayRecord(date: String) async throws -> DayRecord {
-    calls.append(.createDayRecord(date: date))
-    guard let record = stubbedCreatedRecord else { throw StorageError.notFound }
-    return record
-  }
-
-  func submitEvents(dayRecordId: Int, events: [DayEvent]) async throws -> DayEventsResponse {
-    calls.append(.submitEvents(dayRecordId: dayRecordId, events: events))
+  func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse {
+    calls.append(.submitEvents(calendarDate: calendarDate, events: events))
     if shouldThrowOnSubmitEvents {
       throw NSError(domain: "MockError", code: 1, userInfo: nil)
     }
-    return stubbedEventsResponse ?? DayEventsResponse(createdEvents: [], actualBlocks: [])
+    return stubbedEventsResponse ?? DayEventsResponse()
   }
 
   func hasPendingSync() async -> Bool { false }
   func synchronize() async throws {}
-  func fetchTodaySchedule() async throws -> TodaySchedule {
-    TodaySchedule(calendarDate: Fixtures.today, dayTemplateId: nil, template: nil)
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -130,18 +124,18 @@ enum Fixtures {
     durationMinutes: Int = 60
   ) -> PlannedBlock {
     let comps = Calendar.current.dateComponents([.hour], from: Date())
-    let start = String(format: "%02d:00", comps.hour ?? 0)
-    return PlannedBlock(id: id, categoryId: categoryId, startTime: start, durationMinutes: durationMinutes)
+    let start = String(format: "%02d:00:00", comps.hour ?? 0)
+    return PlannedBlock(categoryId: categoryId, startTime: start, durationMinutes: durationMinutes)
   }
 
   static func actualBlock(
     id: Int = 1,
     categoryId: Int? = 1,
     blockType: String = "actual",
-    startTime: String = "08:00",
+     startTime: String = "08:00:00",
     durationMinutes: Int = 60
   ) -> ActualBlock {
-    ActualBlock(id: id, categoryId: categoryId, blockType: blockType, startTime: startTime, durationMinutes: durationMinutes)
+    ActualBlock(categoryId: categoryId, blockType: blockType, startTime: startTime, durationMinutes: durationMinutes)
   }
 
   static var today: String {
@@ -150,22 +144,21 @@ enum Fixtures {
 
   static func record(
     id: Int = 1,
-    actualBlocks: [ActualBlock] = []
+    actual: [ActualBlock] = []
   ) -> DayRecord {
     DayRecord(
-      id: id, calendarDate: today,
-      reviewStatus: "Unreviewed",
-      actualBlocks: actualBlocks,
+      calendarDate: today,
+      actual: actual,
       createdAt: Date(), updatedAt: Date()
     )
   }
 
   static func recordWithCurrentBlock(categoryId: Int = 1) -> DayRecord {
-    record(actualBlocks: [actualBlock(categoryId: categoryId)])
+    record(actual: [actualBlock(categoryId: categoryId)])
   }
 
   static func eventsResponse(blocks: [ActualBlock] = []) -> DayEventsResponse {
-    DayEventsResponse(createdEvents: [], actualBlocks: blocks)
+    DayEventsResponse(calendarDate: today, actual: blocks)
   }
 }
 
@@ -222,14 +215,14 @@ final class WidgetTestHarness {
     index: Int,
     expectedType: String,
     expectedIncomingId: Int?,
-    dayRecordId: Int? = nil
+    calendarDate: String? = nil
   ) throws {
     let calls = mock.submitEventsCalls
     guard index < calls.count else {
       throw AssertionError.failed("submitEvents call at index \(index) not found (total: \(calls.count))")
     }
 
-    let (recordId, events) = calls[index]
+    let (date, events) = calls[index]
     guard let event = events.first else {
       throw AssertionError.failed("submitEvents[\(index)] has no events")
     }
@@ -237,8 +230,8 @@ final class WidgetTestHarness {
     try assertEqual(event.eventType, expectedType)
     try assertEqual(event.categoryId, expectedIncomingId)
 
-    if let expectedRecordId = dayRecordId {
-      try assertEqual(recordId, expectedRecordId)
+    if let expectedDate = calendarDate {
+      try assertEqual(date, expectedDate)
     }
   }
 }
@@ -253,29 +246,25 @@ final class WidgetStateStoreTests {
     let json = """
     {
       "settings": {
-        "day_boundary_time": "04:00",
+        "day_boundary_time": "04:00:00",
         "updated_at": "2026-09-06T14:30:00Z"
       },
       "categories": [],
       "day_record": {
         "calendar_date": "2026-09-06",
         "day_template_id": 5,
-        "snapshot": {
-          "snapshot_id": 12,
-          "snapshotted_at": "2026-09-01T10:00:00Z",
-          "blocks": [
+        "plan": [
             {
               "category_id": 3,
-              "start_time": "08:00",
+              "start_time": "08:00:00",
               "duration_minutes": 60
             }
-          ]
-        },
-        "actual_blocks": [
+          ],
+        "actual": [
           {
             "category_id": 3,
             "block_type": "actual",
-            "start_time": "08:05",
+             "start_time": "08:05:00",
             "duration_minutes": 55,
             "is_open": false
           }
@@ -290,11 +279,10 @@ final class WidgetStateStoreTests {
 
     let response = try decoder.decode(InitResponse.self, from: json)
 
-    try assertEqual(response.settings.dayBoundaryTime, "04:00")
+    try assertEqual(response.settings.dayBoundaryTime, "04:00:00")
     try assertEqual(response.dayRecord.calendarDate, "2026-09-06")
-    try assertEqual(response.dayRecord.snapshotId, 12)
-    try assertEqual(response.dayRecord.snapshotBlocks[0].startTime, "08:00")
-    try assertEqual(response.dayRecord.actualBlocks[0].isOpen, false)
+    try assertEqual(response.dayRecord.plan[0].startTime, "08:00:00")
+    try assertEqual(response.dayRecord.actual[0].isOpen, false)
   }
 
   func test_dayEventEncodesIdempotencyAndAmendmentFields() throws {
@@ -321,9 +309,7 @@ final class WidgetStateStoreTests {
     let newRecord = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: nil, createdRecord: newRecord)
     await h.initialize()
-    try h.assertContainsCall { if case .fetchCategories = $0 { return true }; return false }
-    try h.assertContainsCall { if case .fetchDayRecord = $0 { return true }; return false }
-    try h.assertContainsCall { if case .createDayRecord = $0 { return true }; return false }
+    try h.assertContainsCall { if case .initialize = $0 { return true }; return false }
     try h.assertNoSubmitEvents()
   }
 
@@ -340,8 +326,8 @@ final class WidgetStateStoreTests {
     try h.assertSubmitEventsCount(1)
     try h.assertSubmitEventDetails(
       index: 0,
-      expectedType: "transition",
-      expectedIncomingId: Fixtures.categoryA.id,
+       expectedType: "transition",
+       expectedIncomingId: Fixtures.categoryA.id,
     )
   }
 
@@ -362,15 +348,11 @@ final class WidgetStateStoreTests {
 
     await h.store.reload()
 
-    let categoryFetchCount = h.mock.calls.reduce(into: 0) { count, call in
-      if case .fetchCategories = call { count += 1 }
-    }
-    let dayRecordFetchCount = h.mock.calls.reduce(into: 0) { count, call in
-      if case .fetchDayRecord = call { count += 1 }
+    let initializationCount = h.mock.calls.reduce(into: 0) { count, call in
+      if case .initialize = call { count += 1 }
     }
 
-    try assertEqual(categoryFetchCount, 2)
-    try assertEqual(dayRecordFetchCount, 2)
+    try assertEqual(initializationCount, 2)
     try assert(h.store.displayState == .active, "After reload, state should be active")
   }
 
@@ -405,8 +387,8 @@ final class WidgetStateStoreTests {
     try h.assertSubmitEventsCount(1)
     try h.assertSubmitEventDetails(
       index: 0,
-      expectedType: "transition",
-      expectedIncomingId: Fixtures.categoryA.id,
+       expectedType: "amendment",
+       expectedIncomingId: nil,
     )
     let expectedTime = beforeAdjust.addingTimeInterval(-5 * 60)
     try assert(abs(h.store.lastEventTime.timeIntervalSince(expectedTime)) < 2, "Offset time should be retroactive")
@@ -434,8 +416,8 @@ final class WidgetStateStoreTests {
     await h.store.dispatch(.adjustOffset(5))
 
     try h.assertSubmitEventsCount(2)
-    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
-    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(index: 0, expectedType: "amendment", expectedIncomingId: nil)
+    try h.assertSubmitEventDetails(index: 1, expectedType: "amendment", expectedIncomingId: nil)
     try assert(h.store.offsetMinutes == 10, "Offset should accumulate to 10")
   }
 
@@ -503,7 +485,7 @@ final class WidgetStateStoreTests {
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
 
     try h.assertSubmitEventsCount(3)
-    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+     try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
     try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
     try h.assertSubmitEventDetails(index: 2, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
   }
@@ -518,7 +500,7 @@ final class WidgetStateStoreTests {
     await h.store.dispatch(.selectCategory(Fixtures.categoryB))
 
     try h.assertSubmitEventsCount(2)
-    try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+     try h.assertSubmitEventDetails(index: 0, expectedType: "amendment", expectedIncomingId: nil)
     try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
   }
 
@@ -559,12 +541,11 @@ final class WidgetStateStoreTests {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Group 9: Event Validation — Day Record ID
+  // Group 9: Event Validation — Calendar Date
   // ─────────────────────────────────────────────────────────────
 
-  func test_submitEvents_useCorrectDayRecordId() async throws {
-    let recordId = 42
-    let record = Fixtures.record(id: recordId, actualBlocks: [Fixtures.actualBlock()])
+  func test_submitEvents_useCorrectCalendarDate() async throws {
+    let record = Fixtures.record(actual: [Fixtures.actualBlock()])
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
 
@@ -572,7 +553,7 @@ final class WidgetStateStoreTests {
 
     let calls = h.mock.submitEventsCalls
     try assert(calls.count > 0, "Should have submitEvents calls")
-    try assertEqual(calls.first?.dayRecordId, recordId)
+    try assertEqual(calls.first?.calendarDate, record.calendarDate)
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -611,9 +592,8 @@ final class WidgetStateStoreTests {
   // Group 11: Event Validation — All Fields Correct
   // ─────────────────────────────────────────────────────────────
 
-  func test_submitEventsCall_usesCorrectRecordIdAndEventSequence() async throws {
-    let recordId = 123
-    let record = Fixtures.record(id: recordId, actualBlocks: [Fixtures.actualBlock(categoryId: Fixtures.categoryA.id)])
+  func test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() async throws {
+    let record = Fixtures.record(actual: [Fixtures.actualBlock(categoryId: Fixtures.categoryA.id)])
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
 
@@ -624,14 +604,14 @@ final class WidgetStateStoreTests {
     try assert(calls.count == 2, "Should have 2 submitEvents calls")
 
     // Verify first call
-    let (id1, events1) = calls[0]
-    try assertEqual(id1, recordId)
+    let (date1, events1) = calls[0]
+    try assertEqual(date1, record.calendarDate)
     try assertEqual(events1.count, 1)
     try assertEqual(events1[0].categoryId, Fixtures.categoryA.id)
 
     // Verify second call
-    let (id2, events2) = calls[1]
-    try assertEqual(id2, recordId)
+    let (date2, events2) = calls[1]
+    try assertEqual(date2, record.calendarDate)
     try assertEqual(events2.count, 1)
     try assertEqual(events2[0].categoryId, Fixtures.categoryB.id)
   }
@@ -679,10 +659,10 @@ struct TestRunner {
       ("test_submitEventsThrows_doesNotCrash", { try await tests.test_submitEventsThrows_doesNotCrash() }),
       ("test_stateTransition_initialToActive", { try await tests.test_stateTransition_initialToActive() }),
       ("test_selectCategory_inActive_staysActive", { try await tests.test_selectCategory_inActive_staysActive() }),
-      ("test_submitEvents_useCorrectDayRecordId", { try await tests.test_submitEvents_useCorrectDayRecordId() }),
+      ("test_submitEvents_useCorrectCalendarDate", { try await tests.test_submitEvents_useCorrectCalendarDate() }),
       ("test_transitionEvent_populatesEventFields", { try await tests.test_transitionEvent_populatesEventFields() }),
       ("test_confirmationEvent_populatesEventFields", { try await tests.test_confirmationEvent_populatesEventFields() }),
-      ("test_submitEventsCall_usesCorrectRecordIdAndEventSequence", { try await tests.test_submitEventsCall_usesCorrectRecordIdAndEventSequence() }),
+      ("test_submitEventsCall_usesCorrectCalendarDateAndEventSequence", { try await tests.test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() }),
     ]
 
     for (name, testFn) in testMethods {

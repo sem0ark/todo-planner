@@ -22,13 +22,9 @@ func toPublicSettings(settings UserSettings) PublicSettings {
 }
 
 func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
-	settings, err := api.settingsRepo.GetOrCreate(r.Context(), userID)
+	settings, err := api.settingsRepo.Get(r.Context(), userID)
 	if err != nil {
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to retrieve settings", err, map[string]interface{}{
 			"user_id": userID,
@@ -36,16 +32,11 @@ func (api *API) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(toPublicSettings(*settings))
+	writeJSON(w, toPublicSettings(*settings))
 }
 
 func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	var input UserSettingsInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -64,8 +55,7 @@ func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(toPublicSettings(*settings))
+	writeJSON(w, toPublicSettings(*settings))
 }
 
 func (api *API) settingsHandler(w http.ResponseWriter, r *http.Request) {

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestUserSettingsRepository_GetOrCreate(t *testing.T) {
+func TestUserSettingsRepository_Get(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewUserSettingsRepository(db)
@@ -13,11 +13,11 @@ func TestUserSettingsRepository_GetOrCreate(t *testing.T) {
 	ctx := context.Background()
 
 	// Act
-	settings, err := repo.GetOrCreate(ctx, user.ID)
+	settings, err := repo.Get(ctx, user.ID)
 
 	// Assert
 	if err != nil {
-		t.Fatalf("GetOrCreate failed: %v", err)
+		t.Fatalf("Get failed: %v", err)
 	}
 	if settings.UserID != user.ID {
 		t.Errorf("Expected UserID %d, got %d", user.ID, settings.UserID)
@@ -27,7 +27,7 @@ func TestUserSettingsRepository_GetOrCreate(t *testing.T) {
 	}
 }
 
-func TestUserSettingsRepository_GetOrCreate_Idempotent(t *testing.T) {
+func TestUserSettingsRepository_Get_Idempotent(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewUserSettingsRepository(db)
@@ -35,15 +35,15 @@ func TestUserSettingsRepository_GetOrCreate_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	// Act
-	settings1, err1 := repo.GetOrCreate(ctx, user.ID)
-	settings2, err2 := repo.GetOrCreate(ctx, user.ID)
+	settings1, err1 := repo.Get(ctx, user.ID)
+	settings2, err2 := repo.Get(ctx, user.ID)
 
 	// Assert
 	if err1 != nil {
-		t.Fatalf("First GetOrCreate failed: %v", err1)
+		t.Fatalf("First Get failed: %v", err1)
 	}
 	if err2 != nil {
-		t.Fatalf("Second GetOrCreate failed: %v", err2)
+		t.Fatalf("Second Get failed: %v", err2)
 	}
 	if settings1.ID != settings2.ID {
 		t.Errorf("Expected same settings ID, got %d and %d", settings1.ID, settings2.ID)
@@ -56,7 +56,7 @@ func TestUserSettingsRepository_Update(t *testing.T) {
 	repo := NewUserSettingsRepository(db)
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
-	_, err := repo.GetOrCreate(ctx, user.ID)
+	_, err := repo.Get(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
@@ -83,6 +83,9 @@ func TestUserSettingsRepository_Update_BeforeCreate(t *testing.T) {
 	repo := NewUserSettingsRepository(db)
 	user := createTestUser(t, db, "testuser", "password123")
 	ctx := context.Background()
+	if _, err := db.Exec(ctx, `DELETE FROM user_settings WHERE user_id = $1`, user.ID); err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
 
 	// Act
 	_, err := repo.Update(ctx, user.ID, mustScheduleTime("05:00:00"))
@@ -102,17 +105,27 @@ func TestUserSettingsRepository_MultipleUsers(t *testing.T) {
 	ctx := context.Background()
 
 	// Act
-	settings1, _ := repo.GetOrCreate(ctx, user1.ID)
-	settings2, _ := repo.GetOrCreate(ctx, user2.ID)
-	repo.Update(ctx, user1.ID, mustScheduleTime("05:00:00"))
-	repo.Update(ctx, user2.ID, mustScheduleTime("07:00:00"))
+	settings1, err := repo.Get(ctx, user1.ID)
+	if err != nil {
+		t.Fatalf("User1 setup failed: %v", err)
+	}
+	settings2, err := repo.Get(ctx, user2.ID)
+	if err != nil {
+		t.Fatalf("User2 setup failed: %v", err)
+	}
+	if _, err := repo.Update(ctx, user1.ID, mustScheduleTime("05:00:00")); err != nil {
+		t.Fatalf("User1 update failed: %v", err)
+	}
+	if _, err := repo.Update(ctx, user2.ID, mustScheduleTime("07:00:00")); err != nil {
+		t.Fatalf("User2 update failed: %v", err)
+	}
 
-	updated1, err1 := repo.GetOrCreate(ctx, user1.ID)
-	updated2, err2 := repo.GetOrCreate(ctx, user2.ID)
+	updated1, err1 := repo.Get(ctx, user1.ID)
+	updated2, err2 := repo.Get(ctx, user2.ID)
 
 	// Assert
 	if err1 != nil || err2 != nil {
-		t.Fatalf("GetOrCreate failed: %v, %v", err1, err2)
+		t.Fatalf("Get failed: %v, %v", err1, err2)
 	}
 	if settings1.ID == settings2.ID {
 		t.Error("Expected different settings IDs for different users")

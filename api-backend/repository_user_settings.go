@@ -22,34 +22,11 @@ type UserSettings struct {
 	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
-func (r *UserSettingsRepository) GetOrCreate(ctx context.Context, userID int) (*UserSettings, error) {
+func (r *UserSettingsRepository) Get(ctx context.Context, userID int) (*UserSettings, error) {
 	var settings UserSettings
 	query := `SELECT id, user_id, day_boundary_time, updated_at
 	          FROM user_settings WHERE user_id = $1`
 	err := r.db.QueryRow(ctx, query, userID).Scan(
-		&settings.ID,
-		&settings.UserID,
-		&settings.DayBoundaryTime,
-		&settings.UpdatedAt,
-	)
-
-	if err != nil {
-		if err.Error() == "no rows in result set" {
-			return r.create(ctx, userID)
-		}
-		return nil, err
-	}
-
-	return &settings, nil
-}
-
-func (r *UserSettingsRepository) create(ctx context.Context, userID int) (*UserSettings, error) {
-	var settings UserSettings
-	defaultBoundaryTime := time.Date(0, time.January, 1, 4, 0, 0, 0, time.UTC)
-	query := `INSERT INTO user_settings (user_id, day_boundary_time, updated_at)
-	          VALUES ($1, $2, now())
-	          RETURNING id, user_id, day_boundary_time, updated_at`
-	err := r.db.QueryRow(ctx, query, userID, defaultBoundaryTime).Scan(
 		&settings.ID,
 		&settings.UserID,
 		&settings.DayBoundaryTime,

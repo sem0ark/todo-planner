@@ -16,7 +16,7 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 		{name: "Working", color: "#2563eb", pomodoroConfig: stringPointer(`{"work_duration":2700,"rest_duration":300}`)},
 		{name: "Exercise", color: "#dc2626"},
 		{name: "Rest", color: "#0891b2"},
-		{name: "Learning", color: "#27b208"},
+		{name: "Learning", color: "#27b208", pomodoroConfig: stringPointer(`{"work_duration":1500,"rest_duration":300}`)},
 	} {
 		var categoryID int
 		err := tx.QueryRow(ctx, `
@@ -79,6 +79,14 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 		SELECT $1, day_of_week, $2
 		FROM generate_series(0, 6) AS days(day_of_week)
 	`, userID, templateID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO user_settings (user_id, day_boundary_time, updated_at)
+		VALUES ($1, $2, now())
+	`, userID, "04:00:00")
 	return err
 }
 

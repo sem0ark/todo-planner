@@ -92,11 +92,7 @@ type DayTemplateDeleteResponse struct {
 }
 
 func (api *API) getDayTemplatesHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	templates, err := api.dayTemplateRepo.FindByUser(r.Context(), userID)
 	if err != nil {
@@ -104,16 +100,11 @@ func (api *API) getDayTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(DayTemplatesResponse{Templates: toPublicTemplates(templates)})
+	writeJSON(w, DayTemplatesResponse{Templates: toPublicTemplates(templates)})
 }
 
 func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	input, err := decodeDayTemplateRequest(r)
 	if err != nil {
@@ -137,19 +128,12 @@ func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(toPublicTemplate(*template)); err != nil {
-		api.logger.Error("failed to encode template response", err, nil)
-	}
+	writeJSON(w, toPublicTemplate(*template))
 }
 
 func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	input, err := decodeDayTemplateRequest(r)
 	if err != nil {
@@ -173,18 +157,11 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(toPublicTemplate(*template)); err != nil {
-		api.logger.Error("failed to encode template response", err, nil)
-	}
+	writeJSON(w, toPublicTemplate(*template))
 }
 
 func (api *API) deleteDayTemplateHandler(w http.ResponseWriter, r *http.Request, id int) {
-	userID, ok := getUserID(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := userIDFromRequest(r)
 
 	err := api.dayTemplateRepo.Delete(r.Context(), id, userID)
 	if err != nil {
@@ -195,6 +172,5 @@ func (api *API) deleteDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(DayTemplateDeleteResponse{Deleted: true, ID: id})
+	writeJSON(w, DayTemplateDeleteResponse{Deleted: true, ID: id})
 }
