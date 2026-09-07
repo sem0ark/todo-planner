@@ -911,6 +911,8 @@ Creates a day record for `{date}`. The server resolves the active template for t
 ### `POST /days/{date}/events`
 Appends one or more day events to the day record identified by `{date}`. If no record exists, the server creates it and resolves the template in the same transaction. Clients can retry a batch safely because `client_event_id` is idempotent. After persisting events, the server recomputes and replaces the actual blocks.
 
+Native clients may persist events locally and submit them in batches during startup, shutdown, or an explicit user-triggered sync. Clients must retain locally queued events until they receive either the event in `accepted_events` or its ID in `duplicate_client_event_ids`.
+
 **Event Types:**
 
 | Event Type | Purpose | Effect |

@@ -453,6 +453,7 @@ class WidgetStateStore {
   var context = WidgetContext()
   private let repository: TodoPlannerRepository
   private var tick = 0
+  private var didSynchronizeAtStartup = false
 
   // --- UI Projections (Glanceable Data) ---
   var displayState: WidgetStateIdentity { currentState.identity }
@@ -611,6 +612,24 @@ class WidgetStateStore {
   func handlePrimaryAction() async { await dispatch(.primaryAction) }
   func adjustOffset(minutes: Int) async { await dispatch(.adjustOffset(minutes)) }
 
+  func synchronize() async {
+    do {
+      try await repository.synchronize()
+      lastError = nil
+    } catch {
+      lastError = String(describing: error)
+      WidgetLogger.error("Synchronization failed", context: ["error": lastError!])
+    }
+  }
+
+  func synchronizeOnStartup() async {
+    guard !didSynchronizeAtStartup else { return }
+    await synchronize()
+    if lastError == nil {
+      didSynchronizeAtStartup = true
+    }
+  }
+
   // MARK: - State Application & Projection
 
   func apply(_ result: StateResult) async {
@@ -641,7 +660,9 @@ class WidgetStateStore {
           repo: repository
         )
         context.lastEventClientId = eventResult.clientEventId
-        updateDayRecord(&context, with: eventResult.blocks)
+        if !eventResult.blocks.isEmpty {
+          updateDayRecord(&context, with: eventResult.blocks)
+        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
@@ -660,7 +681,9 @@ class WidgetStateStore {
           repo: repository
         )
         context.lastEventClientId = eventResult.clientEventId
-        updateDayRecord(&context, with: eventResult.blocks)
+        if !eventResult.blocks.isEmpty {
+          updateDayRecord(&context, with: eventResult.blocks)
+        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
@@ -681,7 +704,9 @@ class WidgetStateStore {
           targetClientEventId: targetClientEventId,
           correctedAt: correctedAt
         )
-        updateDayRecord(&context, with: eventResult.blocks)
+        if !eventResult.blocks.isEmpty {
+          updateDayRecord(&context, with: eventResult.blocks)
+        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
