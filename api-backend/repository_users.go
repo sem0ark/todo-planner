@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,8 +15,8 @@ type UserRepository struct {
 }
 
 var (
-	ErrDuplicateUsername = fmt.Errorf("username already exists")
-	ErrInvalidPassword   = fmt.Errorf("invalid password")
+	ErrDuplicateUsername = NewConflictError("username already exists")
+	ErrInvalidPassword   = NewBadRequestError("invalid password")
 )
 
 func NewUserRepository(db *pgxpool.Pool) *UserRepository {

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"net/http"
 )
 
@@ -80,11 +79,10 @@ func (api *API) getDay(responseWriter http.ResponseWriter, request *http.Request
 		return
 	}
 	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
-	if errors.Is(err, ErrDayRecordNotFound) {
-		http.Error(responseWriter, "day record not found", 404)
-		return
-	}
 	if err != nil {
+		if writeAppError(responseWriter, err) {
+			return
+		}
 		HTTPError(responseWriter, request, api.logger, 500, "failed to fetch day", err, nil)
 		return
 	}

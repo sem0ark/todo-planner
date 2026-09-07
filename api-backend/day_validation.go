@@ -1,24 +1,22 @@
 package main
 
-import "errors"
-
 var (
-	ErrUnknownCategoryID           = errors.New("unknown category_id")
-	ErrMissingEventCategory        = errors.New("category_id is required for all events")
-	ErrInvalidEventType            = errors.New("invalid event_type")
-	ErrIncompleteAmendment         = errors.New("amendments require target_client_event_id and corrected_at")
-	ErrMissingEventTimestamp       = errors.New("occurred_at is required")
-	ErrUnsortedEvents              = errors.New("events must be in chronological order")
-	ErrMissingClientEventID        = errors.New("client_event_id is required")
-	ErrInvalidActualBlockType      = errors.New("block_type must be 'actual' or 'blank'")
-	ErrActualBlockCategoryRequired = errors.New("category_id is required for actual blocks")
-	ErrBlankBlockCategoryForbidden = errors.New("category_id must be null for blank blocks")
-	ErrInvalidBlockStartTime       = errors.New("start_time must be a valid time")
-	ErrInvalidBlockGranularity     = errors.New("blocks must use 15-minute increments and last at least 30 minutes")
-	ErrBlockExceedsDay             = errors.New("block must end by 24:00")
-	ErrActualBlocksOverlap         = errors.New("actual blocks must not overlap")
-	ErrInvalidDayDateRange         = errors.New("invalid date range")
-	ErrDeviceIDRequired            = errors.New("device_id is required")
+	ErrUnknownCategoryID           = NewBadRequestError("unknown category_id")
+	ErrMissingEventCategory        = NewBadRequestError("category_id is required for all events")
+	ErrInvalidEventType            = NewBadRequestError("invalid event_type")
+	ErrIncompleteAmendment         = NewBadRequestError("amendments require target_client_event_id and corrected_at")
+	ErrMissingEventTimestamp       = NewBadRequestError("occurred_at is required")
+	ErrUnsortedEvents              = NewBadRequestError("events must be in chronological order")
+	ErrMissingClientEventID        = NewBadRequestError("client_event_id is required")
+	ErrInvalidActualBlockType      = NewBadRequestError("block_type must be 'actual' or 'blank'")
+	ErrActualBlockCategoryRequired = NewBadRequestError("category_id is required for actual blocks")
+	ErrBlankBlockCategoryForbidden = NewBadRequestError("category_id must be null for blank blocks")
+	ErrInvalidBlockStartTime       = NewBadRequestError("start_time must be a valid time")
+	ErrInvalidBlockGranularity     = NewBadRequestError("blocks must use 15-minute increments and last at least 30 minutes")
+	ErrBlockExceedsDay             = NewBadRequestError("block must end by 24:00")
+	ErrActualBlocksOverlap         = NewBadRequestError("actual blocks must not overlap")
+	ErrInvalidDayDateRange         = NewBadRequestError("invalid date range")
+	ErrDeviceIDRequired            = NewBadRequestError("device_id is required")
 )
 
 const minutesPerDay = 24 * 60

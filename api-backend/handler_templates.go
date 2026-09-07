@@ -130,12 +130,7 @@ func (api *API) createDayTemplateHandler(w http.ResponseWriter, r *http.Request)
 
 	template, err := api.dayTemplateRepo.Create(r.Context(), input, userID)
 	if err != nil {
-		if errors.Is(err, ErrInvalidTemplateBlock) || errors.Is(err, ErrTemplateCategoryNotFound) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, ErrTemplateGroupNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create day template", err, map[string]interface{}{"user_id": userID, "name": input.Name})
@@ -170,17 +165,8 @@ func (api *API) updateDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 	}
 
 	template, err := api.dayTemplateRepo.Update(r.Context(), id, input, userID)
-	if err == ErrDayTemplateNotFound {
-		http.Error(w, "template not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		if errors.Is(err, ErrInvalidTemplateBlock) || errors.Is(err, ErrTemplateCategoryNotFound) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, ErrTemplateGroupNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update day template", err, map[string]interface{}{"user_id": userID, "template_id": id})
@@ -201,11 +187,10 @@ func (api *API) deleteDayTemplateHandler(w http.ResponseWriter, r *http.Request,
 	}
 
 	err := api.dayTemplateRepo.Delete(r.Context(), id, userID)
-	if err == ErrDayTemplateNotFound {
-		http.Error(w, "template not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
+		if writeAppError(w, err) {
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete day template", err, map[string]interface{}{"user_id": userID, "template_id": id})
 		return
 	}

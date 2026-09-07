@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -10,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrInvalidWeeklySchedule = errors.New("invalid weekly schedule")
-var ErrScheduleOverrideNotFound = errors.New("schedule override not found")
+var ErrInvalidWeeklySchedule = NewBadRequestError("invalid weekly schedule")
+var ErrScheduleOverrideNotFound = NewNotFoundError("schedule override not found")
 
 type ScheduleRepository struct {
 	db *pgxpool.Pool

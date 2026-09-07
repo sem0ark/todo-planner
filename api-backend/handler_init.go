@@ -48,7 +48,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 	var deviceUserID int
 	err = transaction.QueryRow(request.Context(), `SELECT user_id FROM devices WHERE id = $1`, input.DeviceID).Scan(&deviceUserID)
 	if err != nil || deviceUserID != userID {
-		http.Error(responseWriter, "device not found", http.StatusNotFound)
+		writeAppError(responseWriter, NewNotFoundError("device not found"))
 		return
 	}
 	settings, err := loadSettingsForInit(request, transaction, userID)

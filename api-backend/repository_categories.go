@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,7 +25,7 @@ type CategoryRepository struct {
 }
 
 var (
-	ErrCategoryNotFound = fmt.Errorf("category not found")
+	ErrCategoryNotFound = NewNotFoundError("category not found")
 )
 
 func NewCategoryRepository(db *pgxpool.Pool) *CategoryRepository {
@@ -102,6 +102,9 @@ func (r *CategoryRepository) Create(ctx context.Context, input CategoryInput, us
 		&cat.UpdatedAt,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrCategoryNotFound
+		}
 		return nil, err
 	}
 
@@ -127,6 +130,9 @@ func (r *CategoryRepository) Update(ctx context.Context, id int, input CategoryI
 		&cat.UpdatedAt,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrCategoryNotFound
+		}
 		return nil, err
 	}
 

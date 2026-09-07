@@ -17,7 +17,7 @@ type PublicSettings struct {
 func toPublicSettings(settings UserSettings) PublicSettings {
 	return PublicSettings{
 		DayBoundaryTime: formatScheduleTime(settings.DayBoundaryTime),
-		UpdatedAt: APITimestamp(settings.UpdatedAt),
+		UpdatedAt:       APITimestamp(settings.UpdatedAt),
 	}
 }
 

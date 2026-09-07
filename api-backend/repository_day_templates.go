@@ -2,16 +2,15 @@ package main
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrDayTemplateNotFound = errors.New("day template not found")
-var ErrInvalidTemplateBlock = errors.New("invalid snapshot block")
-var ErrTemplateCategoryNotFound = errors.New("unknown category_id")
+var ErrDayTemplateNotFound = NewNotFoundError("day template not found")
+var ErrInvalidTemplateBlock = NewBadRequestError("invalid snapshot block")
+var ErrTemplateCategoryNotFound = NewBadRequestError("unknown category_id")
 
 // DayTemplate contains metadata and the latest immutable snapshot.
 type DayTemplate struct {

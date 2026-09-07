@@ -103,11 +103,10 @@ func (api *API) updateTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	group, err := api.templateGroupRepo.Update(r.Context(), id, input, userID)
-	if err == ErrTemplateGroupNotFound {
-		http.Error(w, "template group not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
+		if writeAppError(w, err) {
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update template group", err, map[string]interface{}{"user_id": userID, "group_id": id})
 		return
 	}
@@ -124,11 +123,10 @@ func (api *API) deleteTemplateGroupHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	err := api.templateGroupRepo.Delete(r.Context(), id, userID)
-	if err == ErrTemplateGroupNotFound {
-		http.Error(w, "template group not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
+		if writeAppError(w, err) {
+			return
+		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete template group", err, map[string]interface{}{"user_id": userID, "group_id": id})
 		return
 	}

@@ -1,12 +1,11 @@
 package main
 
 import (
-	"errors"
 	"sort"
 	"time"
 )
 
-var ErrNonMonotonicTransitions = errors.New("amendment produces invalid ordering")
+var ErrNonMonotonicTransitions = NewBadRequestError("amendment produces invalid ordering")
 
 type ComputedBlock struct {
 	CategoryID      *int

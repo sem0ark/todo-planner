@@ -2,17 +2,14 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"regexp"
-
-	"github.com/jackc/pgx/v5"
 )
 
 var (
-	ErrCategoryNameRequired     = errors.New("name is required")
-	ErrInvalidCategoryColor     = errors.New("invalid color format")
-	ErrInvalidPomodoroDurations = errors.New("pomodoro durations must be positive")
+	ErrCategoryNameRequired     = NewBadRequestError("name is required")
+	ErrInvalidCategoryColor     = NewBadRequestError("invalid color format")
+	ErrInvalidPomodoroDurations = NewBadRequestError("pomodoro durations must be positive")
 )
 
 type PomodoroConfig struct {
@@ -71,7 +68,7 @@ func (api *API) createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateCategoryInput(input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeAppError(w, err)
 		return
 	}
 
@@ -105,14 +102,13 @@ func (api *API) updateCategoryHandler(w http.ResponseWriter, r *http.Request, id
 	}
 
 	if err := validateCategoryInput(input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeAppError(w, err)
 		return
 	}
 
 	category, err := api.categoryRepo.Update(r.Context(), id, input, userID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			http.Error(w, "category not found", http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update category", err, map[string]interface{}{
@@ -136,8 +132,7 @@ func (api *API) deleteCategoryHandler(w http.ResponseWriter, r *http.Request, id
 
 	err := api.categoryRepo.Delete(r.Context(), id, userID)
 	if err != nil {
-		if err == ErrCategoryNotFound {
-			http.Error(w, "category not found", http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete category", err, map[string]interface{}{

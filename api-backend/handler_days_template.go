@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 )
 
@@ -18,15 +17,10 @@ func (api *API) putDateTemplate(responseWriter http.ResponseWriter, request *htt
 		return
 	}
 	record, err := api.dayRecordRepo.UpdateTemplateByDate(request.Context(), userID, parsedDate, input.DayTemplateID)
-	if errors.Is(err, ErrDayRecordPast) {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, ErrDayRecordNotFound) || errors.Is(err, ErrDayTemplateNotFound) {
-		http.Error(responseWriter, "day record or template not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
+		if writeAppError(responseWriter, err) {
+			return
+		}
 		HTTPError(responseWriter, request, api.logger, http.StatusInternalServerError, "failed to update day template", err, nil)
 		return
 	}

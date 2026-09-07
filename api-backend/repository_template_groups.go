@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrTemplateGroupNotFound = errors.New("template group not found")
+var ErrTemplateGroupNotFound = NewNotFoundError("template group not found")
 
 // A grouping for day templates
 type TemplateGroup struct {

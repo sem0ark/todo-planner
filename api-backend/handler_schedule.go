@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"time"
 )
@@ -103,12 +102,7 @@ func (api *API) putWeeklyScheduleHandler(w http.ResponseWriter, r *http.Request)
 	// Update weekly schedule
 	updated, err := api.scheduleRepo.ReplaceWeeklySchedule(r.Context(), userID, input.WeeklySchedule)
 	if err != nil {
-		if errors.Is(err, ErrInvalidWeeklySchedule) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, ErrDayTemplateNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to save schedule", err, map[string]interface{}{"user_id": userID})
@@ -164,8 +158,7 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	// Set the override. Removal has its own DELETE endpoint.
 	override, err := api.scheduleRepo.SetOverride(r.Context(), userID, parsedDate, input.DayTemplateID)
 	if err != nil {
-		if errors.Is(err, ErrDayTemplateNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update schedule override", err, map[string]interface{}{"user_id": userID, "date": dateStr})
@@ -192,8 +185,7 @@ func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := api.scheduleRepo.DeleteOverride(r.Context(), userID, parsedDate); err != nil {
-		if errors.Is(err, ErrScheduleOverrideNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to delete schedule override", err, nil)

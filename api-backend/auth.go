@@ -162,8 +162,7 @@ func (api *API) registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := api.userRepo.Create(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if errors.Is(err, ErrDuplicateUsername) {
-			http.Error(w, "username already exists", http.StatusConflict)
+		if writeAppError(w, err) {
 			return
 		}
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to create user", err, map[string]interface{}{

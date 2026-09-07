@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -92,11 +93,11 @@ type DateEventResult struct {
 }
 
 var (
-	ErrDayRecordPast           = errors.New("day record is in the past")
-	ErrDayRecordNotFound       = pgx.ErrNoRows
-	ErrDayRecordAlreadyExists  = errors.New("day record already exists")
-	ErrDeviceNotFound          = errors.New("device not found")
-	ErrAmendmentTargetNotFound = errors.New("amendment target event not found")
+	ErrDayRecordPast           = NewBadRequestError("day record is in the past")
+	ErrDayRecordNotFound       = NewAppErrorWithCause(http.StatusNotFound, "day record not found", pgx.ErrNoRows)
+	ErrDayRecordAlreadyExists  = NewConflictError("day record already exists")
+	ErrDeviceNotFound          = NewNotFoundError("device not found")
+	ErrAmendmentTargetNotFound = NewBadRequestError("amendment target event not found")
 )
 
 func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
@@ -155,6 +156,9 @@ func (r *DayRecordRepository) FindByDate(ctx context.Context, userID int, calend
 	var record DayRecord
 	err := r.db.QueryRow(ctx, `SELECT id, user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at FROM day_records WHERE user_id = $1 AND calendar_date = $2`, userID, calendarDate).Scan(&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID, &record.CalendarDate, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrDayRecordNotFound
+		}
 		return nil, err
 	}
 	return r.populateRecord(ctx, &record)

@@ -134,7 +134,9 @@ func (api *API) getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-Prefer `errors.Is` when matching wrapped errors. Return `400` for malformed input, `401` for missing authentication, `404` for missing resources, and `500` for unexpected persistence or infrastructure failures. Do not expose SQL errors, tokens, password hashes, or stack traces in HTTP responses.
+Use `AppError` from `shared_types_error.go` for expected application failures. It carries the public message and HTTP status while preserving an optional cause for `errors.Is` and internal logging. Handlers should call `writeAppError` before falling back to `HTTPError` for unexpected failures.
+
+Return `400` for malformed input, `401` for missing authentication, `404` for missing resources, and `500` for unexpected persistence or infrastructure failures. Do not expose SQL errors, tokens, password hashes, or stack traces in HTTP responses.
 
 Request and response structs belong in the owning handler file. Use explicit JSON tags. To ensure collection fields marshal to `[]` instead of `null`, initialize them in your DTO mapping function rather than in every handler:
 

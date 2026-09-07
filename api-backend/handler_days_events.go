@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"time"
 )
@@ -84,15 +83,16 @@ func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http
 		}
 	}
 	if err := api.categoryRepo.ValidateIDs(request.Context(), userID, categoryIDs); err != nil {
-		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
+		if !writeAppError(responseWriter, err) {
+			http.Error(responseWriter, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 	result, err := api.dayRecordRepo.CreateEventsByDate(request.Context(), userID, parsedDate, input.DeviceID, input.Events)
-	if errors.Is(err, ErrDeviceIDRequired) || errors.Is(err, ErrUnknownCategoryID) || errors.Is(err, ErrMissingEventCategory) || errors.Is(err, ErrInvalidEventType) || errors.Is(err, ErrIncompleteAmendment) || errors.Is(err, ErrMissingEventTimestamp) || errors.Is(err, ErrUnsortedEvents) || errors.Is(err, ErrMissingClientEventID) || errors.Is(err, ErrDeviceNotFound) || errors.Is(err, ErrAmendmentTargetNotFound) || errors.Is(err, ErrNonMonotonicTransitions) {
-		http.Error(responseWriter, err.Error(), 400)
-		return
-	}
 	if err != nil {
+		if !writeAppError(responseWriter, err) {
+			return
+		}
 		HTTPError(responseWriter, request, api.logger, 500, "failed to append day events", err, nil)
 		return
 	}
