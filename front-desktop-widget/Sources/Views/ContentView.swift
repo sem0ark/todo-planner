@@ -39,6 +39,19 @@ struct Typography {
   static let categoryRowName: CGFloat = 10  // Right rail category names
 }
 
+private func formatDuration(minutes: Int) -> String {
+  let absoluteMinutes = abs(minutes)
+  let hours = absoluteMinutes / 60
+  let remainingMinutes = absoluteMinutes % 60
+
+  if hours == 0 {
+    return "\(remainingMinutes)m"
+  }
+
+  let paddedMinutes = remainingMinutes < 10 ? "0\(remainingMinutes)" : "\(remainingMinutes)"
+  return "\(hours)h \(paddedMinutes)m"
+}
+
 struct StyleTokens {
   // Background colors
   static let deepVoid = Color(hex: Palette.deepVoid)
@@ -286,7 +299,7 @@ struct ActiveView: View {
       VStack(spacing: 0) {
         if widgetState.scheduleDeviation != nil {
           HStack(spacing: 4) {
-            Text("T-\(widgetState.offsetMinutes)m")
+            Text("T-\(formatDuration(minutes: widgetState.offsetMinutes))")
               .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
               .monospacedDigit()
               .foregroundColor(StyleTokens.offsetGreen)
@@ -396,9 +409,11 @@ struct ActiveView: View {
                 }
 
                 // Remaining planned time
-                Text("\(widgetState.remainingPlannedMinutes)m")
+                Text(formatDuration(minutes: widgetState.remainingPlannedMinutes))
                   .font(.system(size: Typography.tinyMono, design: .monospaced))
                   .monospacedDigit()
+                  .lineLimit(1)
+                  .minimumScaleFactor(0.8)
                   .foregroundColor(Color.white.opacity(0.6))
               }
             }
