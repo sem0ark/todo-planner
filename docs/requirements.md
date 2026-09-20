@@ -341,3 +341,85 @@ User account and session management. Handled on the web app only.
 - Desktop and mobile apps use a **stored token** after initial web login. No login UI on native clients.
 - Token storage follows platform security best practices (keychain on desktop/mobile).
 - Full account deletion (triggered from Settings) performs a **hard delete** of all user data. This is the only hard delete operation in the system.
+
+
+<!-- Still under discussion whether we want to calculate it locally or server-side
+## Analytics
+
+Analytics are computed server-side on request from the `ACTUAL_BLOCK` and `SNAPSHOT_BLOCK` tables. All day records in the selected window are included.
+
+### `GET /analytics/template-health/{template_id}`
+Returns the health analysis for a single template over a user-selected time window. Includes per-category planned vs actual breakdown and the overlay data needed to render the frequency heatmap.
+
+**Query params:** `days=integer` (e.g. `days=30`)
+
+**Output `200`:**
+```json
+{
+  "template_id": "integer",
+  "template_name": "string",
+  "window_days": "integer",
+  "record_count": "integer",
+  "category_breakdown": [
+    {
+      "category_id": "integer",
+      "category_name": "string",
+      "category_color": "string (hex)",
+      "planned_minutes_per_day": "integer",
+      "actual_avg_minutes_per_day": "number",
+      "delta_minutes": "number"
+    }
+  ],
+  "untracked_avg_minutes_per_day": "number",
+  "blank_avg_minutes_per_day": "number",
+  "overlay_blocks": [
+    {
+      "category_id": "integer",
+      "start_time": "string (ISO 8601)",
+      "duration_minutes": "integer",
+      "frequency": "number (0.0–1.0)"
+    }
+  ]
+}
+```
+- `frequency` — proportion of days in the window where an actual block of this category occupied this time slot. Used to drive opacity in the overlay heatmap.
+
+**Errors:**
+- `400` — missing or invalid days parameter
+- `404` — template not found or does not belong to user
+
+### `GET /analytics/overview`
+Returns cross-template adherence per category and a weekly gap strip for recent weeks. Covers all day records regardless of which template was active.
+
+**Query params:** `weeks=integer` (number of recent weeks, default `4`)
+
+**Output `200`:**
+```json
+{
+  "adherence": [
+    {
+      "category_id": "integer",
+      "category_name": "string",
+      "category_color": "string (hex)",
+      "planned_avg_minutes_per_day": "number",
+      "actual_avg_minutes_per_day": "number",
+      "adherence_ratio": "number"
+    }
+  ],
+  "weekly_gap_strip": [
+    {
+      "week_start": "string (YYYY-MM-DD)",
+      "days": [
+        {
+          "calendar_date": "string (YYYY-MM-DD)",
+          "has_any_actual_blocks": "boolean",
+        }
+      ]
+    }
+  ]
+}
+```
+- `adherence_ratio` — `actual_avg / planned_avg`. Values above 1.0 indicate over-allocation; below 1.0 indicate under-allocation.
+
+**Errors:**
+- `400` — invalid weeks parameter -->
