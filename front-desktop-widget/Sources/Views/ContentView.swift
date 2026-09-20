@@ -147,11 +147,11 @@ struct ContentView: View {
           await widgetState.handleSelectCategory(widgetState.categories[index])
         }
       case "[":
-        print("[KEY] [ - adjusting offset -5m")
-        await widgetState.adjustOffset(minutes: -5)
+        print("[KEY] [ - adjusting offset -15m")
+        await widgetState.adjustOffset(minutes: -15)
       case "]":
-        print("[KEY] ] - adjusting offset +5m")
-        await widgetState.adjustOffset(minutes: 5)
+        print("[KEY] ] - adjusting offset +15m")
+        await widgetState.adjustOffset(minutes: 15)
       default:
         break
       }
@@ -293,7 +293,7 @@ struct ActiveView: View {
 
             Spacer(minLength: 0)
 
-            OffsetButton(label: "+5m", minutes: 5, widgetState: widgetState)
+            OffsetButton(label: "-15m", minutes: 15, widgetState: widgetState)
             OffsetButton(label: "+15m", minutes: 15, widgetState: widgetState)
 
             Button("RETURN") {
