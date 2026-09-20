@@ -729,7 +729,7 @@ final class WidgetStateStoreTests {
       id: 10,
       name: "Pomodoro Task",
       color: "#000000",
-      pomodoroConfig: PomodoroConfig(workDuration: 1, restDuration: 1),
+      pomodoroConfig: PomodoroConfig(workDuration: 60, restDuration: 60),
       createdAt: Fixtures.now,
       updatedAt: Fixtures.now
     )
@@ -744,7 +744,7 @@ final class WidgetStateStoreTests {
     let h = WidgetTestHarness(categories: [pomodoroCategory], existingRecord: dayRecord)
     await h.initializeAndResetCalls()
     h.store.context.pomodoroPhase = .work
-    h.store.context.pomodoroElapsed = 58
+    h.store.context.pomodoroElapsed = 59
 
     let result = h.store.currentState.onTick(
       context: h.store.context,

@@ -42,7 +42,7 @@ struct WidgetContext {
   var lastEventClientId: String?
   var pomodoroPhase: PomodoroPhase = .work
   var pomodoroElapsed = 0
-  var offsetMinutes = 0
+  var offsetSeconds = 0
   var lastCheckedBlockId: String?
 }
 
@@ -96,15 +96,15 @@ struct TimeLogic {
   static func getCurrentPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
     guard let current = secondsSinceStartOfDay(for: time) else { return nil }
     return blocks.first { block in
-      guard let begin = parseSeconds(from: block.startTime) else { return false }
-      return current >= begin && current < begin + block.durationMinutes * 60
+      guard let begin = block.startSeconds else { return false }
+      return current >= begin && current < begin + block.durationSeconds
     }
   }
 
   static func getNextPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
     guard let current = secondsSinceStartOfDay(for: time) else { return nil }
     return blocks.compactMap { block -> (PlannedBlock, Int)? in
-      guard let start = parseSeconds(from: block.startTime), start > current else { return nil }
+      guard let start = block.startSeconds, start > current else { return nil }
       return (block, start)
     }.min { $0.1 < $1.1 }?.0
   }
@@ -112,23 +112,23 @@ struct TimeLogic {
   static func getCurrentActualBlock(at time: Date, from blocks: [ActualBlock]) -> ActualBlock? {
     guard let current = secondsSinceStartOfDay(for: time) else { return nil }
     return blocks.last { block in
-      guard let begin = parseSeconds(from: block.startTime) else { return false }
-      let isOpenEnded = block.durationMinutes <= 0
-      return current >= begin && (isOpenEnded || current < begin + block.durationMinutes * 60)
+      guard let begin = block.startSeconds else { return false }
+      let isOpenEnded = block.durationSeconds <= 0
+      return current >= begin && (isOpenEnded || current < begin + block.durationSeconds)
     }
   }
 
   static func calculateProgress(for block: PlannedBlock, at time: Date) -> Double {
     guard let current = secondsSinceStartOfDay(for: time),
-      let begin = parseSeconds(from: block.startTime)
+      let begin = block.startSeconds
     else { return 0 }
     let elapsed = max(0, current - begin)
-    return min(1, Double(elapsed) / Double(max(1, block.durationMinutes * 60)))
+    return min(1, Double(elapsed) / Double(max(1, block.durationSeconds)))
   }
 
   static func isWithinConfirmationWindow(for block: PlannedBlock, at time: Date) -> Bool {
     guard let current = secondsSinceStartOfDay(for: time),
-      let begin = parseSeconds(from: block.startTime)
+      let begin = block.startSeconds
     else { return false }
     let elapsed = current - begin
     return elapsed >= 0 && elapsed < 60
@@ -169,31 +169,77 @@ enum EventLoggingError: Error {
   case incompleteAmendment
 }
 
-func tickPomodoro(_ context: inout WidgetContext) -> Bool {
-  guard let config = context.currentCategory?.pomodoroConfig else { return false }
+enum PomodoroTickOutcome {
+  case none
+  case workCompleted
+  case restCompleted
+}
 
+func tickPomodoro(_ context: inout WidgetContext) -> PomodoroTickOutcome {
+  guard let category = context.currentCategory, let config = category.pomodoroConfig
+  else { return .none }
+
+  let limit = context.pomodoroPhase == .work ? config.workDuration : config.restDuration
+  guard limit > 0 else { return .none }
+
+  let previousElapsed = context.pomodoroElapsed
   context.pomodoroElapsed += 1
-  let limit = (context.pomodoroPhase == .work ? config.workDuration : config.restDuration) * 60
-  guard limit > 0 else { return false }
 
-  if context.pomodoroPhase == .rest && context.pomodoroElapsed > Int(Double(limit) * 1.5) {
+  let autoSkipLimit = Int(Double(limit) * 1.5)
+  let crossedWorkLimit =
+    context.pomodoroPhase == .work && previousElapsed < limit && context.pomodoroElapsed >= limit
+
+  WidgetLogger.debug(
+    "Pomodoro tick",
+    context: [
+      "categoryId": String(category.id),
+      "phase": String(describing: context.pomodoroPhase),
+      "previousElapsedSeconds": String(previousElapsed),
+      "elapsedSeconds": String(context.pomodoroElapsed),
+      "limitSeconds": String(limit),
+      "autoSkipSeconds": String(autoSkipLimit),
+      "crossedWorkLimit": String(crossedWorkLimit),
+    ])
+
+  if context.pomodoroPhase == .rest && context.pomodoroElapsed >= autoSkipLimit {
+    WidgetLogger.debug(
+      "Pomodoro rest auto-skipped",
+      context: [
+        "categoryId": String(category.id), "elapsedSeconds": String(context.pomodoroElapsed),
+        "autoSkipSeconds": String(autoSkipLimit),
+      ])
+
     context.pomodoroPhase = .work
     context.pomodoroElapsed = 0
+    return .restCompleted
   }
 
-  return context.pomodoroElapsed < limit && context.pomodoroElapsed + 1 >= limit
+  return crossedWorkLimit ? .workCompleted : .none
 }
 
 func togglePomodoro(_ context: inout WidgetContext) {
-  guard let config = context.currentCategory?.pomodoroConfig else { return }
+  guard let category = context.currentCategory, let config = category.pomodoroConfig
+  else { return }
 
-  if context.pomodoroPhase == .work && context.pomodoroElapsed >= config.workDuration {
+  let workLimit = config.workDuration
+  guard workLimit > 0 else { return }
+
+  if context.pomodoroPhase == .work && context.pomodoroElapsed >= workLimit {
     context.pomodoroPhase = .rest
     context.pomodoroElapsed = 0
   } else if context.pomodoroPhase == .rest {
     context.pomodoroPhase = .work
     context.pomodoroElapsed = 0
   }
+
+  WidgetLogger.debug(
+    "Pomodoro toggled",
+    context: [
+      "categoryId": String(category.id),
+      "phase": String(describing: context.pomodoroPhase),
+      "elapsedSeconds": String(context.pomodoroElapsed),
+      "workLimitSeconds": String(workLimit),
+    ])
 }
 
 @MainActor
@@ -222,7 +268,7 @@ func transitionResult(context: WidgetContext, category: Category) -> StateResult
   updatedContext.lastEventTime = Date()
   updatedContext.pomodoroPhase = .work
   updatedContext.pomodoroElapsed = 0
-  updatedContext.offsetMinutes = 0
+  updatedContext.offsetSeconds = 0
 
   return StateResult(
     nextState: ActiveState(),
@@ -366,7 +412,7 @@ final class ActiveState: WidgetStateLogic {
         return StateResult(nextState: self, updatedContext: ctx, effects: [])
       }
       let retroactiveTime = ctx.lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
-      ctx.offsetMinutes += minutes
+      ctx.offsetSeconds += minutes * 60
       ctx.lastEventTime = retroactiveTime
       return StateResult(
         nextState: self,
@@ -398,16 +444,29 @@ final class ActiveState: WidgetStateLogic {
 
     // Pomodoro Logic
     if ctx.currentCategory?.hasPomodoroEnabled == true {
-      if tickPomodoro(&ctx) {
-        var effects: [WidgetEffect] = [.postNotification(.pomodoroCompleted)]
+      switch tickPomodoro(&ctx) {
+      case .workCompleted:
+        var effects: [WidgetEffect] = []
         if let category = ctx.currentCategory {
           effects.append(.logConfirmation(category: category))
         }
+        effects.append(.postNotification(.pomodoroCompleted))
         return StateResult(
           nextState: self,
           updatedContext: ctx,
           effects: effects
         )
+
+      case .restCompleted:
+        let effects: [WidgetEffect] = [.postNotification(.pomodoroCompleted)]
+        return StateResult(
+          nextState: self,
+          updatedContext: ctx,
+          effects: effects
+        )
+
+      case .none:
+        break
       }
     }
 
@@ -477,7 +536,7 @@ class WidgetStateStore {
     return context.categories.first { $0.id == block?.categoryId }
   }
   var lastEventTime: Date { context.lastEventTime }
-  var offsetMinutes: Int { context.offsetMinutes }
+  var offsetMinutes: Int { context.offsetSeconds / 60 }
   var currentPlannedBlock: PlannedBlock? {
     _ = tick
     let now = Date()
@@ -508,7 +567,7 @@ class WidgetStateStore {
   }
   var pomodoroProgress: Double {
     guard let config = context.currentCategory?.pomodoroConfig else { return 0.0 }
-    let limit = (context.pomodoroPhase == .work ? config.workDuration : config.restDuration) * 60
+    let limit = (context.pomodoroPhase == .work ? config.workDuration : config.restDuration)
     guard limit > 0 else { return 0.0 }
     return min(Double(context.pomodoroElapsed) / Double(limit), 1.0)
   }
@@ -731,9 +790,12 @@ class WidgetStateStore {
 
     let message =
       "[EFFECT] \(effectName) eventCategory=\(categoryDescription(eventCategory)); "
-      + "state=\(stateDescription(displayState)); currentCategory=\(categoryDescription(context.currentCategory)); "
-      + "plannedCategory=\(categoryDescription(context.plannedCategory)); plannedBlock=\(plannedBlockDescription(plannedBlock)); "
-      + "actualBlock=\(actualBlockDescription(actualBlock)); offsetMinutes=\(context.offsetMinutes)"
+      + "state=\(stateDescription(displayState)); "
+      + "currentCategory=\(categoryDescription(context.currentCategory)); "
+      + "plannedCategory=\(categoryDescription(context.plannedCategory)); "
+      + "plannedBlock=\(plannedBlockDescription(plannedBlock)); "
+      + "actualBlock=\(actualBlockDescription(actualBlock)); "
+      + "offsetSeconds=\(context.offsetSeconds)"
     print(message)
   }
 

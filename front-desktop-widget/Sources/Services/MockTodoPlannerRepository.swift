@@ -64,7 +64,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     return [
       Category(
         id: 1, name: "Working", color: "#2563eb",
-        pomodoroConfig: PomodoroConfig(workDuration: 45 * 60, restDuration: 5 * 60),
+        pomodoroConfig: PomodoroConfig(workDuration: 35 * 60, restDuration: 5 * 60),
         createdAt: now, updatedAt: now),
       Category(
         id: 2, name: "Exercise", color: "#dc2626",

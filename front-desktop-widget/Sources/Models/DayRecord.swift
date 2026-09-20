@@ -6,6 +6,8 @@ struct PlannedBlock: Codable, Identifiable {
   let durationMinutes: Int
 
   var id: String { "\(categoryId)-\(startTime)-\(durationMinutes)" }
+  var startSeconds: Int? { TimeFormats.secondsSinceDayStart(startTime) }
+  var durationSeconds: Int { durationMinutes * 60 }
 
   enum CodingKeys: String, CodingKey {
     case categoryId = "category_id"
@@ -22,6 +24,8 @@ struct ActualBlock: Codable, Identifiable {
   let isOpen: Bool
 
   var id: String { "\(categoryId.map(String.init) ?? "none")-\(startTime)-\(blockType)" }
+  var startSeconds: Int? { TimeFormats.secondsSinceDayStart(startTime) }
+  var durationSeconds: Int { durationMinutes * 60 }
 
   enum CodingKeys: String, CodingKey {
     case categoryId = "category_id"
@@ -95,7 +99,7 @@ struct DayRecordsResponse: Decodable {
           debugDescription: "Response must contain day_records or days"))
     }
     let entries = try container.decode([DayRangeEntry].self, forKey: .days)
-    dayRecords = try entries.map(\.dayRecord)
+    dayRecords = entries.map(\.dayRecord)
   }
 }
 
