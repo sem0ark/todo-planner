@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useAuthStore } from "./store/authStore";
+import { isTokenExpired } from "./services/auth";
 import { Route, Switch, Link, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import LoginForm from "./components/LoginForm";
@@ -14,6 +16,12 @@ import ReviewPage from "./components/ReviewPage";
 function App() {
   const { token, clearAuth } = useAuthStore();
   const [location, setLocation] = useHashLocation();
+
+  useEffect(() => {
+    if (token && isTokenExpired(token)) {
+      clearAuth();
+    }
+  }, [token, clearAuth]);
 
   if (!token) {
     return (

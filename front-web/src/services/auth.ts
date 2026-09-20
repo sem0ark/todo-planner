@@ -15,6 +15,35 @@ export interface AuthResponse {
   user_id: number;
 }
 
+export function isTokenExpired(token: string): boolean {
+  try {
+    const tokenParts = token.split(".");
+    if (tokenParts.length !== 3) {
+      return true;
+    }
+
+    const payloadBase64 = tokenParts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(payloadBase64)
+        .split("")
+        .map((character) => `%${`00${character.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join(""),
+    );
+
+    const payload = JSON.parse(jsonPayload) as { exp?: number };
+    if (!payload.exp) {
+      return false;
+    }
+
+    const currentTimestampSeconds = Math.floor(Date.now() / 1000);
+    return currentTimestampSeconds >= payload.exp;
+  } catch {
+    return true;
+  }
+}
+
 export async function login(credentials: LoginRequest): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
@@ -29,7 +58,16 @@ export async function login(credentials: LoginRequest): Promise<AuthResponse> {
     throw new Error(error || "Login failed");
   }
 
-  return response.json();
+  const data: AuthResponse = await response.json();
+  if (!data.token) {
+    throw new Error("Invalid response: token is missing");
+  }
+
+  if (isTokenExpired(data.token)) {
+    throw new Error("Token has already expired");
+  }
+
+  return data;
 }
 
 export async function register(
@@ -48,5 +86,14 @@ export async function register(
     throw new Error(error || "Registration failed");
   }
 
-  return response.json();
+  const data: AuthResponse = await response.json();
+  if (!data.token) {
+    throw new Error("Invalid response: token is missing");
+  }
+
+  if (isTokenExpired(data.token)) {
+    throw new Error("Token has already expired");
+  }
+
+  return data;
 }
