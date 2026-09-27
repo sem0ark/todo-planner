@@ -317,7 +317,6 @@ func logEvent(
     eventType: type.rawValue,
     categoryId: type == .amendment ? nil : categoryId,
     occurredAt: eventOccurredAt,
-    occurredAtLocal: TimeFormats.localTimestamp(for: eventOccurredAt),
     targetClientEventId: targetClientEventId,
     correctedAt: correctedAt,
     correctedAtLocal: correctedAtLocal

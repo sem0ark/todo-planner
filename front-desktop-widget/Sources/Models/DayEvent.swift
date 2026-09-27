@@ -21,12 +21,29 @@ struct DayEvent: Codable {
     case correctedAtLocal = "corrected_at_local"
   }
 
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    clientEventId = try container.decode(String.self, forKey: .clientEventId)
+    eventType = try container.decode(String.self, forKey: .eventType)
+    categoryId = try container.decodeIfPresent(Int.self, forKey: .categoryId)
+    occurredAt = try container.decode(Date.self, forKey: .occurredAt)
+    targetClientEventId = try container.decodeIfPresent(String.self, forKey: .targetClientEventId)
+    correctedAt = try container.decodeIfPresent(Date.self, forKey: .correctedAt)
+
+    // Older queue entries predate the local timestamp fields. Reconstruct them
+    // from their UTC timestamps so those entries remain synchronizable.
+    occurredAtLocal = try container.decodeIfPresent(String.self, forKey: .occurredAtLocal)
+      ?? TimeFormats.localTimestamp(for: occurredAt)
+    correctedAtLocal = try container.decodeIfPresent(String.self, forKey: .correctedAtLocal)
+      ?? correctedAt.map { TimeFormats.localTimestamp(for: $0) }
+  }
+
   init(
     clientEventId: String = UUID().uuidString,
     eventType: String,
     categoryId: Int?,
     occurredAt: Date,
-    occurredAtLocal: String,
+    occurredAtLocal: String? = nil,
     targetClientEventId: String? = nil,
     correctedAt: Date? = nil,
     correctedAtLocal: String? = nil
@@ -35,10 +52,11 @@ struct DayEvent: Codable {
     self.eventType = eventType
     self.categoryId = categoryId
     self.occurredAt = occurredAt
-    self.occurredAtLocal = occurredAtLocal
+    self.occurredAtLocal = occurredAtLocal ?? TimeFormats.localTimestamp(for: occurredAt)
     self.targetClientEventId = targetClientEventId
     self.correctedAt = correctedAt
     self.correctedAtLocal = correctedAtLocal
+      ?? correctedAt.map { TimeFormats.localTimestamp(for: $0) }
   }
 }
 

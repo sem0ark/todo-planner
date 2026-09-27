@@ -297,6 +297,23 @@ final class WidgetStateStoreTests {
     try assertEqual(eventStore.pendingEvents().count, 2)
   }
 
+  func test_localEventStoreBackfillsMissingLocalTimestamps() throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let queueJSON = """
+    {"calendarDate":"2026-09-27","event":{"client_event_id":"legacy-event","event_type":"amendment","category_id":null,"occurred_at":"2026-09-27T10:00:00Z","corrected_at":"2026-09-27T09:45:00Z","target_client_event_id":"target-event"}}
+    """.data(using: .utf8)!
+    try queueJSON.write(to: directory.appendingPathComponent("pending-events.jsonl"))
+
+    let event = try eventStore.pendingEvents()[0].event
+    guard let correctedAt = event.correctedAt else {
+      throw AssertionError.failed("Legacy corrected_at should decode")
+    }
+
+    try assertEqual(event.occurredAtLocal, TimeFormats.localTimestamp(for: event.occurredAt))
+    try assertEqual(event.correctedAtLocal, TimeFormats.localTimestamp(for: correctedAt))
+  }
+
   func test_appendFailurePreservesQueueAndBackup() throws {
     let (eventStore, directory) = try makeTemporaryEventStore()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -1004,6 +1021,7 @@ struct TestRunner {
     let testMethods: [(String, () async throws -> Void)] = [
       ("test_localEventStoreBackupSurvivesQueueRemoval", { try tests.test_localEventStoreBackupSurvivesQueueRemoval() }),
       ("test_localEventStoreMigratesLegacyJSONQueueToJSONLines", { try tests.test_localEventStoreMigratesLegacyJSONQueueToJSONLines() }),
+      ("test_localEventStoreBackfillsMissingLocalTimestamps", { try tests.test_localEventStoreBackfillsMissingLocalTimestamps() }),
       ("test_appendFailurePreservesQueueAndBackup", { try tests.test_appendFailurePreservesQueueAndBackup() }),
       ("test_atomicQueueRewriteFailurePreservesContents", { try tests.test_atomicQueueRewriteFailurePreservesContents() }),
       ("test_synchronizeSendsSortedEventsAsSingleBatch", { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }),
