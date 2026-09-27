@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 )
 
@@ -34,11 +35,32 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 		http.Error(responseWriter, "actual is required", http.StatusBadRequest)
 		return
 	}
+	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
+	if errors.Is(err, ErrDayRecordNotFound) {
+		record, err = api.dayRecordRepo.Create(request.Context(), userID, parsedDate)
+	}
+	if err != nil {
+		if writeAppError(responseWriter, err) {
+			return
+		}
+		HTTPError(responseWriter, request, api.logger, 500, "failed to retrieve day record", err, nil)
+		return
+	}
+	storageOffsetMinutes := publicInput.ClientOffsetMinutes
+	if record.TimezoneOffsetMinutes != nil {
+		storageOffsetMinutes = record.TimezoneOffsetMinutes
+	}
 	actualBlocks := make([]ActualBlockInput, 0, len(*publicInput.Actual))
 	for _, block := range *publicInput.Actual {
 		actualBlocks = append(actualBlocks, ActualBlockInput{CategoryID: block.CategoryID,
 			BlockType: block.BlockType, StartTime: block.StartTime,
 			DurationMinutes: block.DurationMinutes})
+	}
+	if storageOffsetMinutes != nil {
+		actualBlocks = adjustActualBlocksForStorage(
+			actualBlocks,
+			*storageOffsetMinutes,
+		)
 	}
 	if err := validateActualBlocks(actualBlocks); err != nil {
 		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
@@ -56,7 +78,6 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 		}
 		return
 	}
-	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
 	if err == nil {
 		_, err = api.dayRecordRepo.ReplaceActualBlocks(request.Context(), record.ID, userID, actualBlocks, publicInput.ClientOffsetMinutes)
 		if err == nil {
@@ -71,4 +92,16 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 		return
 	}
 	writeJSON(responseWriter, toPublicDayRecord(record))
+}
+
+func adjustActualBlocksForStorage(blocks []ActualBlockInput, clientOffsetMinutes int) []ActualBlockInput {
+	adjustedBlocks := make([]ActualBlockInput, len(blocks))
+	copy(adjustedBlocks, blocks)
+	for blockIndex := range adjustedBlocks {
+		adjustedBlocks[blockIndex].StartTime = shiftScheduleTime(
+			adjustedBlocks[blockIndex].StartTime,
+			-clientOffsetMinutes,
+		)
+	}
+	return adjustedBlocks
 }

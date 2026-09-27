@@ -100,6 +100,23 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
   func synchronize() async throws {}
 }
 
+final class SynchronizationAPI: TodoPlannerAPI, @unchecked Sendable {
+  private(set) var postedEvents: [[DayEvent]] = []
+  var results: [Result<DayEventsResponse, APIError>] = []
+
+  func setAuthToken(_ token: String) {}
+  func clearAuthToken() {}
+  func validateToken() async throws -> Bool { true }
+  func initialize(calendarDate: String) async throws -> InitResponse {
+    throw StorageError.notFound
+  }
+
+  func postDayEvents(date: String, events: [DayEvent]) async throws -> DayEventsResponse {
+    postedEvents.append(events)
+    return try results.removeFirst().get()
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // MARK: - Test Fixtures
 // ═══════════════════════════════════════════════════════════════════
@@ -149,6 +166,16 @@ enum Fixtures {
 
   static func eventsResponse() -> DayEventsResponse {
     DayEventsResponse(calendarDate: today)
+  }
+
+  static func event(id: String, occurredAt: Date, categoryId: Int? = 1) -> DayEvent {
+    DayEvent(
+      clientEventId: id,
+      eventType: "transition",
+      categoryId: categoryId,
+      occurredAt: occurredAt,
+      occurredAtLocal: TimeFormats.localTimestamp(for: occurredAt)
+    )
   }
 }
 
@@ -232,6 +259,161 @@ final class WidgetTestHarness {
 
 @MainActor
 final class WidgetStateStoreTests {
+  private func makeTemporaryEventStore() throws -> (LocalEventStore, URL) {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TodoPlannerWidgetTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return (LocalEventStore(storageDirectory: directory), directory)
+  }
+
+  func test_localEventStoreBackupSurvivesQueueRemoval() throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let event = Fixtures.event(id: "backup-event", occurredAt: Fixtures.now)
+
+    try eventStore.append(calendarDate: Fixtures.today, event: event)
+    try eventStore.remove(clientEventIds: [event.clientEventId])
+
+    try assert(eventStore.pendingEvents().isEmpty, "Queue should be empty after removal")
+    try assertEqual(eventStore.backupEvents().map(\.event.clientEventId), [event.clientEventId])
+  }
+
+  func test_localEventStoreMigratesLegacyJSONQueueToJSONLines() throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let event = Fixtures.event(id: "legacy-event", occurredAt: Fixtures.now)
+    let entry = PendingDayEvent(calendarDate: Fixtures.today, event: event)
+    let legacyData = try JSONEncoder.widgetEncoder.encode([entry])
+    try legacyData.write(to: directory.appendingPathComponent("pending-events.json"))
+
+    try assertEqual(eventStore.pendingEvents().map(\.event.clientEventId), [event.clientEventId])
+    try eventStore.append(
+      calendarDate: Fixtures.today,
+      event: Fixtures.event(id: "new-event", occurredAt: Fixtures.now.addingTimeInterval(60)))
+
+    let migratedData = try Data(contentsOf: directory.appendingPathComponent("pending-events.jsonl"))
+    try assert(migratedData.first == 0x7B,
+      "Migrated queue should use JSON Lines rather than a JSON array")
+    try assertEqual(eventStore.pendingEvents().count, 2)
+  }
+
+  func test_appendFailurePreservesQueueAndBackup() throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let existingEvent = Fixtures.event(id: "existing", occurredAt: Fixtures.now)
+    try eventStore.append(calendarDate: Fixtures.today, event: existingEvent)
+    let failingStore = LocalEventStore(
+      storageDirectory: directory,
+      appendFile: { _, _ in throw StorageError.databaseError("append stopped") })
+
+    let failedEvent = Fixtures.event(id: "failed", occurredAt: Fixtures.now.addingTimeInterval(60))
+    try assert((try? failingStore.append(calendarDate: Fixtures.today, event: failedEvent)) == nil,
+      "Append failures should be reported")
+    try assertEqual(eventStore.pendingEvents().map(\.event.clientEventId), [existingEvent.clientEventId])
+    try assertEqual(eventStore.backupEvents().map(\.event.clientEventId), [existingEvent.clientEventId])
+  }
+
+  func test_atomicQueueRewriteFailurePreservesContents() throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let firstEvent = Fixtures.event(id: "first", occurredAt: Fixtures.now)
+    let secondEvent = Fixtures.event(id: "second", occurredAt: Fixtures.now.addingTimeInterval(60))
+    try eventStore.append(calendarDate: Fixtures.today, event: firstEvent)
+    try eventStore.append(calendarDate: Fixtures.today, event: secondEvent)
+    let failingStore = LocalEventStore(
+      storageDirectory: directory,
+      atomicWriteFile: { _, _ in throw StorageError.databaseError("atomic write stopped") })
+
+    try assert((try? failingStore.remove(clientEventIds: [firstEvent.clientEventId])) == nil,
+      "Queue rewrite failures should be reported")
+    try assertEqual(eventStore.pendingEvents().map(\.event.clientEventId),
+      [firstEvent.clientEventId, secondEvent.clientEventId])
+  }
+
+  func test_synchronizeSendsSortedEventsAsSingleBatch() async throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let api = SynchronizationAPI()
+    let earlierEvent = Fixtures.event(id: "earlier", occurredAt: Fixtures.now.addingTimeInterval(-60))
+    let laterEvent = Fixtures.event(id: "later", occurredAt: Fixtures.now)
+    api.results = [.success(DayEventsResponse(
+      acceptedEvents: [
+        AcceptedEvent(
+          clientEventId: earlierEvent.clientEventId,
+          eventType: earlierEvent.eventType,
+          categoryId: earlierEvent.categoryId,
+          occurredAt: earlierEvent.occurredAt,
+          occurredAtLocal: earlierEvent.occurredAtLocal),
+        AcceptedEvent(
+          clientEventId: laterEvent.clientEventId,
+          eventType: laterEvent.eventType,
+          categoryId: laterEvent.categoryId,
+          occurredAt: laterEvent.occurredAt,
+          occurredAtLocal: laterEvent.occurredAtLocal),
+      ],
+      calendarDate: Fixtures.today))]
+    try eventStore.append(calendarDate: Fixtures.today, event: laterEvent)
+    try eventStore.append(calendarDate: Fixtures.today, event: earlierEvent)
+
+    try await RemoteTodoPlannerRepository(api: api, eventStore: eventStore).synchronize()
+
+    try assertEqual(api.postedEvents.count, 1)
+    try assertEqual(api.postedEvents[0].map(\.clientEventId), [earlierEvent.clientEventId, laterEvent.clientEventId])
+    try assert(eventStore.pendingEvents().isEmpty, "Acknowledged events should leave the queue")
+    try assertEqual(eventStore.backupEvents().count, 2)
+  }
+
+  func test_synchronize400FallsBackToIndividualEvents() async throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let api = SynchronizationAPI()
+    let events = [
+      Fixtures.event(id: "accepted", occurredAt: Fixtures.now),
+      Fixtures.event(id: "duplicate", occurredAt: Fixtures.now.addingTimeInterval(60)),
+      Fixtures.event(id: "rejected", occurredAt: Fixtures.now.addingTimeInterval(120)),
+    ]
+    for event in events {
+      try eventStore.append(calendarDate: Fixtures.today, event: event)
+    }
+    api.results = [
+      .failure(.serverError(400, "batch rejected")),
+      .success(DayEventsResponse(acceptedEvents: [AcceptedEvent(
+        clientEventId: events[0].clientEventId,
+        eventType: events[0].eventType,
+        categoryId: events[0].categoryId,
+        occurredAt: events[0].occurredAt,
+        occurredAtLocal: events[0].occurredAtLocal)], calendarDate: Fixtures.today)),
+      .success(DayEventsResponse(duplicateClientEventIds: [events[1].clientEventId], calendarDate: Fixtures.today)),
+      .failure(.serverError(400, "event rejected")),
+    ]
+
+    try await RemoteTodoPlannerRepository(api: api, eventStore: eventStore).synchronize()
+
+    try assertEqual(api.postedEvents.count, 4)
+    try assertEqual(api.postedEvents[0].count, 3)
+    try assertEqual(api.postedEvents.dropFirst().map { $0[0].clientEventId },
+      events.map(\.clientEventId))
+    try assert(eventStore.pendingEvents().isEmpty, "Fallback events should no longer block sync")
+    try assertEqual(eventStore.backupEvents().map(\.event.clientEventId), events.map(\.clientEventId))
+  }
+
+  func test_synchronizeNon400ErrorPreservesQueue() async throws {
+    let (eventStore, directory) = try makeTemporaryEventStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let api = SynchronizationAPI()
+    let event = Fixtures.event(id: "network-failure", occurredAt: Fixtures.now)
+    try eventStore.append(calendarDate: Fixtures.today, event: event)
+    api.results = [.failure(.serverError(500, "server unavailable"))]
+
+    do {
+      try await RemoteTodoPlannerRepository(api: api, eventStore: eventStore).synchronize()
+      throw AssertionError.failed("Non-400 synchronization errors should propagate")
+    } catch APIError.serverError(500, _) {
+      // Expected: non-400 errors must remain retryable.
+    }
+    try assertEqual(eventStore.pendingEvents().map(\.event.clientEventId), [event.clientEventId])
+  }
+
   func test_initResponse_decodesCurrentAPIShape() throws {
     let json = """
     {
@@ -820,6 +1002,13 @@ struct TestRunner {
     var results: [TestResult] = []
 
     let testMethods: [(String, () async throws -> Void)] = [
+      ("test_localEventStoreBackupSurvivesQueueRemoval", { try tests.test_localEventStoreBackupSurvivesQueueRemoval() }),
+      ("test_localEventStoreMigratesLegacyJSONQueueToJSONLines", { try tests.test_localEventStoreMigratesLegacyJSONQueueToJSONLines() }),
+      ("test_appendFailurePreservesQueueAndBackup", { try tests.test_appendFailurePreservesQueueAndBackup() }),
+      ("test_atomicQueueRewriteFailurePreservesContents", { try tests.test_atomicQueueRewriteFailurePreservesContents() }),
+      ("test_synchronizeSendsSortedEventsAsSingleBatch", { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }),
+      ("test_synchronize400FallsBackToIndividualEvents", { try await tests.test_synchronize400FallsBackToIndividualEvents() }),
+      ("test_synchronizeNon400ErrorPreservesQueue", { try await tests.test_synchronizeNon400ErrorPreservesQueue() }),
       ("test_init_freshDay_createsRecord", { try await tests.test_init_freshDay_createsRecord() }),
       ("test_init_withPlannedCategory_picksCategoryAndLogsTransition", { try await tests.test_init_withPlannedCategory_picksCategoryAndLogsTransition() }),
       ("test_initResponse_decodesCurrentAPIShape", { try tests.test_initResponse_decodesCurrentAPIShape() }),

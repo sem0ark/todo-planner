@@ -1,0 +1,189 @@
+import { describe, expect, it } from "vitest";
+import {
+  constrainTimelineDragDelta,
+  constrainTimelinePosition,
+} from "./timeline";
+
+const options = {
+  dayStartMinutes: 8 * 60,
+  dayEndMinutes: 18 * 60,
+  minimumDuration: 1,
+  snapToEdges: true,
+  edgeSnapThreshold: 8,
+};
+
+describe("constrainTimelinePosition", () => {
+  it("keeps adjacent blocks adjacent without shifting the next block", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60, durationMinutes: 60 },
+      undefined,
+      { startMinutes: 9 * 60, durationMinutes: 45 },
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60, durationMinutes: 60 });
+  });
+
+  it("clamps a moved block before the next block", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60 + 50, durationMinutes: 30 },
+      undefined,
+      { startMinutes: 9 * 60, durationMinutes: 45 },
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60 + 30, durationMinutes: 30 });
+  });
+
+  it("snaps a nearby edge to the next block", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60, durationMinutes: 57 },
+      undefined,
+      { startMinutes: 9 * 60, durationMinutes: 45 },
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60, durationMinutes: 60 });
+  });
+
+  it("preserves zero-duration event blocks", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60 + 48, durationMinutes: 0 },
+      { startMinutes: 8 * 60, durationMinutes: 30 },
+      { startMinutes: 9 * 60, durationMinutes: 30 },
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60 + 48, durationMinutes: 0 });
+  });
+
+  it("clamps a moved block after the previous block", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60 + 5, durationMinutes: 20 },
+      { startMinutes: 8 * 60, durationMinutes: 30 },
+      { startMinutes: 10 * 60, durationMinutes: 30 },
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60 + 30, durationMinutes: 20 });
+  });
+
+  it("snaps the start edge to the previous block", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60 + 34, durationMinutes: 20 },
+      { startMinutes: 8 * 60, durationMinutes: 30 },
+      { startMinutes: 10 * 60, durationMinutes: 30 },
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60 + 30, durationMinutes: 20 });
+  });
+
+  it("reduces duration when the minimum duration cannot fit", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60 + 55, durationMinutes: 20 },
+      { startMinutes: 8 * 60, durationMinutes: 55 },
+      { startMinutes: 9 * 60 + 5, durationMinutes: 30 },
+      { ...options, minimumDuration: 15 },
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60 + 55, durationMinutes: 15 });
+  });
+
+  it("keeps a block inside the configured day range", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 17 * 60 + 50, durationMinutes: 30 },
+      undefined,
+      undefined,
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 17 * 60 + 30, durationMinutes: 30 });
+  });
+
+  it("does not edge-snap when edge snapping is disabled", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 8 * 60, durationMinutes: 57 },
+      undefined,
+      { startMinutes: 9 * 60, durationMinutes: 45 },
+      { ...options, snapToEdges: false },
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60, durationMinutes: 57 });
+  });
+
+  it("preserves an exact edge without shifting either block", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 9 * 60, durationMinutes: 30 },
+      { startMinutes: 8 * 60, durationMinutes: 60 },
+      { startMinutes: 10 * 60, durationMinutes: 30 },
+      options,
+    );
+
+    expect(result).toEqual({ startMinutes: 9 * 60, durationMinutes: 30 });
+  });
+
+  it("keeps second-precise blocks from overlapping", () => {
+    const result = constrainTimelinePosition(
+      { startMinutes: 13 * 60 + 7, durationMinutes: 75 },
+      { startMinutes: 12 * 60 + 41 + 52 / 60, durationMinutes: 26 },
+      { startMinutes: 14 * 60 + 22 + 45 / 60, durationMinutes: 207 },
+      options,
+    );
+
+    expect(result).toEqual({
+      startMinutes: 13 * 60 + 7 + 52 / 60,
+      durationMinutes: 74,
+    });
+  });
+});
+
+describe("constrainTimelineDragDelta", () => {
+  const items = [
+    { id: "first", offset: 0, size: 60 },
+    { id: "second", offset: 75, size: 30 },
+    { id: "third", offset: 120, size: 45 },
+  ];
+
+  it("snaps movement to the previous edge", () => {
+    expect(constrainTimelineDragDelta(items, "second", "move", -12, 1, 8)).toBe(
+      -15,
+    );
+  });
+
+  it("snaps movement to the next edge", () => {
+    expect(constrainTimelineDragDelta(items, "second", "move", 12, 1, 8)).toBe(
+      15,
+    );
+  });
+
+  it("prevents movement through the previous block", () => {
+    expect(constrainTimelineDragDelta(items, "second", "move", -40, 1, 8)).toBe(
+      -15,
+    );
+  });
+
+  it("prevents movement through the next block", () => {
+    expect(constrainTimelineDragDelta(items, "second", "move", 40, 1, 8)).toBe(
+      15,
+    );
+  });
+
+  it("snaps top resize to the previous edge", () => {
+    expect(
+      constrainTimelineDragDelta(items, "second", "resize-top", -12, 1, 8),
+    ).toBe(-15);
+  });
+
+  it("snaps bottom resize to the next edge", () => {
+    expect(
+      constrainTimelineDragDelta(items, "second", "resize-bottom", 12, 1, 8),
+    ).toBe(15);
+  });
+
+  it("keeps resize within the minimum duration", () => {
+    expect(
+      constrainTimelineDragDelta(items, "second", "resize-bottom", -50, 15, 8),
+    ).toBe(-15);
+  });
+});

@@ -242,6 +242,13 @@ export default function ReviewPage() {
             {DAY_NAMES[index]}
             <br />
             <span className="font-mono text-xs">{day.date}</span>
+            <br />
+            <Link
+              href={`/review/${day.date}`}
+              className="text-xs text-slate-blue hover:text-cloud"
+            >
+              Edit
+            </Link>
           </div>
         ))}
         <div className="relative" style={{ height: `${dayRangeHours * 60}px` }}>

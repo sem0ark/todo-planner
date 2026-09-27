@@ -62,9 +62,15 @@ func resolveTimeline(events []DayEvent) []resolvedDayEvent {
 
 func computeResolvedBlocks(events []resolvedDayEvent, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
 	transitions := make([]resolvedDayEvent, 0)
+	var currentCategoryID *int
 	for _, event := range events {
-		if event.event.EventType == "transition" {
+		isBoundary := event.event.EventType == "transition"
+		if event.event.EventType == "confirmation" && event.event.CategoryID != nil {
+			isBoundary = currentCategoryID == nil || *currentCategoryID != *event.event.CategoryID
+		}
+		if isBoundary {
 			transitions = append(transitions, event)
+			currentCategoryID = event.event.CategoryID
 		}
 	}
 	if len(transitions) == 0 {

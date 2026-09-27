@@ -1,28 +1,39 @@
 import { useState, useMemo, useEffect, useRef, type MouseEvent } from "react";
 import type { PlannedBlock } from "../services/templates";
+import type { ActualBlockInput } from "../services/dayRecords";
 import type { Category } from "../services/categories";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { getContrastTextColor } from "../utils/colors";
 import { createPortal } from "react-dom";
+import { constrainTimelinePosition } from "../utils/timeline";
 
 const GRID_UNIT = 2;
 const SNAP_INTERVAL = 15;
 const HOUR_HEIGHT = 60 * GRID_UNIT;
 
 function timeToMinutes(time: string): number {
-  const [hours, mins] = time.split(":").map(Number);
-  return hours * 60 + mins;
+  const [hours, mins, seconds = 0] = time.split(":").map(Number);
+  return hours * 60 + mins + seconds / 60;
 }
 
 function minutesToTime(minutes: number): string {
-  const hours = Math.floor(minutes / 60) % 24;
-  const mins = minutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00`;
+  const totalSeconds = Math.round(minutes * 60);
+  const hours = Math.floor(totalSeconds / 3600) % 24;
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function snapTimeToInterval(time: string, interval: number): string {
+  const snappedMinutes = Math.round(timeToMinutes(time) / interval) * interval;
+  return minutesToTime(snappedMinutes);
 }
 
 function formatTime(time: string): string {
   return time.substring(0, 5);
 }
+
+type EditableBlock = PlannedBlock | ActualBlockInput;
 
 function BlockEditPopover({
   block,
@@ -32,14 +43,20 @@ function BlockEditPopover({
   onUpdate,
   onDelete,
   onClose,
+  minimumDuration,
+  durationStep,
+  timeStep,
 }: {
-  block: PlannedBlock;
+  block: EditableBlock;
   blockIndex: number;
   categories: Category[];
   anchorRect: DOMRect | null;
-  onUpdate: (index: number, updates: Partial<PlannedBlock>) => void;
+  onUpdate: (index: number, updates: Partial<EditableBlock>) => void;
   onDelete: (index: number) => void;
   onClose: () => void;
+  minimumDuration: number;
+  durationStep: number;
+  timeStep: number;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [isNarrow, setIsNarrow] = useState(
@@ -101,13 +118,23 @@ function BlockEditPopover({
           Category
         </label>
         <select
-          value={block.category_id}
-          onChange={(event) =>
-            onUpdate(blockIndex, { category_id: parseInt(event.target.value) })
-          }
+          value={block.category_id ?? ""}
+          onChange={(event) => {
+            if ("block_type" in block) {
+              onUpdate(blockIndex, {
+                category_id: event.target.value
+                  ? parseInt(event.target.value)
+                  : null,
+                block_type: event.target.value ? "actual" : "blank",
+              });
+              return;
+            }
+            onUpdate(blockIndex, { category_id: parseInt(event.target.value) });
+          }}
           className="w-full px-3 py-2 text-sm text-snow bg-navy/80 border border-slate-grey rounded-lg outline-none focus:border-cloud transition-colors duration-micro"
           autoFocus
         >
+          {"block_type" in block && <option value="">Blank</option>}
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
@@ -122,10 +149,18 @@ function BlockEditPopover({
         </label>
         <input
           type="time"
+          step={timeStep * 60}
           value={block.start_time.substring(0, 5)}
-          onChange={(event) =>
-            onUpdate(blockIndex, { start_time: `${event.target.value}:00` })
-          }
+          onChange={(event) => {
+            const [hours, minutes] = event.target.value.split(":").map(Number);
+            const roundedMinutes =
+              Math.round((hours * 60 + minutes) / timeStep) * timeStep;
+            const roundedHours = Math.floor(roundedMinutes / 60) % 24;
+            const displayMinutes = roundedMinutes % 60;
+            onUpdate(blockIndex, {
+              start_time: `${String(roundedHours).padStart(2, "0")}:${String(displayMinutes).padStart(2, "0")}:00`,
+            });
+          }}
           className="w-full px-3 py-2 text-sm text-snow font-mono bg-navy/80 border border-slate-grey rounded-lg outline-none focus:border-cloud transition-colors duration-micro"
         />
       </div>
@@ -139,13 +174,16 @@ function BlockEditPopover({
           value={block.duration_minutes}
           onChange={(event) => {
             const value = Math.max(
-              30,
-              Math.round((parseInt(event.target.value) || 30) / 15) * 15,
+              minimumDuration,
+              Math.round(
+                (parseInt(event.target.value) || minimumDuration) /
+                  durationStep,
+              ) * durationStep,
             );
             onUpdate(blockIndex, { duration_minutes: value });
           }}
-          min={30}
-          step={15}
+          min={minimumDuration}
+          step={durationStep}
           className="w-full px-3 py-2 text-sm text-snow font-mono bg-navy/80 border border-slate-grey rounded-lg outline-none focus:border-cloud transition-colors duration-micro"
         />
       </div>
@@ -169,17 +207,39 @@ function BlockEditPopover({
   );
 }
 
-export default function TimelineEditor({
+export type TimelineBlock = EditableBlock;
+
+export default function TimelineEditor<T extends EditableBlock>({
   blocks,
   categories,
   onChange,
+  title = "Snapshot Blocks",
+  allowBlank = false,
+  dayRangeStartTime = "00:00:00",
+  dayRangeEndTime = "24:00:00",
+  snapInterval = SNAP_INTERVAL,
+  minimumBlockDuration = 30,
+  durationStep = 15,
+  snapToEdges = false,
 }: {
-  blocks: PlannedBlock[];
+  blocks: T[];
   categories: Category[];
-  onChange: (blocks: PlannedBlock[]) => void;
+  onChange: (blocks: T[]) => void;
+  title?: string;
+  allowBlank?: boolean;
+  dayRangeStartTime?: string;
+  dayRangeEndTime?: string;
+  snapInterval?: number;
+  minimumBlockDuration?: number;
+  durationStep?: number;
+  snapToEdges?: boolean;
 }) {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const dayStartMinutes = 0;
+  const dayStartMinutes = timeToMinutes(dayRangeStartTime);
+  const dayEndMinutes =
+    dayRangeEndTime === "24:00:00" ? 24 * 60 : timeToMinutes(dayRangeEndTime);
+  const dayRangeMinutes = Math.max(60, dayEndMinutes - dayStartMinutes);
+  const dayRangeHours = Math.ceil(dayRangeMinutes / 60);
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(600);
@@ -197,35 +257,109 @@ export default function TimelineEditor({
 
   const layoutItems: LayoutItem[] = useMemo(
     () =>
-      blocks.map((block, index) => {
+      blocks.flatMap((block, index) => {
+        const blockStartMinutes = timeToMinutes(block.start_time);
+        const blockEndMinutes = blockStartMinutes + block.duration_minutes;
+        if (
+          blockStartMinutes < dayStartMinutes ||
+          blockStartMinutes >= dayEndMinutes
+        ) {
+          return [];
+        }
         if (!blockIds.current.has(index))
           blockIds.current.set(index, `block-${idCounter.current++}`);
-        const blockMinutes = timeToMinutes(block.start_time);
-        let offset = blockMinutes;
-        if (offset < 0) offset += 24 * 60;
+        const visibleDuration =
+          Math.min(blockEndMinutes, dayEndMinutes) - blockStartMinutes;
         return {
           id: blockIds.current.get(index)!,
-          offset,
-          size: block.duration_minutes,
+          offset: blockStartMinutes - dayStartMinutes,
+          size: visibleDuration,
           categoryId: block.category_id,
           blockIndex: index,
         };
       }),
-    [blocks, dayStartMinutes],
+    [blocks, dayStartMinutes, dayEndMinutes],
   );
 
+  const constrainBlock = (blockIndex: number, candidate: T): T => {
+    const orderedBlocks = blocks
+      .map((block, index) => ({
+        block: index === blockIndex ? candidate : block,
+        index,
+      }))
+      .sort(
+        (left, right) =>
+          timeToMinutes(left.block.start_time) -
+          timeToMinutes(right.block.start_time),
+      );
+    const orderedIndex = orderedBlocks.findIndex(
+      ({ index }) => index === blockIndex,
+    );
+    const previousBlock = orderedBlocks[orderedIndex - 1]?.block;
+    const nextBlock = orderedBlocks[orderedIndex + 1]?.block;
+    const position = constrainTimelinePosition(
+      {
+        startMinutes: timeToMinutes(candidate.start_time),
+        durationMinutes: candidate.duration_minutes,
+      },
+      previousBlock && {
+        startMinutes: timeToMinutes(previousBlock.start_time),
+        durationMinutes: previousBlock.duration_minutes,
+      },
+      nextBlock && {
+        startMinutes: timeToMinutes(nextBlock.start_time),
+        durationMinutes: nextBlock.duration_minutes,
+      },
+      {
+        dayStartMinutes,
+        dayEndMinutes,
+        minimumDuration: minimumBlockDuration,
+        snapToEdges,
+        edgeSnapThreshold: 8,
+      },
+    );
+    return {
+      ...candidate,
+      start_time: minutesToTime(position.startMinutes),
+      duration_minutes: position.durationMinutes,
+    };
+  };
+
   const handleLayoutChange = (newItems: LayoutItem[]) => {
-    onChange(
-      newItems.map((item) => {
+    const changedItems = newItems.filter((item) => {
+      const originalItem = layoutItems.find(
+        (layoutItem) => layoutItem.blockIndex === item.blockIndex,
+      );
+      return (
+        originalItem &&
+        (originalItem.offset !== item.offset || originalItem.size !== item.size)
+      );
+    });
+    const changedBlocks = new Map(
+      changedItems.map((item) => {
         const originalBlock = blocks[item.blockIndex];
-        let absoluteMinutes = dayStartMinutes + item.offset;
-        if (absoluteMinutes >= 24 * 60) absoluteMinutes -= 24 * 60;
-        return {
-          ...originalBlock,
-          start_time: minutesToTime(absoluteMinutes),
-          duration_minutes: Math.max(15, Math.round(item.size / 15) * 15),
-        };
+        const absoluteMinutes = Math.max(
+          dayStartMinutes,
+          dayStartMinutes + item.offset,
+        );
+        return [
+          item.blockIndex,
+          constrainBlock(item.blockIndex, {
+            ...originalBlock,
+            start_time: minutesToTime(absoluteMinutes),
+            duration_minutes: Math.max(
+              minimumBlockDuration,
+              Math.min(
+                Math.round(item.size / snapInterval) * snapInterval,
+                dayEndMinutes - absoluteMinutes,
+              ),
+            ),
+          }),
+        ];
       }),
+    );
+    onChange(
+      blocks.map((block, blockIndex) => changedBlocks.get(blockIndex) || block),
     );
   };
 
@@ -242,10 +376,17 @@ export default function TimelineEditor({
     );
   };
 
-  const updateBlock = (index: number, updates: Partial<PlannedBlock>) => {
+  const updateBlock = (index: number, updates: Partial<EditableBlock>) => {
+    const candidate = { ...blocks[index], ...updates } as T;
+    if (updates.start_time !== undefined) {
+      candidate.start_time = snapTimeToInterval(
+        updates.start_time,
+        snapInterval,
+      );
+    }
     onChange(
       blocks.map((block, blockIndex) =>
-        blockIndex === index ? { ...block, ...updates } : block,
+        blockIndex === index ? constrainBlock(index, candidate) : block,
       ),
     );
   };
@@ -267,7 +408,26 @@ export default function TimelineEditor({
         category_id: categories[0]?.id || 0,
         start_time: minutesToTime(newStartMinutes % (24 * 60)),
         duration_minutes: 60,
-      },
+        ...(blocks[0] && "block_type" in blocks[0]
+          ? { block_type: "actual" as const }
+          : {}),
+      } as T,
+    ]);
+  };
+
+  const addBlankBlock = () => {
+    const lastBlock = blocks[blocks.length - 1];
+    const newStartMinutes = lastBlock
+      ? timeToMinutes(lastBlock.start_time) + lastBlock.duration_minutes
+      : dayStartMinutes;
+    onChange([
+      ...blocks,
+      {
+        category_id: null,
+        block_type: "blank",
+        start_time: minutesToTime(newStartMinutes % (24 * 60)),
+        duration_minutes: 60,
+      } as T,
     ]);
   };
 
@@ -281,30 +441,40 @@ export default function TimelineEditor({
 
   const timeLabels = useMemo(
     () =>
-      Array.from({ length: 24 }, (_, index) => ({
+      Array.from({ length: dayRangeHours }, (_, index) => ({
         hour: Math.floor((dayStartMinutes / 60 + index) % 24),
       })),
-    [dayStartMinutes],
+    [dayStartMinutes, dayRangeHours],
   );
 
-  const getCategoryColor = (categoryId: number) =>
+  const getCategoryColor = (categoryId: number | null) =>
     categories.find((category) => category.id === categoryId)?.color ||
     "#003448";
-  const getCategoryName = (categoryId: number) =>
+  const getCategoryName = (categoryId: number | null) =>
     categories.find((category) => category.id === categoryId)?.name ||
     "Unknown";
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-snow">Snapshot Blocks</h3>
-        <button
-          onClick={addBlock}
-          disabled={categories.length === 0}
-          className="h-9 px-4 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
-        >
-          + Add Block
-        </button>
+        <h3 className="text-lg font-semibold text-snow">{title}</h3>
+        <div className="flex gap-2">
+          <button
+            onClick={addBlock}
+            disabled={categories.length === 0}
+            className="h-9 px-4 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
+          >
+            + Add Block
+          </button>
+          {allowBlank && (
+            <button
+              onClick={addBlankBlock}
+              className="h-9 px-4 text-sm font-semibold text-cloud border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/10"
+            >
+              + Blank
+            </button>
+          )}
+        </div>
       </div>
       {categories.length === 0 && (
         <p className="text-sm text-cloud">
@@ -337,7 +507,10 @@ export default function TimelineEditor({
               items={layoutItems}
               gridUnit={GRID_UNIT}
               baseWidth={containerWidth}
-              snapToInterval={SNAP_INTERVAL}
+              snapToInterval={snapInterval}
+              minimumSize={minimumBlockDuration}
+              snapToEdges={snapToEdges}
+              edgeSnapThreshold={8}
               containerClassName="border-0"
               onChange={handleLayoutChange}
               renderItem={(item, status) => {
@@ -358,10 +531,12 @@ export default function TimelineEditor({
                       <div className="absolute top-1 right-1 w-2 h-2 bg-snow rounded-full shadow" />
                     )}
                     <div className="font-semibold truncate">
-                      {getCategoryName(item.categoryId)}
+                      {"block_type" in block && block.block_type === "blank"
+                        ? "Blank"
+                        : getCategoryName(item.categoryId)}
                     </div>
                     <div className="font-mono text-sm opacity-80 tabular-nums">
-                      {formatTime(block.start_time)} · {item.size}m
+                      {formatTime(block.start_time)} · {Math.floor(item.size)}m
                     </div>
                   </div>
                 );
@@ -379,6 +554,9 @@ export default function TimelineEditor({
           anchorRect={popoverAnchor}
           onUpdate={updateBlock}
           onDelete={removeBlock}
+          minimumDuration={minimumBlockDuration}
+          durationStep={durationStep}
+          timeStep={snapInterval}
           onClose={() => {
             setSelectedBlockId(null);
             setPopoverAnchor(null);

@@ -99,6 +99,10 @@ export default function WeeklySchedule() {
     return templates.find((t) => t.id === id)?.name || "Unknown";
   };
 
+  const getCurrentTemplateId = (dayOfWeek: number) =>
+    weeklySchedule.find((slot) => slot.day_of_week === dayOfWeek)
+      ?.day_template_id ?? null;
+
   return (
     <div className="w-full max-w-3xl">
       <div className="flex items-center justify-between mb-6">
@@ -129,32 +133,42 @@ export default function WeeklySchedule() {
       )}
 
       <div className="space-y-3">
-        {DAYS.map((day, index) => (
-          <div
-            key={index}
-            className="flex items-center gap-4 p-4 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10"
-          >
-            <span className="w-28 text-snow font-medium">{day}</span>
-            <select
-              value={localSchedule[index] ?? ""}
-              onChange={(e) => handleChange(index, e.target.value)}
-              className="flex-1 px-4 py-2 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro focus:border-cloud"
-            >
-              <option value="">Unassigned</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-            {weeklySchedule[index] && (
-              <span className="text-sm text-cloud">
-                Current:{" "}
-                {getTemplateName(weeklySchedule[index]?.day_template_id)}
-              </span>
-            )}
-          </div>
-        ))}
+        {DAYS.map((day, index) =>
+          (() => {
+            const currentTemplateId = getCurrentTemplateId(index);
+            const isChanged = localSchedule[index] !== currentTemplateId;
+
+            return (
+              <div
+                key={index}
+                className={`flex items-center gap-4 p-4 bg-navy border rounded-lg hover:bg-slate-blue/10 ${
+                  isChanged
+                    ? "border-warning bg-warning/5"
+                    : "border-slate-grey/20"
+                }`}
+              >
+                <span className="w-28 text-snow font-medium">{day}</span>
+                <select
+                  value={localSchedule[index] ?? ""}
+                  onChange={(e) => handleChange(index, e.target.value)}
+                  className="flex-1 px-4 py-2 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro focus:border-cloud"
+                >
+                  <option value="">Unassigned</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+                {isChanged && (
+                  <span className="whitespace-nowrap text-sm text-warning">
+                    Changed from {getTemplateName(currentTemplateId)}
+                  </span>
+                )}
+              </div>
+            );
+          })(),
+        )}
       </div>
 
       {templates.length === 0 && (

@@ -21,9 +21,11 @@ struct UserSettings: Codable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    dayRangeStartTime = try container.decodeIfPresent(String.self, forKey: .dayRangeStartTime)
+    dayRangeStartTime =
+      try container.decodeIfPresent(String.self, forKey: .dayRangeStartTime)
       ?? "04:00:00"
-    dayRangeEndTime = try container.decodeIfPresent(String.self, forKey: .dayRangeEndTime)
+    dayRangeEndTime =
+      try container.decodeIfPresent(String.self, forKey: .dayRangeEndTime)
       ?? "28:00:00"
     updatedAt = try container.decode(Date.self, forKey: .updatedAt)
   }

@@ -12,7 +12,7 @@ var (
 	ErrActualBlockCategoryRequired = NewBadRequestError("category_id is required for actual blocks")
 	ErrBlankBlockCategoryForbidden = NewBadRequestError("category_id must be null for blank blocks")
 	ErrInvalidBlockStartTime       = NewBadRequestError("start_time must be a valid time")
-	ErrInvalidBlockGranularity     = NewBadRequestError("blocks must use 15-minute increments and last at least 30 minutes")
+	ErrInvalidBlockDuration        = NewBadRequestError("block duration must be non-negative")
 	ErrBlockExceedsDay             = NewBadRequestError("block must end by 24:00")
 	ErrActualBlocksOverlap         = NewBadRequestError("actual blocks must not overlap")
 	ErrInvalidDayDateRange         = NewBadRequestError("invalid date range")
@@ -89,7 +89,7 @@ func validateDateEvents(events []DayEventInput) error {
 }
 
 func validateActualBlocks(blocks []ActualBlockInput) error {
-	previousEndMinute := 0
+	previousEndSecond := 0
 	for index, block := range blocks {
 		if block.BlockType != "actual" && block.BlockType != "blank" {
 			return ErrInvalidActualBlockType
@@ -100,27 +100,30 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 		if block.BlockType == "blank" && block.CategoryID != nil {
 			return ErrBlankBlockCategoryForbidden
 		}
-		if block.StartTime.IsZero() || block.StartTime.Second() != 0 {
+		if block.StartTime.IsZero() {
 			return ErrInvalidBlockStartTime
 		}
-		minuteOfDay := block.StartTime.Hour()*60 + block.StartTime.Minute()
-		if minuteOfDay%15 != 0 || block.DurationMinutes < 30 || block.DurationMinutes%15 != 0 {
-			return ErrInvalidBlockGranularity
+		if block.DurationMinutes < 0 {
+			return ErrInvalidBlockDuration
 		}
 		if blockExceedsDay(block.StartTime, block.DurationMinutes) {
 			return ErrBlockExceedsDay
 		}
-		if index > 0 && minuteOfDay < previousEndMinute {
+		startSecond := scheduleTimeSecondOfDay(block.StartTime)
+		if index > 0 && startSecond < previousEndSecond {
 			return ErrActualBlocksOverlap
 		}
-		previousEndMinute = minuteOfDay + block.DurationMinutes
+		previousEndSecond = startSecond + block.DurationMinutes*60
 	}
 	return nil
 }
 
 func blockExceedsDay(startTime ScheduleTime, durationMinutes int) bool {
-	startMinute := startTime.Hour()*60 + startTime.Minute()
-	return startMinute+durationMinutes > minutesPerDay
+	return scheduleTimeSecondOfDay(startTime)+durationMinutes*60 > minutesPerDay*60
+}
+
+func scheduleTimeSecondOfDay(scheduleTime ScheduleTime) int {
+	return scheduleTime.Hour()*60*60 + scheduleTime.Minute()*60 + scheduleTime.Second()
 }
 
 func isValidCalendarDate(date string) bool {

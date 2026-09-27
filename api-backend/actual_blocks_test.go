@@ -40,6 +40,14 @@ func TestComputeTimelineEventConfigurations(t *testing.T) {
 			expectedTypes: []string{"actual", "actual"}, expectedDurations: []int{180, 30},
 		},
 		{
+			name: "confirmation with different category starts a block",
+			events: []DayEvent{
+				{ID: 1, EventType: "transition", CategoryID: &firstCategoryID, OccurredAt: parseTime("2026-07-20T09:00:00Z")},
+				{ID: 2, EventType: "confirmation", CategoryID: &secondCategoryID, OccurredAt: parseTime("2026-07-20T12:00:00Z")},
+			},
+			expectedTypes: []string{"actual", "actual"}, expectedDurations: []int{180, 30},
+		},
+		{
 			name:      "past day closes final block",
 			events:    []DayEvent{{ID: 1, EventType: "transition", CategoryID: &firstCategoryID, OccurredAt: parseTime("2026-07-20T09:00:00Z")}},
 			isPastDay: true, expectedTypes: []string{"actual"}, expectedDurations: []int{30},
