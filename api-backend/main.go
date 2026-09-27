@@ -86,6 +86,7 @@ func main() {
 	http.HandleFunc("/days", loggingMiddleware(corsMiddleware(api.protectedHandler(api.daysRouter))))
 	http.HandleFunc("/days/", loggingMiddleware(corsMiddleware(api.protectedHandler(api.daysRouter))))
 	http.HandleFunc("/init", loggingMiddleware(corsMiddleware(api.protectedHandler(api.initRouter))))
+	http.HandleFunc("/backup", loggingMiddleware(corsMiddleware(api.protectedHandler(api.backupRouter))))
 
 	// Start server
 	logger.Info("Server listening for requests", map[string]interface{}{

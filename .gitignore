@@ -103,6 +103,8 @@ temp
 2026-*
 session-ses*
 
+pending-events-*.json
+
 *node_modules*
 .expo
 dist

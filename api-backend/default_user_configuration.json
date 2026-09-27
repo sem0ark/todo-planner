@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "settings": {
+    "day_range_start_time": "04:00:00",
+    "day_range_end_time": "23:00:00"
+  },
+  "categories": [
+    {
+      "key": "working",
+      "name": "Working",
+      "color": "#2563eb",
+      "pomodoro_config": {
+        "work_duration": 2700,
+        "rest_duration": 300
+      }
+    },
+    {
+      "key": "exercise",
+      "name": "Exercise",
+      "color": "#dc2626",
+      "pomodoro_config": null
+    },
+    {
+      "key": "rest",
+      "name": "Rest",
+      "color": "#0891b2",
+      "pomodoro_config": null
+    },
+    {
+      "key": "learning",
+      "name": "Learning",
+      "color": "#27b208",
+      "pomodoro_config": {
+        "work_duration": 1500,
+        "rest_duration": 300
+      }
+    }
+  ],
+  "templates": [
+    {
+      "key": "working_day",
+      "name": "Working Day",
+      "plan": [
+        { "category_key": "rest", "start_time": "06:00:00", "duration_minutes": 120 },
+        { "category_key": "learning", "start_time": "08:00:00", "duration_minutes": 60 },
+        { "category_key": "working", "start_time": "09:00:00", "duration_minutes": 180 },
+        { "category_key": "rest", "start_time": "12:00:00", "duration_minutes": 60 },
+        { "category_key": "working", "start_time": "13:00:00", "duration_minutes": 300 },
+        { "category_key": "exercise", "start_time": "18:00:00", "duration_minutes": 60 },
+        { "category_key": "rest", "start_time": "19:00:00", "duration_minutes": 180 }
+      ]
+    }
+  ],
+  "weekly_schedule": [
+    { "day_of_week": 0, "template_key": "working_day" },
+    { "day_of_week": 1, "template_key": "working_day" },
+    { "day_of_week": 2, "template_key": "working_day" },
+    { "day_of_week": 3, "template_key": "working_day" },
+    { "day_of_week": 4, "template_key": "working_day" },
+    { "day_of_week": 5, "template_key": "working_day" },
+    { "day_of_week": 6, "template_key": "working_day" }
+  ]
+}
