@@ -9,7 +9,15 @@ enum APIError: Error {
   case decodingError(Error)
 }
 
-final class APIClient: @unchecked Sendable {
+protocol TodoPlannerAPI: Sendable {
+  func setAuthToken(_ token: String)
+  func clearAuthToken()
+  func validateToken() async throws -> Bool
+  func initialize(calendarDate: String) async throws -> InitResponse
+  func postDayEvents(date: String, events: [DayEvent]) async throws -> DayEventsResponse
+}
+
+final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   static let shared = APIClient()
 
   private let baseURL: String

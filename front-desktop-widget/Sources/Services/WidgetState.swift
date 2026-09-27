@@ -738,7 +738,8 @@ class WidgetStateStore {
           correctedAt: correctedAt,
           targetOccurredAtLocal: context.eventLocalTimestamps[targetClientEventId]
         )
-        context.eventLocalTimestamps[eventResult.event.clientEventId] = eventResult.event.occurredAtLocal
+        context.eventLocalTimestamps[eventResult.event.clientEventId] =
+          eventResult.event.occurredAtLocal
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
