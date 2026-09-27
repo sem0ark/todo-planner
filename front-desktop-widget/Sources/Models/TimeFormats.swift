@@ -12,7 +12,7 @@ enum TimeFormats {
 
   static func localTimestamp(for date: Date, preservingOffsetFrom timestamp: String) -> String? {
     let offset = String(timestamp.suffix(6))
-    guard (offset.first == "+" || offset.first == "-"), offset.dropFirst().contains(":") else {
+    guard offset.first == "+" || offset.first == "-", offset.dropFirst().contains(":") else {
       return nil
     }
     guard let timeZone = timeZone(for: offset) else { return nil }
@@ -32,7 +32,8 @@ enum TimeFormats {
     let sign = offset.first == "+" ? 1 : -1
     let components = offset.dropFirst().split(separator: ":")
     guard components.count == 2,
-      let hours = Int(components[0]), let minutes = Int(components[1]) else { return nil }
+      let hours = Int(components[0]), let minutes = Int(components[1])
+    else { return nil }
     return TimeZone(secondsFromGMT: sign * (hours * 60 + minutes) * 60)
   }
 

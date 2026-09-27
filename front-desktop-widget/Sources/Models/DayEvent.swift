@@ -32,9 +32,11 @@ struct DayEvent: Codable {
 
     // Older queue entries predate the local timestamp fields. Reconstruct them
     // from their UTC timestamps so those entries remain synchronizable.
-    occurredAtLocal = try container.decodeIfPresent(String.self, forKey: .occurredAtLocal)
+    occurredAtLocal =
+      try container.decodeIfPresent(String.self, forKey: .occurredAtLocal)
       ?? TimeFormats.localTimestamp(for: occurredAt)
-    correctedAtLocal = try container.decodeIfPresent(String.self, forKey: .correctedAtLocal)
+    correctedAtLocal =
+      try container.decodeIfPresent(String.self, forKey: .correctedAtLocal)
       ?? correctedAt.map { TimeFormats.localTimestamp(for: $0) }
   }
 
@@ -55,7 +57,8 @@ struct DayEvent: Codable {
     self.occurredAtLocal = occurredAtLocal ?? TimeFormats.localTimestamp(for: occurredAt)
     self.targetClientEventId = targetClientEventId
     self.correctedAt = correctedAt
-    self.correctedAtLocal = correctedAtLocal
+    self.correctedAtLocal =
+      correctedAtLocal
       ?? correctedAt.map { TimeFormats.localTimestamp(for: $0) }
   }
 }
