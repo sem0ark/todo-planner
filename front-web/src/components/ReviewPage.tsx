@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useAuthStore } from "../store/authStore";
 import { useCategoryStore } from "../store/categoryStore";
@@ -9,6 +9,7 @@ import { getTemplates } from "../services/templates";
 import { getDayRecords, type DayRecord } from "../services/dayRecords";
 import { useSettingsStore } from "../store/settingsStore";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
+import { downloadBackup, importBackup } from "../services/backup";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const GRID_UNIT = 1;
@@ -69,9 +70,56 @@ export default function ReviewPage() {
   const [records, setRecords] = useState<DayRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [dataRevision, setDataRevision] = useState(0);
+  const fileInputReference = useRef<HTMLInputElement>(null);
 
   const from = dateValue(weekStart);
   const to = dateValue(addDays(weekStart, 6));
+
+  const exportBackup = async () => {
+    if (!token) return;
+    setBackupBusy(true);
+    setError(null);
+    try {
+      const blob = await downloadBackup(token);
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = "todo-planner-backup.json";
+      link.click();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Failed to export backup",
+      );
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const selectBackup = () => fileInputReference.current?.click();
+
+  const handleBackupSelected = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!token || !file) return;
+    setBackupBusy(true);
+    setError(null);
+    try {
+      await importBackup(token, file);
+      setDataRevision((revision) => revision + 1);
+      setError("Backup imported successfully");
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Failed to import backup",
+      );
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -110,7 +158,7 @@ export default function ReviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, from, to]);
+  }, [token, from, to, dataRevision]);
 
   const days = useMemo<ReviewDay[]>(
     () =>
@@ -224,9 +272,34 @@ export default function ReviewPage() {
         >
           Today
         </button>
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            ref={fileInputReference}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={handleBackupSelected}
+          />
+          <button
+            type="button"
+            disabled={backupBusy}
+            onClick={selectBackup}
+            className="rounded-lg border border-slate-grey/30 px-3 py-1 text-sm text-cloud disabled:opacity-50"
+          >
+            Import backup
+          </button>
+          <button
+            type="button"
+            disabled={backupBusy}
+            onClick={exportBackup}
+            className="rounded-lg border border-slate-grey/30 px-3 py-1 text-sm text-cloud disabled:opacity-50"
+          >
+            Export backup
+          </button>
+        </div>
         <Link
           href="/schedule"
-          className="ml-auto text-sm text-slate-blue hover:text-cloud"
+          className="text-sm text-slate-blue hover:text-cloud"
         >
           Schedule
         </Link>

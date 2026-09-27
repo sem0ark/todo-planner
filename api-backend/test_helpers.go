@@ -77,20 +77,28 @@ func createTestUser(t *testing.T, db *pgxpool.Pool, username, password string) *
 	if err != nil {
 		t.Fatalf("Failed to fetch created user: %v", err)
 	}
-	if _, err := db.Exec(context.Background(), `
-		INSERT INTO user_settings (user_id, day_range_start_time, day_range_end_time, updated_at)
-		VALUES ($1, $2, $3, now())
-	`, fullUser.ID, "04:00:00", "23:00:00"); err != nil {
-		t.Fatalf("Failed to create test user settings: %v", err)
+	transaction, err := db.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("Failed to start test configuration transaction: %v", err)
 	}
-	if _, err := db.Exec(context.Background(), `
-		INSERT INTO weekly_schedule (user_id, day_of_week, day_template_id)
-		SELECT $1, day_of_week, NULL
-		FROM generate_series(0, 6) AS days(day_of_week)
-	`, fullUser.ID); err != nil {
-		t.Fatalf("Failed to create test weekly schedule: %v", err)
+	testConfiguration := DefaultUserConfiguration{
+		Version: 1,
+		Settings: DefaultSettingsConfiguration{
+			DayRangeStartTime: "04:00:00",
+			DayRangeEndTime:   "23:00:00",
+		},
+		WeeklySchedule: []DefaultWeeklyScheduleEntry{
+			{DayOfWeek: 0}, {DayOfWeek: 1}, {DayOfWeek: 2}, {DayOfWeek: 3},
+			{DayOfWeek: 4}, {DayOfWeek: 5}, {DayOfWeek: 6},
+		},
 	}
-
+	if err := NewBackupRepository(nil).ImportConfiguration(context.Background(), transaction, fullUser.ID, testConfiguration); err != nil {
+		transaction.Rollback(context.Background())
+		t.Fatalf("Failed to create test user configuration: %v", err)
+	}
+	if err := transaction.Commit(context.Background()); err != nil {
+		t.Fatalf("Failed to commit test user configuration: %v", err)
+	}
 	return fullUser
 }
 

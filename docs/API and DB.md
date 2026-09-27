@@ -56,6 +56,9 @@ Date-only values must not include a time or timezone. Schedule times must not in
 
 - **Client Init**
   - `POST /init` - bootstrap settings, categories, and a day record
+- **Backup**
+  - `GET /backup` - download a versioned JSON backup of user settings, templates, day records, and events
+  - `POST /backup` - merge settings and events from a previously exported backup
 
 
 # DB format - V1
@@ -1113,3 +1116,22 @@ Composite bootstrap for native clients. It returns settings, active categories, 
 **Errors:**
 - `400` — invalid date
 - `404` — device not found or does not belong to user
+
+## Backup
+
+### `GET /backup`
+Downloads a versioned JSON backup for the authenticated user. The backup includes
+settings, categories, template groups, templates with their current snapshots,
+weekly schedule, future overrides, day records, and raw day events. The response
+has `Content-Disposition: attachment; filename="todo-planner-backup.json"`.
+
+### `POST /backup`
+Merges settings, day actual blocks, timezone metadata, and raw events from a
+version `1` backup. Events are deduplicated by their `client_event_id` and are
+stored without recomputing actual blocks. Day plan blocks include their explicit
+`start_time` values. Database IDs are not used to select another user's records.
+The response contains `imported` and `imported_events`.
+
+**Errors:**
+- `400` — malformed JSON or unsupported backup version
+- `500` — backup persistence failure
