@@ -12,7 +12,7 @@ ARCH ?= $(shell uname -m)
 
 # --- Environment Variable Loading ---
 # Default to .env if ENV_FILE is not specified
-ENV_FILE ?= .env
+ENV_FILE ?= .env.weekend.mock
 
 # Load environment variables from the file if it exists
 ifneq (,$(wildcard $(ENV_FILE)))
@@ -32,7 +32,7 @@ ifndef SWIFTC
 $(error Swift compiler not found. Install via Swiftly: curl -L https://swift-server.github.io/swiftly/swiftly-install.sh | bash)
 endif
 
-.PHONY: all clean help test generate-config install build setup universal build-remote build-local dev-working-mock dev-weekend-mock dev-remote dev-local logs test-build test-run
+.PHONY: all clean help test generate-config install build setup universal build-remote build-local dev-weekend-mock dev-remote dev-local logs test-build test-run
 
 help: ## Show this help message
 	@echo "Todo Planner Desktop Widget - macOS Swift App"
@@ -107,12 +107,6 @@ build-remote: ## Build using .env.remote
 build-local: ## Build using .env.local
 	$(MAKE) clean
 	$(MAKE) build ENV_FILE=.env.local
-
-dev-working-mock: ## Build and run in foreground (logs to terminal)
-	$(MAKE) clean
-	$(MAKE) build ENV_FILE=.env.working.mock
-	@echo "Starting $(APP_NAME) in foreground..."
-	@"$(APP_EXECUTABLE)"
 
 dev-weekend-mock: ## Build and run weekend mock in foreground (logs to terminal)
 	$(MAKE) clean

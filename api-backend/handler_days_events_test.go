@@ -70,6 +70,32 @@ func TestPostDateEventsRejectsForeignDevice(t *testing.T) {
 	}
 }
 
+func TestPostDateEventsRejectsLocalDateMismatch(t *testing.T) {
+	database := setupTestDB(t)
+	api := NewAPI(database, "test-secret", NewLogger("test"))
+	user := createTestUser(t, database, "event-local-date-user", "password123")
+	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
+	device, err := api.deviceRepo.Create(context.Background(), user.ID, "desktop")
+	if err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+
+	requestBody := DayEventsInput{
+		DeviceID: device.ID,
+		Events: []DayEventInput{{
+			ClientEventID: "event-local-date-mismatch",
+			EventType:     "transition",
+			CategoryID:    &category.ID,
+			OccurredAt:    parseTime("2026-09-06T23:30:00Z"),
+		}},
+	}
+	response := postDateEventsRequest(t, api, user.ID, "2026-09-07", requestBody)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestPostDateEventsRequiresAmendmentFields(t *testing.T) {
 	event := DayEventInput{ClientEventID: "amendment-1", EventType: "amendment", OccurredAt: time.Now().UTC()}
 	if err := validateDateEvents([]DayEventInput{event}); err == nil {
@@ -97,9 +123,12 @@ func postDateEventsRequest(t *testing.T, api *API, userID int, calendarDate stri
 	publicEvents := make([]dayEventRequest, 0, len(input.Events))
 	for _, event := range input.Events {
 		var correctedAt *APITimestamp
+		var correctedAtLocal *string
 		if event.CorrectedAt != nil {
 			convertedTime := APITimestamp(*event.CorrectedAt)
 			correctedAt = &convertedTime
+			localValue := time.Time(*event.CorrectedAt).Format("2006-01-02T15:04:05-07:00")
+			correctedAtLocal = &localValue
 		}
 		var targetClientEventID *string
 		if event.TargetClientEventID != "" {
@@ -110,8 +139,10 @@ func postDateEventsRequest(t *testing.T, api *API, userID int, calendarDate stri
 			EventType:           event.EventType,
 			CategoryID:          event.CategoryID,
 			OccurredAt:          APITimestamp(event.OccurredAt),
+			OccurredAtLocal:     event.OccurredAt.Format("2006-01-02T15:04:05-07:00"),
 			TargetClientEventID: targetClientEventID,
 			CorrectedAt:         correctedAt,
+			CorrectedAtLocal:    correctedAtLocal,
 		})
 	}
 	requestBody := dayEventsRequest{DeviceID: input.DeviceID, Events: publicEvents}

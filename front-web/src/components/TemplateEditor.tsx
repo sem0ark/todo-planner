@@ -9,6 +9,7 @@ import {
 } from "../services/templates";
 import type { PlannedBlock } from "../services/templates";
 import { getCategories } from "../services/categories";
+import { useSettingsStore } from "../store/settingsStore";
 import TimelineEditor from "./TimelineEditor";
 
 interface TemplateEditorProps {
@@ -49,6 +50,7 @@ export default function TemplateEditor({
 }: TemplateEditorProps) {
   const { token } = useAuthStore();
   const { categories, setCategories } = useCategoryStore();
+  const { settings } = useSettingsStore();
   const {
     templates,
     addTemplate,
@@ -192,6 +194,8 @@ export default function TemplateEditor({
           blocks={blocks}
           categories={categories}
           onChange={pushBlocks}
+          dayRangeStartTime={settings?.day_range_start_time}
+          dayRangeEndTime={settings?.day_range_end_time}
         />
 
         <div className="flex gap-3 pt-4">

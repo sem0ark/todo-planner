@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"time"
 )
 
 type PublicTimelineBlock struct {
@@ -9,16 +10,17 @@ type PublicTimelineBlock struct {
 	BlockType       string       `json:"block_type"`
 	StartTime       ScheduleTime `json:"start_time"`
 	DurationMinutes int          `json:"duration_minutes"`
-	IsOpen          bool         `json:"is_open"`
 }
 
 type PublicDayRecord struct {
-	CalendarDate  CalendarDate          `json:"calendar_date"`
-	DayTemplateID *int                  `json:"day_template_id"`
-	Plan          []PublicTemplateBlock `json:"plan"`
-	Actual        []PublicTimelineBlock `json:"actual"`
-	CreatedAt     APITimestamp          `json:"created_at"`
-	UpdatedAt     APITimestamp          `json:"updated_at"`
+	CalendarDate          CalendarDate          `json:"calendar_date"`
+	DayTemplateID         *int                  `json:"day_template_id"`
+	TimezoneOffsetMinutes *int                  `json:"timezone_offset_minutes"`
+	TimezoneOffsetLocked  bool                  `json:"timezone_offset_locked"`
+	Plan                  []PublicTemplateBlock `json:"plan"`
+	Actual                []PublicTimelineBlock `json:"actual"`
+	CreatedAt             APITimestamp          `json:"created_at"`
+	UpdatedAt             APITimestamp          `json:"updated_at"`
 }
 
 type PublicDayRangeEntry struct {
@@ -34,13 +36,22 @@ func toPublicDayRecord(record *DayRecord) PublicDayRecord {
 	plan := toPublicTemplateBlocks(record.SnapshotBlocks)
 	actualBlocks := make([]PublicTimelineBlock, 0, len(record.ActualBlocks))
 	for _, block := range record.ActualBlocks {
+		startTime := block.StartTime
+		if record.TimezoneOffsetMinutes != nil {
+			startTime = shiftScheduleTime(startTime, *record.TimezoneOffsetMinutes)
+		}
 		actualBlocks = append(actualBlocks, PublicTimelineBlock{CategoryID: block.CategoryID,
-			BlockType: block.BlockType, StartTime: formatScheduleTime(block.StartTime),
-			DurationMinutes: block.DurationMinutes, IsOpen: block.IsOpen})
+			BlockType: block.BlockType, StartTime: formatScheduleTime(startTime),
+			DurationMinutes: block.DurationMinutes})
 	}
 	return PublicDayRecord{CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
+		TimezoneOffsetMinutes: record.TimezoneOffsetMinutes, TimezoneOffsetLocked: record.TimezoneOffsetLocked,
 		Plan: plan, Actual: actualBlocks, CreatedAt: APITimestamp(record.CreatedAt),
 		UpdatedAt: APITimestamp(record.UpdatedAt)}
+}
+
+func shiftScheduleTime(value ScheduleTime, offsetMinutes int) ScheduleTime {
+	return ScheduleTime(time.Time(value).Add(time.Duration(offsetMinutes) * time.Minute))
 }
 
 func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Request, userID int) {

@@ -57,6 +57,23 @@ export default function Home() {
             </p>
           </div>
         </Link>
+
+        <Link href="/preferences">
+          <div className="p-8 bg-navy border border-slate-grey/20 rounded-lg hover:bg-slate-blue/10 transition-colors cursor-pointer">
+            <div
+              className="mb-4 font-mono text-2xl text-slate-blue"
+              aria-hidden="true"
+            >
+              24/7
+            </div>
+            <h3 className="mb-2 text-xl font-semibold text-snow">
+              Preferences
+            </h3>
+            <p className="text-sm text-cloud">
+              Set the visible hours for your planning day
+            </p>
+          </div>
+        </Link>
       </div>
 
       <div className="text-center">

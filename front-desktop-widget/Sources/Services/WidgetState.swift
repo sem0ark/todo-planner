@@ -34,15 +34,17 @@ struct ScheduleDeviation {
 
 struct WidgetContext {
   var categories: [Category] = []
+  var settings: UserSettings?
   var currentDayRecord: DayRecord?
   var currentPlannedBlocks: [PlannedBlock] = []
   var currentCategory: Category?
   var plannedCategory: Category?
   var lastEventTime = Date()
   var lastEventClientId: String?
+  var eventLocalTimestamps: [String: String] = [:]
   var pomodoroPhase: PomodoroPhase = .work
   var pomodoroElapsed = 0
-  var offsetMinutes = 0
+  var offsetSeconds = 0
   var lastCheckedBlockId: String?
 }
 
@@ -96,39 +98,30 @@ struct TimeLogic {
   static func getCurrentPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
     guard let current = secondsSinceStartOfDay(for: time) else { return nil }
     return blocks.first { block in
-      guard let begin = parseSeconds(from: block.startTime) else { return false }
-      return current >= begin && current < begin + block.durationMinutes * 60
+      guard let begin = block.startSeconds else { return false }
+      return current >= begin && current < begin + block.durationSeconds
     }
   }
 
   static func getNextPlannedBlock(at time: Date, from blocks: [PlannedBlock]) -> PlannedBlock? {
     guard let current = secondsSinceStartOfDay(for: time) else { return nil }
     return blocks.compactMap { block -> (PlannedBlock, Int)? in
-      guard let start = parseSeconds(from: block.startTime), start > current else { return nil }
+      guard let start = block.startSeconds, start > current else { return nil }
       return (block, start)
     }.min { $0.1 < $1.1 }?.0
   }
 
-  static func getCurrentActualBlock(at time: Date, from blocks: [ActualBlock]) -> ActualBlock? {
-    guard let current = secondsSinceStartOfDay(for: time) else { return nil }
-    return blocks.last { block in
-      guard let begin = parseSeconds(from: block.startTime) else { return false }
-      let isOpenEnded = block.durationMinutes <= 0
-      return current >= begin && (isOpenEnded || current < begin + block.durationMinutes * 60)
-    }
-  }
-
   static func calculateProgress(for block: PlannedBlock, at time: Date) -> Double {
     guard let current = secondsSinceStartOfDay(for: time),
-      let begin = parseSeconds(from: block.startTime)
+      let begin = block.startSeconds
     else { return 0 }
     let elapsed = max(0, current - begin)
-    return min(1, Double(elapsed) / Double(max(1, block.durationMinutes * 60)))
+    return min(1, Double(elapsed) / Double(max(1, block.durationSeconds)))
   }
 
   static func isWithinConfirmationWindow(for block: PlannedBlock, at time: Date) -> Bool {
     guard let current = secondsSinceStartOfDay(for: time),
-      let begin = parseSeconds(from: block.startTime)
+      let begin = block.startSeconds
     else { return false }
     let elapsed = current - begin
     return elapsed >= 0 && elapsed < 60
@@ -169,31 +162,77 @@ enum EventLoggingError: Error {
   case incompleteAmendment
 }
 
-func tickPomodoro(_ context: inout WidgetContext) -> Bool {
-  guard let config = context.currentCategory?.pomodoroConfig else { return false }
+enum PomodoroTickOutcome {
+  case none
+  case workCompleted
+  case restCompleted
+}
 
+func tickPomodoro(_ context: inout WidgetContext) -> PomodoroTickOutcome {
+  guard let category = context.currentCategory, let config = category.pomodoroConfig
+  else { return .none }
+
+  let limit = context.pomodoroPhase == .work ? config.workDuration : config.restDuration
+  guard limit > 0 else { return .none }
+
+  let previousElapsed = context.pomodoroElapsed
   context.pomodoroElapsed += 1
-  let limit = (context.pomodoroPhase == .work ? config.workDuration : config.restDuration) * 60
-  guard limit > 0 else { return false }
 
-  if context.pomodoroPhase == .rest && context.pomodoroElapsed > Int(Double(limit) * 1.5) {
+  let autoSkipLimit = Int(Double(limit) * 1.5)
+  let crossedWorkLimit =
+    context.pomodoroPhase == .work && previousElapsed < limit && context.pomodoroElapsed >= limit
+
+  WidgetLogger.debug(
+    "Pomodoro tick",
+    context: [
+      "categoryId": String(category.id),
+      "phase": String(describing: context.pomodoroPhase),
+      "previousElapsedSeconds": String(previousElapsed),
+      "elapsedSeconds": String(context.pomodoroElapsed),
+      "limitSeconds": String(limit),
+      "autoSkipSeconds": String(autoSkipLimit),
+      "crossedWorkLimit": String(crossedWorkLimit),
+    ])
+
+  if context.pomodoroPhase == .rest && context.pomodoroElapsed >= autoSkipLimit {
+    WidgetLogger.debug(
+      "Pomodoro rest auto-skipped",
+      context: [
+        "categoryId": String(category.id), "elapsedSeconds": String(context.pomodoroElapsed),
+        "autoSkipSeconds": String(autoSkipLimit),
+      ])
+
     context.pomodoroPhase = .work
     context.pomodoroElapsed = 0
+    return .restCompleted
   }
 
-  return context.pomodoroElapsed < limit && context.pomodoroElapsed + 1 >= limit
+  return crossedWorkLimit ? .workCompleted : .none
 }
 
 func togglePomodoro(_ context: inout WidgetContext) {
-  guard let config = context.currentCategory?.pomodoroConfig else { return }
+  guard let category = context.currentCategory, let config = category.pomodoroConfig
+  else { return }
 
-  if context.pomodoroPhase == .work && context.pomodoroElapsed >= config.workDuration {
+  let workLimit = config.workDuration
+  guard workLimit > 0 else { return }
+
+  if context.pomodoroPhase == .work && context.pomodoroElapsed >= workLimit {
     context.pomodoroPhase = .rest
     context.pomodoroElapsed = 0
   } else if context.pomodoroPhase == .rest {
     context.pomodoroPhase = .work
     context.pomodoroElapsed = 0
   }
+
+  WidgetLogger.debug(
+    "Pomodoro toggled",
+    context: [
+      "categoryId": String(category.id),
+      "phase": String(describing: context.pomodoroPhase),
+      "elapsedSeconds": String(context.pomodoroElapsed),
+      "workLimitSeconds": String(workLimit),
+    ])
 }
 
 @MainActor
@@ -222,7 +261,7 @@ func transitionResult(context: WidgetContext, category: Category) -> StateResult
   updatedContext.lastEventTime = Date()
   updatedContext.pomodoroPhase = .work
   updatedContext.pomodoroElapsed = 0
-  updatedContext.offsetMinutes = 0
+  updatedContext.offsetSeconds = 0
 
   return StateResult(
     nextState: ActiveState(),
@@ -233,31 +272,11 @@ func transitionResult(context: WidgetContext, category: Category) -> StateResult
 
 @MainActor
 func confirmationResult(context: WidgetContext, nextState: WidgetStateLogic) -> StateResult {
-  var updatedContext = context
-  guard let plannedCategory = updatedContext.plannedCategory else {
+  guard let plannedCategory = context.plannedCategory else {
     WidgetLogger.error("Cannot confirm without a planned category")
     return StateResult(nextState: nextState, updatedContext: context, effects: [])
   }
-  updatedContext.lastEventTime = Date()
-  updatedContext.currentCategory = plannedCategory
-  updatedContext.pomodoroPhase = .work
-  updatedContext.pomodoroElapsed = 0
-  return StateResult(
-    nextState: nextState,
-    updatedContext: updatedContext,
-    effects: [.updateMenuBarIcon, .logConfirmation(category: plannedCategory)]
-  )
-}
-
-func updateDayRecord(_ context: inout WidgetContext, with blocks: [ActualBlock]) {
-  guard let record = context.currentDayRecord else { return }
-  context.currentDayRecord = DayRecord(
-    calendarDate: record.calendarDate,
-    plan: record.plan,
-    actual: blocks,
-    createdAt: record.createdAt,
-    updatedAt: Date()
-  )
+  return transitionResult(context: context, category: plannedCategory)
 }
 
 /// Unified event logging helper
@@ -269,8 +288,9 @@ func logEvent(
   calendarDate: String?,
   repo: TodoPlannerRepository,
   targetClientEventId: String? = nil,
-  correctedAt: Date? = nil
-) async throws -> (blocks: [ActualBlock], clientEventId: String) {
+  correctedAt: Date? = nil,
+  targetOccurredAtLocal: String? = nil
+) async throws -> (clientEventId: String, event: DayEvent) {
   guard let calendarDate else {
     throw EventLoggingError.missingCalendarDate
   }
@@ -279,22 +299,32 @@ func logEvent(
     throw EventLoggingError.missingCategory(eventType: type)
   }
   guard type != .amendment || targetClientEventId != nil,
-    type != .amendment || correctedAt != nil
+    type != .amendment || correctedAt != nil,
+    type != .amendment || targetOccurredAtLocal != nil
   else {
     throw EventLoggingError.incompleteAmendment
   }
 
+  let eventOccurredAt = occurredAt ?? Date()
+  let correctedAtLocal: String?
+  if let correctedAt, let targetOccurredAtLocal {
+    correctedAtLocal = TimeFormats.localTimestamp(
+      for: correctedAt, preservingOffsetFrom: targetOccurredAtLocal)
+  } else {
+    correctedAtLocal = nil
+  }
   let event = DayEvent(
     eventType: type.rawValue,
     categoryId: type == .amendment ? nil : categoryId,
-    occurredAt: occurredAt ?? Date(),
+    occurredAt: eventOccurredAt,
     targetClientEventId: targetClientEventId,
-    correctedAt: correctedAt
+    correctedAt: correctedAt,
+    correctedAtLocal: correctedAtLocal
   )
 
-  let response = try await repo.submitEvents(calendarDate: calendarDate, events: [event])
-  print("[SYNC] Event persisted: \(type.rawValue), blocks=\(response.actual.count)")
-  return (response.actual, event.clientEventId)
+  _ = try await repo.submitEvents(calendarDate: calendarDate, events: [event])
+  print("[LOCAL] Event appended: \(type.rawValue)")
+  return (event.clientEventId, event)
 }
 
 // MARK: - Concrete State: Initializing
@@ -366,7 +396,7 @@ final class ActiveState: WidgetStateLogic {
         return StateResult(nextState: self, updatedContext: ctx, effects: [])
       }
       let retroactiveTime = ctx.lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
-      ctx.offsetMinutes += minutes
+      ctx.offsetSeconds += minutes * 60
       ctx.lastEventTime = retroactiveTime
       return StateResult(
         nextState: self,
@@ -398,16 +428,29 @@ final class ActiveState: WidgetStateLogic {
 
     // Pomodoro Logic
     if ctx.currentCategory?.hasPomodoroEnabled == true {
-      if tickPomodoro(&ctx) {
-        var effects: [WidgetEffect] = [.postNotification(.pomodoroCompleted)]
+      switch tickPomodoro(&ctx) {
+      case .workCompleted:
+        var effects: [WidgetEffect] = []
         if let category = ctx.currentCategory {
           effects.append(.logConfirmation(category: category))
         }
+        effects.append(.postNotification(.pomodoroCompleted))
         return StateResult(
           nextState: self,
           updatedContext: ctx,
           effects: effects
         )
+
+      case .restCompleted:
+        let effects: [WidgetEffect] = [.postNotification(.pomodoroCompleted)]
+        return StateResult(
+          nextState: self,
+          updatedContext: ctx,
+          effects: effects
+        )
+
+      case .none:
+        break
       }
     }
 
@@ -459,6 +502,7 @@ class WidgetStateStore {
   var displayState: WidgetStateIdentity { currentState.identity }
   var categories: [Category] { context.categories }
   var currentDayRecord: DayRecord? { context.currentDayRecord }
+  var settings: UserSettings? { context.settings }
   var currentCategory: Category? { context.currentCategory }
   var isOnSchedule: Bool {
     guard let current = context.currentCategory, let planned = plannedCategory else { return false }
@@ -477,7 +521,7 @@ class WidgetStateStore {
     return context.categories.first { $0.id == block?.categoryId }
   }
   var lastEventTime: Date { context.lastEventTime }
-  var offsetMinutes: Int { context.offsetMinutes }
+  var offsetMinutes: Int { context.offsetSeconds / 60 }
   var currentPlannedBlock: PlannedBlock? {
     _ = tick
     let now = Date()
@@ -508,7 +552,7 @@ class WidgetStateStore {
   }
   var pomodoroProgress: Double {
     guard let config = context.currentCategory?.pomodoroConfig else { return 0.0 }
-    let limit = (context.pomodoroPhase == .work ? config.workDuration : config.restDuration) * 60
+    let limit = (context.pomodoroPhase == .work ? config.workDuration : config.restDuration)
     guard limit > 0 else { return 0.0 }
     return min(Double(context.pomodoroElapsed) / Double(limit), 1.0)
   }
@@ -577,6 +621,7 @@ class WidgetStateStore {
     try validateBootstrap(bootstrap, requestedDate: today)
 
     context.categories = bootstrap.categories
+    context.settings = bootstrap.settings
     context.currentPlannedBlocks = bootstrap.dayRecord.plan
     context.currentDayRecord = bootstrap.dayRecord
   }
@@ -591,17 +636,6 @@ class WidgetStateStore {
         TimeLogic.parseSeconds(from: block.startTime) != nil
       else {
         throw StorageError.invalidContract("invalid planned block \(block.id)")
-      }
-    }
-    for block in bootstrap.dayRecord.actual {
-      let hasValidCategory =
-        if let categoryId = block.categoryId {
-          categoryIds.contains(categoryId)
-        } else {
-          block.blockType == "untracked"
-        }
-      guard hasValidCategory, TimeLogic.parseSeconds(from: block.startTime) != nil else {
-        throw StorageError.invalidContract("invalid actual block \(block.id)")
       }
     }
   }
@@ -659,10 +693,9 @@ class WidgetStateStore {
           calendarDate: context.currentDayRecord?.calendarDate,
           repo: repository
         )
+        context.eventLocalTimestamps[eventResult.event.clientEventId] =
+          eventResult.event.occurredAtLocal
         context.lastEventClientId = eventResult.clientEventId
-        if !eventResult.blocks.isEmpty {
-          updateDayRecord(&context, with: eventResult.blocks)
-        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
@@ -680,10 +713,9 @@ class WidgetStateStore {
           calendarDate: context.currentDayRecord?.calendarDate,
           repo: repository
         )
+        context.eventLocalTimestamps[eventResult.event.clientEventId] =
+          eventResult.event.occurredAtLocal
         context.lastEventClientId = eventResult.clientEventId
-        if !eventResult.blocks.isEmpty {
-          updateDayRecord(&context, with: eventResult.blocks)
-        }
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
@@ -702,11 +734,11 @@ class WidgetStateStore {
           calendarDate: context.currentDayRecord?.calendarDate,
           repo: repository,
           targetClientEventId: targetClientEventId,
-          correctedAt: correctedAt
+          correctedAt: correctedAt,
+          targetOccurredAtLocal: context.eventLocalTimestamps[targetClientEventId]
         )
-        if !eventResult.blocks.isEmpty {
-          updateDayRecord(&context, with: eventResult.blocks)
-        }
+        context.eventLocalTimestamps[eventResult.event.clientEventId] =
+          eventResult.event.occurredAtLocal
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(
@@ -725,15 +757,13 @@ class WidgetStateStore {
 
   private func logEffectContext(_ effectName: String, eventCategory: Category) {
     let plannedBlock = currentPlannedBlock
-    let actualBlock = context.currentDayRecord.flatMap {
-      TimeLogic.getCurrentActualBlock(at: Date(), from: $0.actual)
-    }
-
     let message =
       "[EFFECT] \(effectName) eventCategory=\(categoryDescription(eventCategory)); "
-      + "state=\(stateDescription(displayState)); currentCategory=\(categoryDescription(context.currentCategory)); "
-      + "plannedCategory=\(categoryDescription(context.plannedCategory)); plannedBlock=\(plannedBlockDescription(plannedBlock)); "
-      + "actualBlock=\(actualBlockDescription(actualBlock)); offsetMinutes=\(context.offsetMinutes)"
+      + "state=\(stateDescription(displayState)); "
+      + "currentCategory=\(categoryDescription(context.currentCategory)); "
+      + "plannedCategory=\(categoryDescription(context.plannedCategory)); "
+      + "plannedBlock=\(plannedBlockDescription(plannedBlock)); "
+      + "offsetSeconds=\(context.offsetSeconds)"
     print(message)
   }
 
@@ -746,12 +776,6 @@ class WidgetStateStore {
     guard let block else { return "nil" }
     return
       "id=\(block.id),categoryId=\(block.categoryId),start=\(block.startTime),duration=\(block.durationMinutes)m"
-  }
-
-  private func actualBlockDescription(_ block: ActualBlock?) -> String {
-    guard let block else { return "nil" }
-    return
-      "id=\(block.id),categoryId=\(block.categoryId.map(String.init) ?? "nil"),type=\(block.blockType),start=\(block.startTime),duration=\(block.durationMinutes)m"
   }
 
   // MARK: - Heartbeat

@@ -78,9 +78,9 @@ func createTestUser(t *testing.T, db *pgxpool.Pool, username, password string) *
 		t.Fatalf("Failed to fetch created user: %v", err)
 	}
 	if _, err := db.Exec(context.Background(), `
-		INSERT INTO user_settings (user_id, day_boundary_time, updated_at)
-		VALUES ($1, $2, now())
-	`, fullUser.ID, "04:00:00"); err != nil {
+		INSERT INTO user_settings (user_id, day_range_start_time, day_range_end_time, updated_at)
+		VALUES ($1, $2, $3, now())
+	`, fullUser.ID, "04:00:00", "23:00:00"); err != nil {
 		t.Fatalf("Failed to create test user settings: %v", err)
 	}
 	if _, err := db.Exec(context.Background(), `

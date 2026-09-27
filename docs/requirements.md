@@ -34,7 +34,7 @@ Domain Entities:
     - *Day event* - some event used for logging the real state of day. Can confirm that the activity is still in progress, can state transitions from one category to another. It is important to note that resulting timeline and blocks derived from the events may be different from blocks in the template.
         - *Confirmation* - user confirms staying focused on the activity.
         - *Transition* - the boundary event between two consecutive category blocks, where the user confirms moving from one activity to the next.
-- *Day Boundary* - the configured time of day at which one calendar day ends and the next begins for tracking purposes. Defaults to 04:00 AM.
+- *Tracking Day Range* - local start and end times used only to render the visible Day View and Live Widget grid. Defaults to 04:00 AM through 11:00 PM. These settings do not affect which literal `calendar_date` receives an event or how actual blocks are derived.
 
 Synchronization:
 - *Change Log* - a record of a change operations done on a specific device, storing timestamp and affected entity. Used for conflict resolution and synchronization.
@@ -42,7 +42,7 @@ Synchronization:
 
 Auth:
 - *User* - the account that owns all data within the system.
-- *User Settings* - a set of configuration values belonging to a User, including day boundary time.
+- *User Settings* - a set of configuration values belonging to a User, including the view-only tracking day range.
 
 Metrics:
 - *Adherence* - the measured ratio of actual time spent on a category to the planned time for that category, calculated across a selected set of day records.
@@ -117,6 +117,9 @@ Each Day Record contains:
 - The Template Snapshot currently applied to the day. This snapshot can change while its date is active or future, but is fixed for past dates.
 - All Day Events recorded for that day (in order).
 - The current actual blocks, including any review corrections or reconstruction.
+- The internal `timezone_offset_minutes` and `timezone_offset_locked` state used to project derived UTC blocks into the numeric offset recorded by the client. This is not a user-facing timezone setting.
+
+Day Events preserve both the canonical UTC instant and the original RFC3339 local timestamp with its numeric offset. The first transition or confirmation in request-array order locks a previously unlocked day. An amendment must preserve the target event's numeric offset. A literal late-night event belongs to its local calendar date; any heuristic that suggests a previous day is client-only and never changes persisted `calendar_date`.
 
 Template changes:
 - Updating a Day Template creates a new Template Snapshot.
@@ -124,12 +127,12 @@ Template changes:
 - A user can explicitly re-pin an active/future day by choosing another template or re-resolving the current schedule.
 - Past Day Records retain their snapshot and are frozen from re-pinning, but their actual blocks remain editable.
 
-Day Boundary
-- The Day Boundary is a user-configured time of day at which one calendar day ends and the next begins for tracking purposes.
-- Default: **04:00 AM**.
+Tracking Day Range
+- The Tracking Day Range is a pair of local times used only to render the visible Day View and Live Widget grid.
+- Default: **04:00 AM through 11:00 PM**.
 - Configurable in User Settings.
-- All events and blocks are assigned to a calendar day based on this boundary.
-- A day is **active** when it is the current tracking date, **future** when it follows the current tracking date, and **past** once its tracking date has passed. Past days keep their snapshot assignment, while actual blocks remain editable.
+- It does not assign events to a `calendar_date`, clamp event timestamps, or affect actual block derivation.
+- A day is **active** when it is the current literal calendar date, **future** when it follows the current literal calendar date, and **past** once its literal date has passed. Past days keep their snapshot assignment, while actual blocks remain editable.
 
 *Day Events* are the atomic inputs that drive the Actual Block timeline.
 Two types for now:
@@ -282,7 +285,8 @@ A 7-day overview of actual theme distribution. Default landing view of the web a
 
 ## User Settings
 User-level configuration values stored server-side and synced across devices.
-- **Day Boundary time**: configurable time of day at which the tracking day resets. Default: 04:00 AM.
+- **Tracking Day Range**: configurable local start/end times used for visual rendering only. Default: 04:00 AM through 11:00 PM.
+- **Locked event offset**: an internal Day Record value, not a user setting. The first eligible live event records the numeric UTC offset used to display derived blocks for that day.
 - **Manual sync trigger**: button to push/pull data with the server. Displays last sync timestamp.
 - **Account management**: accessible from Settings. Includes full account deletion (hard delete of all data).
 

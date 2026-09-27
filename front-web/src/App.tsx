@@ -4,7 +4,6 @@ import { isTokenExpired } from "./services/auth";
 import { Route, Switch, Link, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import LoginForm from "./components/LoginForm";
-import Home from "./components/Home";
 import TokenDisplay from "./components/TokenDisplay";
 import CategoryList from "./components/CategoryList";
 import TemplateList from "./components/TemplateList";
@@ -12,9 +11,13 @@ import TemplateEditor from "./components/TemplateEditor";
 import WeeklySchedule from "./components/WeeklySchedule";
 import ScheduleOverrides from "./components/ScheduleOverrides";
 import ReviewPage from "./components/ReviewPage";
+import DayEditor from "./components/DayEditor";
+import PreferencesPage from "./components/PreferencesPage";
+import { useSettingsStore } from "./store/settingsStore";
 
 function App() {
   const { token, clearAuth } = useAuthStore();
+  const { loadSettings, clearSettings } = useSettingsStore();
   const [location, setLocation] = useHashLocation();
 
   useEffect(() => {
@@ -22,6 +25,14 @@ function App() {
       clearAuth();
     }
   }, [token, clearAuth]);
+
+  useEffect(() => {
+    if (!token) {
+      clearSettings();
+      return;
+    }
+    loadSettings(token).catch(console.error);
+  }, [token, loadSettings, clearSettings]);
 
   if (!token) {
     return (
@@ -51,16 +62,6 @@ function App() {
             <div className="flex items-center gap-6">
               <h1 className="text-lg font-semibold text-snow">Todo Planner</h1>
               <div className="flex gap-4">
-                <Link
-                  href="/"
-                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
-                    location === "/"
-                      ? "text-snow font-semibold"
-                      : "text-slate-blue hover:text-cloud"
-                  }`}
-                >
-                  Home
-                </Link>
                 <Link
                   href="/review"
                   className={`px-3 py-1 text-sm transition-colors duration-micro ${
@@ -101,6 +102,26 @@ function App() {
                 >
                   Schedule
                 </Link>
+                <Link
+                  href="/preferences"
+                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
+                    location === "/preferences"
+                      ? "text-snow font-semibold"
+                      : "text-slate-blue hover:text-cloud"
+                  }`}
+                >
+                  Preferences
+                </Link>
+                <Link
+                  href="/token"
+                  className={`px-3 py-1 text-sm transition-colors duration-micro ${
+                    location === "/token"
+                      ? "text-snow font-semibold"
+                      : "text-slate-blue hover:text-cloud"
+                  }`}
+                >
+                  Widget
+                </Link>
               </div>
               <button
                 onClick={clearAuth}
@@ -114,11 +135,24 @@ function App() {
 
         <main className="max-w-6xl mx-auto px-6 py-8">
           <Switch>
-            <Route path="/" component={Home} />
+            <Route path="/">
+              <TemplateList
+                onEdit={handleEditTemplate}
+                onCreate={handleCreateTemplate}
+              />
+            </Route>
             <Route path="/token" component={TokenDisplay} />
             <Route path="/categories" component={CategoryList} />
             <Route path="/review">
               <ReviewPage />
+            </Route>
+            <Route path="/review/:date">
+              {(params) => (
+                <DayEditor
+                  date={params.date || ""}
+                  onClose={() => setLocation("/review")}
+                />
+              )}
             </Route>
             <Route path="/templates">
               <TemplateList
@@ -143,6 +177,7 @@ function App() {
                 <ScheduleOverrides />
               </div>
             </Route>
+            <Route path="/preferences" component={PreferencesPage} />
             <Route>
               <div className="text-snow">404 - Not Found</div>
             </Route>

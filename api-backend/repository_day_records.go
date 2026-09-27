@@ -32,16 +32,18 @@ type SnapshotBlock struct {
 }
 
 type DayRecord struct {
-	ID             int             `json:"id"`
-	UserID         int             `json:"user_id"`
-	SnapshotID     *int            `json:"snapshot_id"`
-	DayTemplateID  *int            `json:"day_template_id"`
-	CalendarDate   CalendarDate    `json:"calendar_date"`
-	SnapshotBlocks []SnapshotBlock `json:"snapshot_blocks"`
-	ActualBlocks   []ActualBlock   `json:"actual_blocks"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	SnapshottedAt  time.Time       `json:"-"`
+	ID                    int             `json:"id"`
+	UserID                int             `json:"user_id"`
+	SnapshotID            *int            `json:"snapshot_id"`
+	DayTemplateID         *int            `json:"day_template_id"`
+	CalendarDate          CalendarDate    `json:"calendar_date"`
+	TimezoneOffsetMinutes *int            `json:"timezone_offset_minutes"`
+	TimezoneOffsetLocked  bool            `json:"timezone_offset_locked"`
+	SnapshotBlocks        []SnapshotBlock `json:"snapshot_blocks"`
+	ActualBlocks          []ActualBlock   `json:"actual_blocks"`
+	CreatedAt             time.Time       `json:"created_at"`
+	UpdatedAt             time.Time       `json:"updated_at"`
+	SnapshottedAt         time.Time       `json:"-"`
 }
 
 type DayRangeEntry struct {
@@ -54,8 +56,10 @@ type DayEventInput struct {
 	EventType           string     `json:"event_type"` // confirmation | transition | amendment
 	CategoryID          *int       `json:"category_id"`
 	OccurredAt          time.Time  `json:"occurred_at"`
+	OccurredAtLocal     string     `json:"occurred_at_local"`
 	TargetClientEventID string     `json:"target_client_event_id"`
 	CorrectedAt         *time.Time `json:"corrected_at"`
+	CorrectedAtLocal    *string    `json:"corrected_at_local,omitempty"`
 }
 
 type DayEventsInput struct {
@@ -69,9 +73,11 @@ type DayEvent struct {
 	EventType           string     `json:"event_type"` // confirmation | transition
 	CategoryID          *int       `json:"category_id"`
 	OccurredAt          time.Time  `json:"occurred_at"`
+	OccurredAtLocal     string     `json:"occurred_at_local"`
 	ClientEventID       *string    `json:"client_event_id,omitempty"`
 	TargetClientEventID *string    `json:"target_client_event_id,omitempty"`
 	CorrectedAt         *time.Time `json:"corrected_at,omitempty"`
+	CorrectedAtLocal    *string    `json:"corrected_at_local,omitempty"`
 	DeviceID            *int       `json:"device_id,omitempty"`
 }
 
@@ -83,7 +89,6 @@ type ActualBlock struct {
 	StartTime       ScheduleTime `json:"-"`
 	DurationMinutes int          `json:"duration_minutes"`
 	UpdatedAt       time.Time    `json:"updated_at"`
-	IsOpen          bool         `json:"is_open"`
 }
 
 type DateEventResult struct {
@@ -165,6 +170,9 @@ func (r *DayRecordRepository) FindByDate(ctx context.Context, userID int, calend
 }
 
 func (r *DayRecordRepository) populateRecord(ctx context.Context, record *DayRecord) (*DayRecord, error) {
+	if err := r.db.QueryRow(ctx, `SELECT timezone_offset_minutes, timezone_offset_locked FROM day_records WHERE id = $1`, record.ID).Scan(&record.TimezoneOffsetMinutes, &record.TimezoneOffsetLocked); err != nil {
+		return nil, err
+	}
 	if record.SnapshotID != nil {
 		if err := r.db.QueryRow(ctx, `SELECT snapshotted_at FROM template_snapshots WHERE id = $1`, *record.SnapshotID).Scan(&record.SnapshottedAt); err != nil {
 			return nil, err
@@ -413,7 +421,7 @@ func (r *DayRecordRepository) getSnapshotBlocks(ctx context.Context, snapshotID 
 // Helper: get actual blocks for a day record
 func (r *DayRecordRepository) getActualBlocks(ctx context.Context, dayRecordID int) ([]ActualBlock, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
+		SELECT id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
 		FROM actual_blocks
 		WHERE day_record_id = $1
 		ORDER BY start_time ASC
@@ -426,7 +434,7 @@ func (r *DayRecordRepository) getActualBlocks(ctx context.Context, dayRecordID i
 	blocks := make([]ActualBlock, 0)
 	for rows.Next() {
 		var block ActualBlock
-		if err := rows.Scan(&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt, &block.IsOpen); err != nil {
+		if err := rows.Scan(&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt); err != nil {
 			return nil, err
 		}
 		blocks = append(blocks, block)
@@ -503,15 +511,18 @@ func (r *DayRecordRepository) CreateEventsByDate(ctx context.Context, userID int
 	if err != nil {
 		return nil, err
 	}
+	if err := lockOffsetIfUnset(ctx, transaction, dayRecordID, inputs); err != nil {
+		return nil, err
+	}
 	result := &DateEventResult{
 		AcceptedEvents:    make([]DayEvent, 0, len(inputs)),
 		DuplicateEventIDs: make([]string, 0),
 	}
 	batchEventIDs := make(map[string]bool, len(inputs))
+	localTimestampsByID := make(map[string]string, len(inputs))
 	for _, input := range inputs {
-		if input.EventType != "amendment" {
-			batchEventIDs[input.ClientEventID] = true
-		}
+		batchEventIDs[input.ClientEventID] = true
+		localTimestampsByID[input.ClientEventID] = input.OccurredAtLocal
 	}
 	for _, input := range inputs {
 		var existingID string
@@ -539,14 +550,26 @@ func (r *DayRecordRepository) CreateEventsByDate(ctx context.Context, userID int
 			if !targetExists {
 				return nil, ErrAmendmentTargetNotFound
 			}
+			targetLocal := localTimestampsByID[input.TargetClientEventID]
+			if targetLocal == "" {
+				if lookupError := transaction.QueryRow(ctx, `SELECT COALESCE(occurred_at_local, '') FROM day_events WHERE day_record_id = $1 AND client_event_id = $2`, dayRecordID, input.TargetClientEventID).Scan(&targetLocal); lookupError != nil {
+					return nil, lookupError
+				}
+			}
+			if input.CorrectedAtLocal == nil {
+				return nil, ErrIncompleteAmendment
+			}
+			if err := validateAmendmentOffset(targetLocal, *input.CorrectedAtLocal); err != nil {
+				return nil, err
+			}
 		}
 		var event DayEvent
 		insertError := transaction.QueryRow(ctx, `
 			INSERT INTO day_events
-			(day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, target_client_event_id, corrected_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			RETURNING id, day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, target_client_event_id, corrected_at
-		`, dayRecordID, deviceID, input.ClientEventID, input.EventType, input.CategoryID, input.OccurredAt, nullableEventReference(input.TargetClientEventID), input.CorrectedAt).Scan(&event.ID, &event.DayRecordID, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.OccurredAt, &event.TargetClientEventID, &event.CorrectedAt)
+			(day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, occurred_at_local, target_client_event_id, corrected_at, corrected_at_local)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			RETURNING id, day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, occurred_at_local, target_client_event_id, corrected_at, corrected_at_local
+		`, dayRecordID, deviceID, input.ClientEventID, input.EventType, input.CategoryID, input.OccurredAt, input.OccurredAtLocal, nullableEventReference(input.TargetClientEventID), input.CorrectedAt, input.CorrectedAtLocal).Scan(&event.ID, &event.DayRecordID, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.OccurredAt, &event.OccurredAtLocal, &event.TargetClientEventID, &event.CorrectedAt, &event.CorrectedAtLocal)
 		if insertError != nil {
 			return nil, insertError
 		}
@@ -570,6 +593,28 @@ func nullableEventReference(reference string) *string {
 		return nil
 	}
 	return &reference
+}
+
+func lockOffsetIfUnset(ctx context.Context, transaction pgx.Tx, dayRecordID int, inputs []DayEventInput) error {
+	var locked bool
+	if err := transaction.QueryRow(ctx, `SELECT timezone_offset_locked FROM day_records WHERE id = $1`, dayRecordID).Scan(&locked); err != nil {
+		return err
+	}
+	if locked {
+		return nil
+	}
+	for _, event := range inputs {
+		if event.EventType != "transition" && event.EventType != "confirmation" {
+			continue
+		}
+		offsetMinutes, err := extractOffsetMinutes(event.OccurredAtLocal)
+		if err != nil {
+			return ErrInvalidLocalTimestamp
+		}
+		_, err = transaction.Exec(ctx, `UPDATE day_records SET timezone_offset_minutes = $1, timezone_offset_locked = TRUE WHERE id = $2 AND timezone_offset_locked = FALSE`, offsetMinutes, dayRecordID)
+		return err
+	}
+	return nil
 }
 
 func findOrCreateDayRecord(ctx context.Context, transaction pgx.Tx, userID int, calendarDate CalendarDate) (int, error) {
@@ -599,7 +644,7 @@ func findOrCreateDayRecord(ctx context.Context, transaction pgx.Tx, userID int, 
 	return dayRecordID, nil
 }
 
-func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecordID, userID int, inputs []ActualBlockInput) ([]ActualBlock, error) {
+func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecordID, userID int, inputs []ActualBlockInput, clientOffsetMinutes *int) ([]ActualBlock, error) {
 	transaction, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -611,6 +656,11 @@ func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecord
 	`, dayRecordID, userID).Scan(&dayRecordID)
 	if err != nil {
 		return nil, err
+	}
+	if clientOffsetMinutes != nil {
+		if _, err := transaction.Exec(ctx, `UPDATE day_records SET timezone_offset_minutes = $1, timezone_offset_locked = TRUE WHERE id = $2 AND user_id = $3 AND timezone_offset_locked = FALSE`, *clientOffsetMinutes, dayRecordID, userID); err != nil {
+			return nil, err
+		}
 	}
 
 	_, err = transaction.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID)
@@ -625,9 +675,9 @@ func (r *DayRecordRepository) ReplaceActualBlocks(ctx context.Context, dayRecord
 		err := transaction.QueryRow(ctx, `
 			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
+			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
 		`, dayRecordID, input.CategoryID, input.BlockType, input.StartTime, input.DurationMinutes, now).Scan(
-			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt, &block.IsOpen,
+			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -678,12 +728,13 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 		return nil, err
 	}
 
-	boundaryStart, boundaryEnd, isPastDay, err := getDayResolutionWindow(ctx, transaction, dayRecordID, time.Now().UTC())
-	if err != nil {
+	var calendarDate CalendarDate
+	if err := transaction.QueryRow(ctx, `SELECT calendar_date FROM day_records WHERE id = $1`, dayRecordID).Scan(&calendarDate); err != nil {
 		return nil, err
 	}
-
-	computedBlocks, err := computeTimeline(events, boundaryStart, boundaryEnd, time.Now().UTC(), isPastDay)
+	now := time.Now().UTC()
+	today := CalendarDate(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC))
+	computedBlocks, err := computeTimeline(events, now, calendarDate.Before(today))
 	if err != nil {
 		return nil, err
 	}
@@ -695,16 +746,16 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 
 	// Persist computed blocks to database
 	blocks := make([]ActualBlock, 0, len(computedBlocks))
-	now := time.Now()
+	now = time.Now()
 
 	for _, computed := range computedBlocks {
 		var block ActualBlock
 		err := transaction.QueryRow(ctx, `
-			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at, is_open
-		`, dayRecordID, computed.CategoryID, computed.BlockType, computed.StartTime, computed.DurationMinutes, now, computed.IsOpen).Scan(
-			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt, &block.IsOpen,
+			INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
+		`, dayRecordID, computed.CategoryID, computed.BlockType, computed.StartTime, computed.DurationMinutes, now).Scan(
+			&block.ID, &block.DayRecordID, &block.CategoryID, &block.BlockType, &block.StartTime, &block.DurationMinutes, &block.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -715,46 +766,9 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 	return blocks, nil
 }
 
-func getDayResolutionWindow(ctx context.Context, transaction pgx.Tx, dayRecordID int, now time.Time) (time.Time, time.Time, bool, error) {
-	var calendarDate CalendarDate
-	var userID int
-	if err := transaction.QueryRow(ctx, `
-		SELECT calendar_date, user_id
-		FROM day_records
-		WHERE day_records.id = $1
-	`, dayRecordID).Scan(&calendarDate, &userID); err != nil {
-		return time.Time{}, time.Time{}, false, err
-	}
-
-	var boundaryClock ScheduleTime
-	settingsError := transaction.QueryRow(ctx, `
-		SELECT day_boundary_time
-		FROM user_settings
-		WHERE user_id = $1
-	`, userID).Scan(&boundaryClock)
-	if settingsError != nil {
-		return time.Time{}, time.Time{}, false, fmt.Errorf(
-			"failed to load day boundary time for user %d: %w",
-			userID,
-			settingsError,
-		)
-	}
-
-	date := calendarDate
-	clock := boundaryClock
-	boundaryStart := time.Date(date.Year(), date.Month(), date.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
-	boundaryEnd := boundaryStart.AddDate(0, 0, 1)
-	currentTrackingDate := CalendarDate(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC))
-	currentDayBoundary := time.Date(now.Year(), now.Month(), now.Day(), clock.Hour(), clock.Minute(), clock.Second(), 0, time.UTC)
-	if now.Before(currentDayBoundary) {
-		currentTrackingDate = CalendarDate(time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC))
-	}
-	return boundaryStart, boundaryEnd, calendarDate.Before(currentTrackingDate), nil
-}
-
 func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.Tx, dayRecordID int) ([]DayEvent, error) {
 	rows, err := transaction.Query(ctx, `
-		SELECT id, day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, target_client_event_id, corrected_at
+		SELECT id, day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, COALESCE(occurred_at_local, ''), target_client_event_id, corrected_at, corrected_at_local
 		FROM day_events
 		WHERE day_record_id = $1
 		ORDER BY id ASC
@@ -767,7 +781,7 @@ func (r *DayRecordRepository) getDayEvents(ctx context.Context, transaction pgx.
 	events := make([]DayEvent, 0)
 	for rows.Next() {
 		var event DayEvent
-		if err := rows.Scan(&event.ID, &event.DayRecordID, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.OccurredAt, &event.TargetClientEventID, &event.CorrectedAt); err != nil {
+		if err := rows.Scan(&event.ID, &event.DayRecordID, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.OccurredAt, &event.OccurredAtLocal, &event.TargetClientEventID, &event.CorrectedAt, &event.CorrectedAtLocal); err != nil {
 			return nil, err
 		}
 		events = append(events, event)

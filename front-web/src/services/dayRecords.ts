@@ -9,12 +9,13 @@ export interface ActualBlock {
   block_type: ActualBlockType;
   start_time: string;
   duration_minutes: number;
-  is_open: boolean;
 }
 
 export interface DayRecord {
   calendar_date: string;
   day_template_id: number | null;
+  timezone_offset_minutes: number | null;
+  timezone_offset_locked: boolean;
   plan: PlannedBlock[];
   actual: ActualBlock[];
   created_at: string;
@@ -77,6 +78,7 @@ export interface ActualBlockInput {
 
 export interface UpdateDayBlocksInput {
   actual: ActualBlockInput[];
+  client_offset_minutes?: number;
 }
 
 export function updateDayBlocks(
@@ -112,8 +114,10 @@ export interface DayEventInput {
   event_type: DayEventType;
   category_id: number | null;
   occurred_at: string;
+  occurred_at_local: string;
   target_client_event_id?: string;
   corrected_at?: string;
+  corrected_at_local?: string;
 }
 
 export interface AppendDayEventsInput {

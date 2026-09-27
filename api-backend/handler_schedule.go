@@ -124,7 +124,11 @@ func (api *API) putScheduleOverrideHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Validate not in the past
-	today := CalendarDate(time.Now().UTC().Truncate(24 * time.Hour))
+	today, err := api.scheduleRepo.GetCurrentTrackingDate(r.Context(), userID, time.Now().UTC())
+	if err != nil {
+		http.Error(w, "failed to resolve current tracking date", http.StatusInternalServerError)
+		return
+	}
 	if parsedDate.Before(today) {
 		http.Error(w, "cannot set override for past date", http.StatusBadRequest)
 		return
@@ -161,7 +165,8 @@ func (api *API) deleteScheduleOverrideHandler(w http.ResponseWriter, r *http.Req
 	}
 	userID := userIDFromRequest(r)
 	parsedDate, err := parseCalendarDate(dateString)
-	if err != nil || parsedDate.Before(CalendarDate(time.Now().UTC().Truncate(24*time.Hour))) {
+	today, trackingDateError := api.scheduleRepo.GetCurrentTrackingDate(r.Context(), userID, time.Now().UTC())
+	if err != nil || trackingDateError != nil || parsedDate.Before(today) {
 		http.Error(w, "invalid date", http.StatusBadRequest)
 		return
 	}

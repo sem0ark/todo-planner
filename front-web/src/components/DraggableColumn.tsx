@@ -11,6 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
+import { constrainTimelineDragDelta } from "../utils/timeline";
 
 type DragMode = "move" | "resize-top" | "resize-bottom";
 
@@ -77,6 +78,9 @@ interface DraggableColumnProps {
   containerClassName?: string;
   itemClassName?: string;
   snapToInterval?: number; // Snap to multiples of this value (in grid units)
+  minimumSize?: number;
+  snapToEdges?: boolean;
+  edgeSnapThreshold?: number;
   editable?: boolean;
 }
 
@@ -146,6 +150,8 @@ const DraggableItemWrapper = ({
     }
   }
 
+  const hasCompactResizeHandles = visualHeight < 40;
+
   const style: React.CSSProperties = {
     position: "absolute",
     top: visualTop,
@@ -177,15 +183,17 @@ const DraggableItemWrapper = ({
       {...attributes}
       {...listeners}
     >
-      {/* Top Resize Handle (20px) */}
+      {/* Compact blocks move their resize handles outside the block so both remain usable. */}
       <div
-        className="absolute top-0 left-0 w-full h-5 cursor-ns-resize z-20 flex items-center justify-center hover:opacity-100 opacity-0 transition-opacity"
+        className={`absolute left-0 w-full h-5 cursor-ns-resize z-20 flex items-center justify-center transition-opacity ${hasCompactResizeHandles ? "-top-3 opacity-0 group-hover:opacity-100" : "top-0 opacity-0 group-hover:opacity-100"}`}
         onPointerDown={handleResizeTopPointerDown}
       >
-        <div className="flex gap-1">
-          <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
-          <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
-          <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
+        <div
+          className={`flex gap-1 rounded-full px-2 py-1 ${hasCompactResizeHandles ? "bg-snow/90 shadow ring-1 ring-snow/70" : ""}`}
+        >
+          <div className="w-1 h-1 bg-slate-600 rounded-full" />
+          <div className="w-1 h-1 bg-slate-600 rounded-full" />
+          <div className="w-1 h-1 bg-slate-600 rounded-full" />
         </div>
       </div>
 
@@ -199,13 +207,15 @@ const DraggableItemWrapper = ({
 
       {/* Bottom Resize Handle (20px) */}
       <div
-        className="absolute bottom-0 left-0 w-full h-5 cursor-ns-resize z-20 flex items-center justify-center hover:opacity-100 opacity-0 transition-opacity"
+        className={`absolute left-0 w-full h-5 cursor-ns-resize z-20 flex items-center justify-center transition-opacity ${hasCompactResizeHandles ? "-bottom-3 opacity-0 group-hover:opacity-100" : "bottom-0 opacity-0 group-hover:opacity-100"}`}
         onPointerDown={handleResizeBottomPointerDown}
       >
-        <div className="flex gap-1">
-          <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
-          <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
-          <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
+        <div
+          className={`flex gap-1 rounded-full px-2 py-1 ${hasCompactResizeHandles ? "bg-snow/90 shadow ring-1 ring-snow/70" : ""}`}
+        >
+          <div className="w-1 h-1 bg-slate-600 rounded-full" />
+          <div className="w-1 h-1 bg-slate-600 rounded-full" />
+          <div className="w-1 h-1 bg-slate-600 rounded-full" />
         </div>
       </div>
     </div>
@@ -221,6 +231,9 @@ export function DraggableColumn({
   containerClassName = "",
   itemClassName = "",
   snapToInterval = 1,
+  minimumSize = snapToInterval,
+  snapToEdges = false,
+  edgeSnapThreshold = 8,
   editable = true,
 }: DraggableColumnProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -235,10 +248,23 @@ export function DraggableColumn({
   // Snap to grid modifier with interval
   const snapModifier: Modifier = ({ transform }) => {
     const snapSize = gridUnit * snapToInterval;
+    let deltaUnits = Math.round(transform.y / snapSize) * snapToInterval;
+
+    if (snapToEdges && activeId) {
+      deltaUnits = constrainTimelineDragDelta(
+        items,
+        activeId,
+        dragMode,
+        deltaUnits,
+        minimumSize,
+        edgeSnapThreshold,
+      );
+    }
+
     return {
       ...transform,
       x: 0,
-      y: Math.round(transform.y / snapSize) * snapSize,
+      y: deltaUnits * gridUnit,
     };
   };
 
@@ -260,7 +286,7 @@ export function DraggableColumn({
         // Top resize: Offset moves down, and size changes inversely
         const newOffset = Math.max(0, item.offset + deltaUnits);
         const actualDelta = newOffset - item.offset;
-        const newSize = Math.max(snapToInterval, item.size - actualDelta);
+        const newSize = Math.max(minimumSize, item.size - actualDelta);
         return { ...item, offset: newOffset, size: newSize };
       }
 
@@ -268,7 +294,7 @@ export function DraggableColumn({
         // Bottom resize: Only size changes
         return {
           ...item,
-          size: Math.max(snapToInterval, item.size + deltaUnits),
+          size: Math.max(minimumSize, item.size + deltaUnits),
         };
       }
 

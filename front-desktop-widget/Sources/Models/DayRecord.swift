@@ -6,70 +6,37 @@ struct PlannedBlock: Codable, Identifiable {
   let durationMinutes: Int
 
   var id: String { "\(categoryId)-\(startTime)-\(durationMinutes)" }
+  var startSeconds: Int? { TimeFormats.secondsSinceDayStart(startTime) }
+  var durationSeconds: Int { durationMinutes * 60 }
 
   enum CodingKeys: String, CodingKey {
     case categoryId = "category_id"
     case startTime = "start_time"
     case durationMinutes = "duration_minutes"
   }
-}
 
-struct ActualBlock: Codable, Identifiable {
-  let categoryId: Int?
-  let blockType: String
-  let startTime: String
-  let durationMinutes: Int
-  let isOpen: Bool
-
-  var id: String { "\(categoryId.map(String.init) ?? "none")-\(startTime)-\(blockType)" }
-
-  enum CodingKeys: String, CodingKey {
-    case categoryId = "category_id"
-    case blockType = "block_type"
-    case startTime = "start_time"
-    case durationMinutes = "duration_minutes"
-    case isOpen = "is_open"
-  }
-
-  init(
-    categoryId: Int?, blockType: String, startTime: String,
-    durationMinutes: Int, isOpen: Bool = false
-  ) {
-    self.categoryId = categoryId
-    self.blockType = blockType
-    self.startTime = startTime
-    self.durationMinutes = durationMinutes
-    self.isOpen = isOpen
-  }
 }
 
 struct DayRecord: Codable {
   let calendarDate: String
-  let dayTemplateId: Int?
   let plan: [PlannedBlock]
-  let actual: [ActualBlock]
-  let createdAt: Date
-  let updatedAt: Date
 
   enum CodingKeys: String, CodingKey {
     case calendarDate = "calendar_date"
-    case dayTemplateId = "day_template_id"
-    case plan, actual
-    case createdAt = "created_at"
-    case updatedAt = "updated_at"
+    case plan
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    calendarDate = try container.decode(String.self, forKey: .calendarDate)
+    plan = try container.decode([PlannedBlock].self, forKey: .plan)
   }
 
   init(
-    calendarDate: String, dayTemplateId: Int? = nil,
-    plan: [PlannedBlock] = [], actual: [ActualBlock] = [],
-    createdAt: Date, updatedAt: Date
+    calendarDate: String, plan: [PlannedBlock] = []
   ) {
     self.calendarDate = calendarDate
-    self.dayTemplateId = dayTemplateId
     self.plan = plan
-    self.actual = actual
-    self.createdAt = createdAt
-    self.updatedAt = updatedAt
   }
 }
 
@@ -78,7 +45,6 @@ struct DayRecordsResponse: Decodable {
 
   enum CodingKeys: String, CodingKey {
     case dayRecords = "day_records"
-    case days
   }
 
   init(from decoder: Decoder) throws {
@@ -87,19 +53,10 @@ struct DayRecordsResponse: Decodable {
       dayRecords = records
       return
     }
-    guard container.contains(.days) else {
-      throw DecodingError.keyNotFound(
-        CodingKeys.dayRecords,
-        DecodingError.Context(
-          codingPath: decoder.codingPath,
-          debugDescription: "Response must contain day_records or days"))
-    }
-    let entries = try container.decode([DayRangeEntry].self, forKey: .days)
-    dayRecords = try entries.map(\.dayRecord)
+    throw DecodingError.keyNotFound(
+      CodingKeys.dayRecords,
+      DecodingError.Context(
+        codingPath: decoder.codingPath,
+        debugDescription: "Response must contain day_records"))
   }
-}
-
-private struct DayRangeEntry: Decodable {
-  let dayRecord: DayRecord
-  enum CodingKeys: String, CodingKey { case dayRecord = "day_record" }
 }
