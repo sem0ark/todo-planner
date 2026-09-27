@@ -22,6 +22,9 @@ The core question the app answers over time: "Is the life structure I designed f
 - [x] Plan out the API structure -> will be just a glue to DB, so that we could use it as just a sync engine, better to still not expose it to much though...
 - [x] Plan out the web UI and dashboard flow.
 - [x] Plan out the phone UI widget-like flow + how to later migrate web UI.
-- [ ] UI analytics logic.
+- [x] UI analytics logic.
 - [x] More reselient day event logging logic.
 - [x] Rewrite widget to store events locally to lower communication with backend to lower costs, sync on startup & shutdown only.
+- [ ] Mobile support
+    - [ ] Mobile widget
+    - [ ] Mobile review logic
