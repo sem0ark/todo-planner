@@ -177,7 +177,7 @@ function BlockEditPopover({
               minimumDuration,
               Math.round(
                 (parseInt(event.target.value) || minimumDuration) /
-                  durationStep,
+                durationStep,
               ) * durationStep,
             );
             onUpdate(blockIndex, { duration_minutes: value });
@@ -397,17 +397,53 @@ export default function TimelineEditor<T extends EditableBlock>({
     setPopoverAnchor(null);
   };
 
+  const findNewBlockPosition = () => {
+    const defaultDuration = Math.min(60, dayRangeMinutes);
+    const sortedBlocks = blocks
+      .map((block) => ({
+        startMinutes: timeToMinutes(block.start_time),
+        endMinutes: timeToMinutes(block.start_time) + block.duration_minutes,
+      }))
+      .sort((left, right) => left.startMinutes - right.startMinutes);
+    let cursorMinutes = dayStartMinutes;
+
+    for (const block of sortedBlocks) {
+      const blockStartMinutes = Math.max(dayStartMinutes, block.startMinutes);
+      const blockEndMinutes = Math.min(dayEndMinutes, block.endMinutes);
+      const snappedStartMinutes =
+        Math.ceil(cursorMinutes / snapInterval) * snapInterval;
+      if (
+        blockEndMinutes > cursorMinutes &&
+        snappedStartMinutes + defaultDuration <= blockStartMinutes
+      ) {
+        return {
+          startMinutes: snappedStartMinutes,
+          durationMinutes: defaultDuration,
+        };
+      }
+      cursorMinutes = Math.max(cursorMinutes, blockEndMinutes);
+    }
+
+    const snappedStartMinutes =
+      Math.ceil(cursorMinutes / snapInterval) * snapInterval;
+    if (snappedStartMinutes + defaultDuration <= dayEndMinutes) {
+      return {
+        startMinutes: snappedStartMinutes,
+        durationMinutes: defaultDuration,
+      };
+    }
+    return null;
+  };
+
   const addBlock = () => {
-    const lastBlock = blocks[blocks.length - 1];
-    const newStartMinutes = lastBlock
-      ? timeToMinutes(lastBlock.start_time) + lastBlock.duration_minutes
-      : dayStartMinutes;
+    const newBlockPosition = findNewBlockPosition();
+    if (!newBlockPosition) return;
     onChange([
       ...blocks,
       {
         category_id: categories[0]?.id || 0,
-        start_time: minutesToTime(newStartMinutes % (24 * 60)),
-        duration_minutes: 60,
+        start_time: minutesToTime(newBlockPosition.startMinutes),
+        duration_minutes: newBlockPosition.durationMinutes,
         ...(blocks[0] && "block_type" in blocks[0]
           ? { block_type: "actual" as const }
           : {}),
@@ -416,17 +452,15 @@ export default function TimelineEditor<T extends EditableBlock>({
   };
 
   const addBlankBlock = () => {
-    const lastBlock = blocks[blocks.length - 1];
-    const newStartMinutes = lastBlock
-      ? timeToMinutes(lastBlock.start_time) + lastBlock.duration_minutes
-      : dayStartMinutes;
+    const newBlockPosition = findNewBlockPosition();
+    if (!newBlockPosition) return;
     onChange([
       ...blocks,
       {
         category_id: null,
         block_type: "blank",
-        start_time: minutesToTime(newStartMinutes % (24 * 60)),
-        duration_minutes: 60,
+        start_time: minutesToTime(newBlockPosition.startMinutes),
+        duration_minutes: newBlockPosition.durationMinutes,
       } as T,
     ]);
   };
