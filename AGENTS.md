@@ -16,12 +16,10 @@ instruction file when one is added for a subdirectory.
 - Inspect the nearest README, architecture document, and tests before editing.
 - Keep changes scoped to the owning project; do not refactor unrelated code.
 - Preserve existing public APIs and data contracts unless the request requires a change, and add or update focused tests for behavior changes.
-- Do not create action-summary or report files. Put durable documentation in the appropriate file under `docs/`.
+- Do not create action-summary or report files on task completion if not explicitly asked. Put durable documentation in the appropriate file under `docs/`.
 - Use `make lint` for repository linting, `make test` for backend tests, and `make test` from `front-desktop-widget/` for widget tests.
 
 ## Approved Commands
-
-**IMPORTANT: Use ONLY these commands. Do not invent, combine, or modify targets.**
 
 ### Repository Root
 - `make lint` - check code style
@@ -41,8 +39,6 @@ instruction file when one is added for a subdirectory.
 - `make help` - show all targets
 
 ### Frontend (Web & React Native)
-**Never use `make` in `front-web/` or `front-rn-mobile/` - use pnpm only.**
-
 - `pnpm dev` - start dev server (web)
 - `pnpm start` - start dev server (React Native)
 - `pnpm build` - build for production
