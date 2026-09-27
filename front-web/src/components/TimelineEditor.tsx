@@ -3,9 +3,6 @@ import type { PlannedBlock } from "../services/templates";
 import type { Category } from "../services/categories";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { getContrastTextColor } from "../utils/colors";
-import { useAuthStore } from "../store/authStore";
-import { useSettingsStore } from "../store/settingsStore";
-import { getSettings } from "../services/settings";
 import { createPortal } from "react-dom";
 
 const GRID_UNIT = 2;
@@ -181,11 +178,9 @@ export default function TimelineEditor({
   categories: Category[];
   onChange: (blocks: PlannedBlock[]) => void;
 }) {
-  const { token } = useAuthStore();
-  const { settings, setSettings } = useSettingsStore();
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const dayStartMinutes = 0;
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
-  const [dayStartMinutes, setDayStartMinutes] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(600);
   const blockIds = useRef<Map<number, string>>(new Map());
@@ -200,23 +195,13 @@ export default function TimelineEditor({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (token && !settings)
-      getSettings(token).then(setSettings).catch(console.error);
-  }, [token, settings, setSettings]);
-
-  useEffect(() => {
-    if (settings?.day_boundary_time)
-      setDayStartMinutes(timeToMinutes(settings.day_boundary_time));
-  }, [settings]);
-
   const layoutItems: LayoutItem[] = useMemo(
     () =>
       blocks.map((block, index) => {
         if (!blockIds.current.has(index))
           blockIds.current.set(index, `block-${idCounter.current++}`);
         const blockMinutes = timeToMinutes(block.start_time);
-        let offset = blockMinutes - dayStartMinutes;
+        let offset = blockMinutes;
         if (offset < 0) offset += 24 * 60;
         return {
           id: blockIds.current.get(index)!,

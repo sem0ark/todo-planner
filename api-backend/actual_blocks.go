@@ -12,7 +12,6 @@ type ComputedBlock struct {
 	BlockType       string
 	StartTime       time.Time
 	DurationMinutes int
-	IsOpen          bool
 }
 
 type resolvedDayEvent struct {
@@ -21,9 +20,8 @@ type resolvedDayEvent struct {
 }
 
 // resolveTimeline applies the latest correction per target, then orders by the
-// corrected timestamp and the server insertion id. Events outside the day are
-// retained in day_events but do not participate in derived blocks.
-func resolveTimeline(events []DayEvent, boundaryStart, boundaryEnd time.Time) []resolvedDayEvent {
+// corrected timestamp and the server insertion id.
+func resolveTimeline(events []DayEvent) []resolvedDayEvent {
 	amendmentsByTarget := make(map[string]DayEvent)
 	for _, event := range events {
 		if event.EventType != "amendment" || event.TargetClientEventID == nil {
@@ -48,9 +46,6 @@ func resolveTimeline(events []DayEvent, boundaryStart, boundaryEnd time.Time) []
 				effectiveAt = *amendment.CorrectedAt
 			}
 		}
-		if effectiveAt.Before(boundaryStart) || effectiveAt.After(boundaryEnd) {
-			continue
-		}
 		resolvedEvents = append(resolvedEvents, resolvedDayEvent{event: event, effectiveAt: effectiveAt})
 	}
 
@@ -65,7 +60,7 @@ func resolveTimeline(events []DayEvent, boundaryStart, boundaryEnd time.Time) []
 	return resolvedEvents
 }
 
-func computeResolvedBlocks(events []resolvedDayEvent, boundaryStart, boundaryEnd, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
+func computeResolvedBlocks(events []resolvedDayEvent, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
 	transitions := make([]resolvedDayEvent, 0)
 	for _, event := range events {
 		if event.event.EventType == "transition" {
@@ -73,13 +68,10 @@ func computeResolvedBlocks(events []resolvedDayEvent, boundaryStart, boundaryEnd
 		}
 	}
 	if len(transitions) == 0 {
-		return []ComputedBlock{{BlockType: "untracked", StartTime: boundaryStart, DurationMinutes: int(boundaryEnd.Sub(boundaryStart).Minutes())}}, nil
+		return []ComputedBlock{}, nil
 	}
 
 	blocks := make([]ComputedBlock, 0, len(transitions)+1)
-	if transitions[0].effectiveAt.After(boundaryStart) {
-		blocks = append(blocks, ComputedBlock{BlockType: "untracked", StartTime: boundaryStart, DurationMinutes: int(transitions[0].effectiveAt.Sub(boundaryStart).Minutes())})
-	}
 	for index := 0; index < len(transitions)-1; index++ {
 		start := transitions[index].effectiveAt
 		end := transitions[index+1].effectiveAt
@@ -93,22 +85,30 @@ func computeResolvedBlocks(events []resolvedDayEvent, boundaryStart, boundaryEnd
 	}
 
 	last := transitions[len(transitions)-1]
-	end := now
-	open := true
-	if isPastDay {
-		end = boundaryEnd
-		open = false
+	finalDurationMinutes := 30
+	if !isPastDay {
+		elapsedMinutes := int(now.Sub(last.effectiveAt).Minutes())
+		if elapsedMinutes < finalDurationMinutes {
+			finalDurationMinutes = maxInt(elapsedMinutes, 0)
+		}
 	}
-	if !end.Before(last.effectiveAt) {
+	if finalDurationMinutes > 0 {
 		blocks = append(blocks, ComputedBlock{
 			CategoryID: last.event.CategoryID, BlockType: "actual", StartTime: last.effectiveAt,
-			DurationMinutes: int(end.Sub(last.effectiveAt).Minutes()), IsOpen: open,
+			DurationMinutes: finalDurationMinutes,
 		})
 	}
 	return blocks, nil
 }
 
-func computeTimeline(events []DayEvent, boundaryStart, boundaryEnd, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
-	resolvedEvents := resolveTimeline(events, boundaryStart, boundaryEnd)
-	return computeResolvedBlocks(resolvedEvents, boundaryStart, boundaryEnd, now, isPastDay)
+func computeTimeline(events []DayEvent, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
+	resolvedEvents := resolveTimeline(events)
+	return computeResolvedBlocks(resolvedEvents, now, isPastDay)
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }

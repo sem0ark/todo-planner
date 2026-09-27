@@ -84,9 +84,9 @@ func createDefaultUserConfiguration(ctx context.Context, tx pgx.Tx, userID int) 
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO user_settings (user_id, day_boundary_time, updated_at)
-		VALUES ($1, $2, now())
-	`, userID, "04:00:00")
+		INSERT INTO user_settings (user_id, day_range_start_time, day_range_end_time, updated_at)
+		VALUES ($1, $2, $3, now())
+	`, userID, "04:00:00", "23:00:00")
 	return err
 }
 

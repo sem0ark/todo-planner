@@ -13,7 +13,8 @@ type publicBlockReplacement struct {
 }
 
 type publicBlockReplacementRequest struct {
-	Actual *[]publicBlockReplacement `json:"actual"`
+	Actual              *[]publicBlockReplacement `json:"actual"`
+	ClientOffsetMinutes *int                      `json:"client_offset_minutes"`
 }
 
 func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
@@ -57,7 +58,7 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 	}
 	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
 	if err == nil {
-		_, err = api.dayRecordRepo.ReplaceActualBlocks(request.Context(), record.ID, userID, actualBlocks)
+		_, err = api.dayRecordRepo.ReplaceActualBlocks(request.Context(), record.ID, userID, actualBlocks, publicInput.ClientOffsetMinutes)
 		if err == nil {
 			record, err = api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
 		}

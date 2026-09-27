@@ -36,7 +36,7 @@ protocol TodoPlannerRepository: Sendable {
   func initialize(calendarDate: String) async throws -> InitResponse
 
   // MARK: - Events & Reality Logging
-  /// Submits events for a calendar date and returns derived actual blocks.
+  /// Appends events to the local log; network synchronization happens separately.
   func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse
 
   // MARK: - Sync & Persistence (For SQLite/Offline)

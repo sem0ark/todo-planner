@@ -6,18 +6,24 @@ import (
 )
 
 type UserSettingsInput struct {
-	DayBoundaryTime ScheduleTime `json:"day_boundary_time"`
+	DayRangeStartTime ScheduleTime `json:"day_range_start_time"`
+	DayRangeEndTime   ScheduleTime `json:"day_range_end_time"`
 }
 
+// Tracking day range settings are rendering hints only. They do not affect
+// event calendar-date assignment or actual block derivation.
+
 type PublicSettings struct {
-	DayBoundaryTime ScheduleTime `json:"day_boundary_time"`
-	UpdatedAt       APITimestamp `json:"updated_at"`
+	DayRangeStartTime ScheduleTime `json:"day_range_start_time"`
+	DayRangeEndTime   ScheduleTime `json:"day_range_end_time"`
+	UpdatedAt         APITimestamp `json:"updated_at"`
 }
 
 func toPublicSettings(settings UserSettings) PublicSettings {
 	return PublicSettings{
-		DayBoundaryTime: formatScheduleTime(settings.DayBoundaryTime),
-		UpdatedAt:       APITimestamp(settings.UpdatedAt),
+		DayRangeStartTime: formatScheduleTime(settings.DayRangeStartTime),
+		DayRangeEndTime:   formatScheduleTime(settings.DayRangeEndTime),
+		UpdatedAt:         APITimestamp(settings.UpdatedAt),
 	}
 }
 
@@ -46,11 +52,12 @@ func (api *API) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := api.settingsRepo.Update(r.Context(), userID, input.DayBoundaryTime)
+	settings, err := api.settingsRepo.Update(r.Context(), userID, input.DayRangeStartTime, input.DayRangeEndTime)
 	if err != nil {
 		HTTPError(w, r, api.logger, http.StatusInternalServerError, "failed to update settings", err, map[string]interface{}{
-			"user_id":           userID,
-			"day_boundary_time": input.DayBoundaryTime,
+			"user_id":              userID,
+			"day_range_start_time": input.DayRangeStartTime,
+			"day_range_end_time":   input.DayRangeEndTime,
 		})
 		return
 	}

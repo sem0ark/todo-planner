@@ -9,8 +9,7 @@ import (
 
 func computeActualTimelineForTest(t *testing.T, events []DayEvent, referenceTime time.Time) []ComputedBlock {
 	t.Helper()
-	boundaryStart := time.Date(referenceTime.Year(), referenceTime.Month(), referenceTime.Day(), 0, 0, 0, 0, referenceTime.Location())
-	blocks, err := computeTimeline(events, boundaryStart, referenceTime, referenceTime, false)
+	blocks, err := computeTimeline(events, referenceTime, false)
 	if err != nil {
 		t.Fatalf("computeTimeline failed: %v", err)
 	}
@@ -85,6 +84,145 @@ func TestDayRecordRepository_Create_NoTemplate(t *testing.T) {
 	}
 	if len(record.SnapshotBlocks) != 0 {
 		t.Errorf("Expected 0 snapshot blocks, got %d", len(record.SnapshotBlocks))
+	}
+}
+
+func TestDayRecordRepository_CreateStartsWithUnlockedOffset(t *testing.T) {
+	database := setupTestDB(t)
+	repository := NewDayRecordRepository(database)
+	user := createTestUser(t, database, "unlocked-offset-user", "password123")
+
+	record, err := repository.Create(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if record.TimezoneOffsetMinutes != nil {
+		t.Fatalf("expected nil timezone offset, got %v", *record.TimezoneOffsetMinutes)
+	}
+	if record.TimezoneOffsetLocked {
+		t.Fatal("expected newly created day to have an unlocked timezone offset")
+	}
+}
+
+func TestDayRecordRepositoryLocksFirstEligibleEventOffset(t *testing.T) {
+	database := setupTestDB(t)
+	repository := NewDayRecordRepository(database)
+	user := createTestUser(t, database, "first-offset-user", "password123")
+	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
+	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
+	if err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+
+	events := []DayEventInput{
+		{
+			ClientEventID:   "transition-first",
+			EventType:       "transition",
+			CategoryID:      &category.ID,
+			OccurredAt:      parseTime("2026-09-06T08:00:00Z"),
+			OccurredAtLocal: "2026-09-06T10:00:00+02:00",
+		},
+		{
+			ClientEventID:   "transition-second",
+			EventType:       "transition",
+			CategoryID:      &category.ID,
+			OccurredAt:      parseTime("2026-09-06T09:00:00Z"),
+			OccurredAtLocal: "2026-09-06T04:00:00-05:00",
+		},
+	}
+	_, err = repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, events)
+	if err != nil {
+		t.Fatalf("CreateEventsByDate failed: %v", err)
+	}
+
+	record, err := repository.FindByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
+	if err != nil {
+		t.Fatalf("FindByDate failed: %v", err)
+	}
+	if record.TimezoneOffsetMinutes == nil || *record.TimezoneOffsetMinutes != 120 {
+		t.Fatalf("expected first event offset 120, got %v", record.TimezoneOffsetMinutes)
+	}
+	if !record.TimezoneOffsetLocked {
+		t.Fatal("expected timezone offset to be locked")
+	}
+}
+
+func TestDayRecordRepositoryAmendmentOffsetValidation(t *testing.T) {
+	testCases := []struct {
+		name        string
+		correctedAt string
+		expectedErr error
+	}{
+		{name: "matching offset", correctedAt: "2026-09-06T11:00:00+02:00"},
+		{name: "mismatched offset", correctedAt: "2026-09-06T04:00:00-05:00", expectedErr: ErrAmendmentOffsetMismatch},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			database := setupTestDB(t)
+			repository := NewDayRecordRepository(database)
+			user := createTestUser(t, database, "amendment-offset-"+testCase.name, "password123")
+			category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
+			correctedAt := parseTime("2026-09-06T09:00:00Z")
+			device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
+			if err != nil {
+				t.Fatalf("failed to create device: %v", err)
+			}
+			_, err = repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, []DayEventInput{{
+				ClientEventID:   "target-transition",
+				EventType:       "transition",
+				CategoryID:      &category.ID,
+				OccurredAt:      parseTime("2026-09-06T08:00:00Z"),
+				OccurredAtLocal: "2026-09-06T10:00:00+02:00",
+			}})
+			if err != nil {
+				t.Fatalf("failed to create target event: %v", err)
+			}
+
+			_, err = repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, []DayEventInput{{
+				ClientEventID:       "amendment-event",
+				EventType:           "amendment",
+				CategoryID:          &category.ID,
+				OccurredAt:          parseTime("2026-09-06T12:00:00Z"),
+				OccurredAtLocal:     "2026-09-06T14:00:00+02:00",
+				TargetClientEventID: "target-transition",
+				CorrectedAt:         &correctedAt,
+				CorrectedAtLocal:    &testCase.correctedAt,
+			}})
+			if err != testCase.expectedErr {
+				t.Fatalf("expected error %v, got %v", testCase.expectedErr, err)
+			}
+		})
+	}
+}
+
+func TestDayRecordRepositoryManualBlocksLockOffsetOnlyOnce(t *testing.T) {
+	database := setupTestDB(t)
+	repository := NewDayRecordRepository(database)
+	user := createTestUser(t, database, "manual-offset-user", "password123")
+	record, err := repository.Create(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	blocks := []ActualBlockInput{{BlockType: "blank", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 30}}
+	initialOffsetMinutes := 120
+	secondOffsetMinutes := -300
+
+	_, err = repository.ReplaceActualBlocks(context.Background(), record.ID, user.ID, blocks, &initialOffsetMinutes)
+	if err != nil {
+		t.Fatalf("initial ReplaceActualBlocks failed: %v", err)
+	}
+	_, err = repository.ReplaceActualBlocks(context.Background(), record.ID, user.ID, blocks, &secondOffsetMinutes)
+	if err != nil {
+		t.Fatalf("locked ReplaceActualBlocks failed: %v", err)
+	}
+
+	reloaded, err := repository.FindByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
+	if err != nil {
+		t.Fatalf("FindByDate failed: %v", err)
+	}
+	if reloaded.TimezoneOffsetMinutes == nil || *reloaded.TimezoneOffsetMinutes != 120 {
+		t.Fatalf("expected original offset 120 to remain locked, got %v", reloaded.TimezoneOffsetMinutes)
 	}
 }
 
@@ -394,8 +532,8 @@ func TestComputeActualBlocks_SingleTransition(t *testing.T) {
 	if blocks[0].CategoryID == nil || *blocks[0].CategoryID != categoryID {
 		t.Errorf("Expected category_id %d, got %v", categoryID, blocks[0].CategoryID)
 	}
-	if blocks[0].DurationMinutes != 480 { // 8 hours = 480 minutes
-		t.Errorf("Expected 480 minutes, got %d", blocks[0].DurationMinutes)
+	if blocks[0].DurationMinutes != 30 {
+		t.Errorf("Expected 30 minutes, got %d", blocks[0].DurationMinutes)
 	}
 }
 
@@ -450,12 +588,12 @@ func TestComputeActualBlocks_MultipleTransitions(t *testing.T) {
 		t.Errorf("Block 1: Expected 60 minutes, got %d", blocks[1].DurationMinutes)
 	}
 
-	// Third block: 13:00 to 17:00 (240 minutes)
+	// Third block: latest transition is capped at 30 minutes.
 	if *blocks[2].CategoryID != category1 {
 		t.Errorf("Block 2: Expected category %d, got %d", category1, *blocks[2].CategoryID)
 	}
-	if blocks[2].DurationMinutes != 240 {
-		t.Errorf("Block 2: Expected 240 minutes, got %d", blocks[2].DurationMinutes)
+	if blocks[2].DurationMinutes != 30 {
+		t.Errorf("Block 2: Expected 30 minutes, got %d", blocks[2].DurationMinutes)
 	}
 }
 
@@ -503,9 +641,9 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 		t.Errorf("Block 0: Expected 180 minutes, got %d", blocks[0].DurationMinutes)
 	}
 
-	// Second block: 12:00 to 17:00 (300 minutes)
-	if blocks[1].DurationMinutes != 300 {
-		t.Errorf("Block 1: Expected 300 minutes, got %d", blocks[1].DurationMinutes)
+	// Second block: latest transition is capped at 30 minutes.
+	if blocks[1].DurationMinutes != 30 {
+		t.Errorf("Block 1: Expected 30 minutes, got %d", blocks[1].DurationMinutes)
 	}
 }
 
@@ -530,9 +668,7 @@ func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 	}
 
 	// Act
-	boundaryStart := parseTime("2026-07-20T04:00:00Z")
-	boundaryEnd := boundaryStart.Add(24 * time.Hour)
-	_, err := computeTimeline(events, boundaryStart, boundaryEnd, referenceTime, false)
+	_, err := computeTimeline(events, referenceTime, false)
 
 	// Assert
 	if !errors.Is(err, ErrNonMonotonicTransitions) {
@@ -585,12 +721,9 @@ func TestComputeActualBlocks_ExcludesSubMinuteOngoingBlock(t *testing.T) {
 	// Act
 	blocks := computeActualTimelineForTest(t, events, startTime.Add(59*time.Second))
 
-	// Assert
-	if len(blocks) != 1 {
-		t.Fatalf("Expected the open block before one full minute, got %d", len(blocks))
-	}
-	if !blocks[0].IsOpen || blocks[0].DurationMinutes != 0 {
-		t.Fatalf("Expected a zero-duration open block, got %+v", blocks[0])
+	// Assert: a transition with no remaining day time produces no actual block.
+	if len(blocks) != 0 {
+		t.Fatalf("Expected no actual blocks, got %+v", blocks)
 	}
 }
 
@@ -632,7 +765,7 @@ func TestDayRecordRepository_ReplaceActualBlocks_RollsBackPartialBatch(t *testin
 	record, _ := repo.Create(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
 	_, err := repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
 		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 60},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("Failed to create initial actual block: %v", err)
 	}
@@ -642,7 +775,7 @@ func TestDayRecordRepository_ReplaceActualBlocks_RollsBackPartialBatch(t *testin
 	_, err = repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
 		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 60},
 		{CategoryID: &invalidCategoryID, BlockType: "actual", StartTime: mustScheduleTime("11:00:00"), DurationMinutes: 60},
-	})
+	}, nil)
 
 	// Assert
 	if err == nil {

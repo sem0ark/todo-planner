@@ -17,12 +17,17 @@ var (
 	ErrActualBlocksOverlap         = NewBadRequestError("actual blocks must not overlap")
 	ErrInvalidDayDateRange         = NewBadRequestError("invalid date range")
 	ErrDeviceIDRequired            = NewBadRequestError("device_id is required")
+	ErrMissingLocalTimestamp       = NewBadRequestError("occurred_at_local is required")
+	ErrInvalidLocalTimestamp       = NewBadRequestError("occurred_at_local must be RFC3339 with a UTC offset")
+	ErrEventLocalDateMismatch      = NewBadRequestError("occurred_at_local date does not match the requested day")
+	ErrAmendmentOffsetMismatch     = NewBadRequestError("amendment offset must match the target event's recorded offset")
 )
 
 const minutesPerDay = 24 * 60
 
 type DayRecordBlocksInput struct {
-	ActualBlocks []ActualBlockInput `json:"actual_blocks"`
+	ActualBlocks        []ActualBlockInput `json:"actual_blocks"`
+	ClientOffsetMinutes *int               `json:"client_offset_minutes"`
 }
 
 type DayRecordTemplateInput struct {
@@ -50,8 +55,22 @@ func validateDayEvents(events []DayEventInput) error {
 		if event.OccurredAt.IsZero() {
 			return ErrMissingEventTimestamp
 		}
+		if event.OccurredAtLocal == "" {
+			return ErrMissingLocalTimestamp
+		}
+		if _, err := extractOffsetMinutes(event.OccurredAtLocal); err != nil {
+			return ErrInvalidLocalTimestamp
+		}
 		if index > 0 && event.OccurredAt.Before(events[index-1].OccurredAt) {
 			return ErrUnsortedEvents
+		}
+		if event.EventType == "amendment" {
+			if event.CorrectedAtLocal == nil {
+				return ErrIncompleteAmendment
+			}
+			if _, err := extractOffsetMinutes(*event.CorrectedAtLocal); err != nil {
+				return ErrInvalidLocalTimestamp
+			}
 		}
 	}
 	return nil

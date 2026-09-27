@@ -22,8 +22,8 @@ func TestUserSettingsRepository_Get(t *testing.T) {
 	if settings.UserID != user.ID {
 		t.Errorf("Expected UserID %d, got %d", user.ID, settings.UserID)
 	}
-	if settings.DayBoundaryTime != mustScheduleTime("04:00:00") {
-		t.Errorf("Expected default DayBoundaryTime '04:00:00', got '%v'", settings.DayBoundaryTime)
+	if settings.DayRangeStartTime != mustScheduleTime("04:00:00") {
+		t.Errorf("Expected default DayRangeStartTime '04:00:00', got '%v'", settings.DayRangeStartTime)
 	}
 }
 
@@ -69,15 +69,15 @@ func TestUserSettingsRepository_Update(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
-	if updated.DayBoundaryTime != newTime {
-		t.Errorf("Expected DayBoundaryTime '%v', got '%v'", newTime, updated.DayBoundaryTime)
+	if updated.DayRangeStartTime != newTime {
+		t.Errorf("Expected DayRangeStartTime '%v', got '%v'", newTime, updated.DayRangeStartTime)
 	}
 	if updated.UserID != user.ID {
 		t.Errorf("Expected UserID %d, got %d", user.ID, updated.UserID)
 	}
 }
 
-func TestUserSettingsRepository_Update_BeforeCreate(t *testing.T) {
+func TestUserSettingsRepository_Update_CreatesMissingSettings(t *testing.T) {
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewUserSettingsRepository(db)
@@ -91,8 +91,8 @@ func TestUserSettingsRepository_Update_BeforeCreate(t *testing.T) {
 	_, err := repo.Update(ctx, user.ID, mustScheduleTime("05:00:00"))
 
 	// Assert
-	if err == nil {
-		t.Error("Expected error when updating non-existent settings, got nil")
+	if err != nil {
+		t.Fatalf("Expected missing settings to be created, got error: %v", err)
 	}
 }
 
@@ -130,10 +130,10 @@ func TestUserSettingsRepository_MultipleUsers(t *testing.T) {
 	if settings1.ID == settings2.ID {
 		t.Error("Expected different settings IDs for different users")
 	}
-	if updated1.DayBoundaryTime != mustScheduleTime("05:00:00") {
-		t.Errorf("User1: expected '05:00:00', got '%v'", updated1.DayBoundaryTime)
+	if updated1.DayRangeStartTime != mustScheduleTime("05:00:00") {
+		t.Errorf("User1: expected '05:00:00', got '%v'", updated1.DayRangeStartTime)
 	}
-	if updated2.DayBoundaryTime != mustScheduleTime("07:00:00") {
-		t.Errorf("User2: expected '07:00:00', got '%v'", updated2.DayBoundaryTime)
+	if updated2.DayRangeStartTime != mustScheduleTime("07:00:00") {
+		t.Errorf("User2: expected '07:00:00', got '%v'", updated2.DayRangeStartTime)
 	}
 }

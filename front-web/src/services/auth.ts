@@ -22,13 +22,14 @@ export function isTokenExpired(token: string): boolean {
       return true;
     }
 
-    const payloadBase64 = tokenParts[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
+    const payloadBase64 = tokenParts[1].replace(/-/g, "+").replace(/_/g, "/");
     const jsonPayload = decodeURIComponent(
       atob(payloadBase64)
         .split("")
-        .map((character) => `%${`00${character.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .map(
+          (character) =>
+            `%${`00${character.charCodeAt(0).toString(16)}`.slice(-2)}`,
+        )
         .join(""),
     );
 

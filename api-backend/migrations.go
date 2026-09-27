@@ -487,5 +487,35 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   10,
+			Name: "finalize_day_tracking_and_locked_offset",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE actual_blocks DROP COLUMN IF EXISTS is_open;
+					ALTER TABLE user_settings
+						RENAME COLUMN day_boundary_time TO day_range_start_time;
+					ALTER TABLE user_settings
+						ADD COLUMN day_range_end_time TIME NOT NULL DEFAULT '23:00:00';
+					ALTER TABLE day_events ADD COLUMN occurred_at_local TEXT;
+					ALTER TABLE day_events ADD COLUMN corrected_at_local TEXT;
+					ALTER TABLE day_records ADD COLUMN timezone_offset_minutes INTEGER;
+					ALTER TABLE day_records ADD COLUMN timezone_offset_locked BOOLEAN NOT NULL DEFAULT FALSE;
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE day_records DROP COLUMN IF EXISTS timezone_offset_locked;
+					ALTER TABLE day_records DROP COLUMN IF EXISTS timezone_offset_minutes;
+					ALTER TABLE day_events DROP COLUMN IF EXISTS corrected_at_local;
+					ALTER TABLE day_events DROP COLUMN IF EXISTS occurred_at_local;
+					ALTER TABLE user_settings DROP COLUMN IF EXISTS day_range_end_time;
+					ALTER TABLE user_settings RENAME COLUMN day_range_start_time TO day_boundary_time;
+					ALTER TABLE actual_blocks ADD COLUMN IF NOT EXISTS is_open BOOLEAN NOT NULL DEFAULT FALSE;
+				`)
+				return err
+			},
+		},
 	}
 }

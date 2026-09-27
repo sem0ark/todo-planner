@@ -10,11 +10,39 @@ struct DeviceRegistration: Codable {
 }
 
 struct UserSettings: Codable {
-  let dayBoundaryTime: String
+  let dayRangeStartTime: String
+  let dayRangeEndTime: String
   let updatedAt: Date
   enum CodingKeys: String, CodingKey {
-    case dayBoundaryTime = "day_boundary_time"
+    case dayRangeStartTime = "day_range_start_time"
+    case dayRangeEndTime = "day_range_end_time"
     case updatedAt = "updated_at"
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    dayRangeStartTime = try container.decodeIfPresent(String.self, forKey: .dayRangeStartTime)
+      ?? "04:00:00"
+    dayRangeEndTime = try container.decodeIfPresent(String.self, forKey: .dayRangeEndTime)
+      ?? "28:00:00"
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(dayRangeStartTime, forKey: .dayRangeStartTime)
+    try container.encode(dayRangeEndTime, forKey: .dayRangeEndTime)
+    try container.encode(updatedAt, forKey: .updatedAt)
+  }
+
+  init(
+    dayRangeStartTime: String = "04:00:00",
+    dayRangeEndTime: String = "28:00:00",
+    updatedAt: Date
+  ) {
+    self.dayRangeStartTime = dayRangeStartTime
+    self.dayRangeEndTime = dayRangeEndTime
+    self.updatedAt = updatedAt
   }
 }
 

@@ -140,7 +140,10 @@ func (r *ScheduleRepository) ReplaceWeeklySchedule(ctx context.Context, userID i
 
 // GetFutureOverrides returns all overrides from today onward
 func (r *ScheduleRepository) GetFutureOverrides(ctx context.Context, userID int) ([]ScheduleOverride, error) {
-	today := CalendarDate(time.Now().UTC().Truncate(24 * time.Hour))
+	today, err := r.GetCurrentTrackingDate(ctx, userID, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
 
 	rows, err := r.db.Query(ctx, `
 		SELECT id, user_id, calendar_date, day_template_id, created_at
@@ -163,6 +166,24 @@ func (r *ScheduleRepository) GetFutureOverrides(ctx context.Context, userID int)
 	}
 
 	return overrides, nil
+}
+
+func (r *ScheduleRepository) GetCurrentTrackingDate(ctx context.Context, userID int, now time.Time) (CalendarDate, error) {
+	var dayRangeStartTime ScheduleTime
+	if err := r.db.QueryRow(ctx, `
+		SELECT day_range_start_time
+		FROM user_settings
+		WHERE user_id = $1
+	`, userID).Scan(&dayRangeStartTime); err != nil {
+		return CalendarDate{}, err
+	}
+	localNow := now.UTC()
+	trackingDate := CalendarDate(time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, time.UTC))
+	dayRangeStart := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), dayRangeStartTime.Hour(), dayRangeStartTime.Minute(), dayRangeStartTime.Second(), 0, time.UTC)
+	if localNow.Before(dayRangeStart) {
+		trackingDate = trackingDate.AddDate(0, 0, -1)
+	}
+	return trackingDate, nil
 }
 
 // GetTemplateForDate resolves the template assigned to a calendar date.

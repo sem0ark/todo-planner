@@ -12,9 +12,11 @@ import TemplateEditor from "./components/TemplateEditor";
 import WeeklySchedule from "./components/WeeklySchedule";
 import ScheduleOverrides from "./components/ScheduleOverrides";
 import ReviewPage from "./components/ReviewPage";
+import { useSettingsStore } from "./store/settingsStore";
 
 function App() {
   const { token, clearAuth } = useAuthStore();
+  const { loadSettings, clearSettings } = useSettingsStore();
   const [location, setLocation] = useHashLocation();
 
   useEffect(() => {
@@ -22,6 +24,14 @@ function App() {
       clearAuth();
     }
   }, [token, clearAuth]);
+
+  useEffect(() => {
+    if (!token) {
+      clearSettings();
+      return;
+    }
+    loadSettings(token).catch(console.error);
+  }, [token, loadSettings, clearSettings]);
 
   if (!token) {
     return (

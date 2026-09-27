@@ -12,9 +12,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     self.categories = initialCategories
     self.dayRecord = DayRecord(
       calendarDate: Self.todayString(),
-      plan: initialPlan,
-      createdAt: now,
-      updatedAt: now
+      plan: initialPlan
     )
   }
 
@@ -27,13 +25,12 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     if dayRecord.calendarDate != calendarDate {
       dayRecord = DayRecord(
         calendarDate: calendarDate,
-        plan: Self.makeScheduleBlocks(),
-        createdAt: Date(),
-        updatedAt: Date()
+        plan: Self.makeScheduleBlocks()
       )
     }
     return InitResponse(
-      settings: UserSettings(dayBoundaryTime: "04:00:00", updatedAt: Date()),
+      settings: UserSettings(
+        dayRangeStartTime: "04:00:00", dayRangeEndTime: "28:00:00", updatedAt: Date()),
       categories: categories, dayRecord: dayRecord)
   }
 
@@ -41,17 +38,7 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     for event in events {
       try LocalEventStore.shared.append(calendarDate: calendarDate, event: event)
     }
-    let actual = events.filter { $0.eventType == "transition" }.map {
-      ActualBlock(
-        categoryId: $0.categoryId, blockType: "actual", startTime: timeString($0.occurredAt),
-        durationMinutes: 0, isOpen: true)
-    }
-    dayRecord = DayRecord(
-      calendarDate: calendarDate, plan: dayRecord.plan, actual: actual,
-      createdAt: dayRecord.createdAt, updatedAt: Date())
-    return DayEventsResponse(
-      calendarDate: calendarDate, plan: dayRecord.plan, actual: actual,
-      createdAt: dayRecord.createdAt, updatedAt: dayRecord.updatedAt)
+    return DayEventsResponse(calendarDate: calendarDate)
   }
 
   func hasPendingSync() async -> Bool {
@@ -120,9 +107,5 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
   }
 
   private static func todayString() -> String { DateFormatter.yyyyMMdd.string(from: Date()) }
-  private func timeString(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "HH:mm:ss"
-    return formatter.string(from: date)
-  }
+
 }

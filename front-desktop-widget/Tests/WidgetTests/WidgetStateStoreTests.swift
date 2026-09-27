@@ -81,7 +81,8 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
       throw StorageError.notFound
     }
     return InitResponse(
-      settings: UserSettings(dayBoundaryTime: "04:00:00", updatedAt: Fixtures.now),
+       settings: UserSettings(
+         dayRangeStartTime: "04:00:00", dayRangeEndTime: "28:00:00", updatedAt: Fixtures.now),
       categories: stubbedCategories,
       dayRecord: dayRecord
     )
@@ -128,37 +129,26 @@ enum Fixtures {
     return PlannedBlock(categoryId: categoryId, startTime: start, durationMinutes: durationMinutes)
   }
 
-  static func actualBlock(
-    id: Int = 1,
-    categoryId: Int? = 1,
-    blockType: String = "actual",
-     startTime: String = "08:00:00",
-    durationMinutes: Int = 60
-  ) -> ActualBlock {
-    ActualBlock(categoryId: categoryId, blockType: blockType, startTime: startTime, durationMinutes: durationMinutes)
-  }
-
   static var today: String {
     DateFormatter.yyyyMMdd.string(from: Date())
   }
 
-  static func record(
-    id: Int = 1,
-    actual: [ActualBlock] = []
-  ) -> DayRecord {
+  static func record(id: Int = 1) -> DayRecord {
     DayRecord(
       calendarDate: today,
-      actual: actual,
-      createdAt: Date(), updatedAt: Date()
+      plan: []
     )
   }
 
   static func recordWithCurrentBlock(categoryId: Int = 1) -> DayRecord {
-    record(actual: [actualBlock(categoryId: categoryId)])
+    DayRecord(
+      calendarDate: today,
+      plan: [blockCoveringNow(categoryId: categoryId)]
+    )
   }
 
-  static func eventsResponse(blocks: [ActualBlock] = []) -> DayEventsResponse {
-    DayEventsResponse(calendarDate: today, actual: blocks)
+  static func eventsResponse() -> DayEventsResponse {
+    DayEventsResponse(calendarDate: today)
   }
 }
 
@@ -246,7 +236,7 @@ final class WidgetStateStoreTests {
     let json = """
     {
       "settings": {
-        "day_boundary_time": "04:00:00",
+        "day_range_start_time": "04:00:00",
         "updated_at": "2026-09-06T14:30:00Z"
       },
       "categories": [],
@@ -265,8 +255,7 @@ final class WidgetStateStoreTests {
             "category_id": 3,
             "block_type": "actual",
              "start_time": "08:05:00",
-            "duration_minutes": 55,
-            "is_open": false
+            "duration_minutes": 55
           }
         ],
         "created_at": "2026-09-06T07:55:00Z",
@@ -279,10 +268,9 @@ final class WidgetStateStoreTests {
 
     let response = try decoder.decode(InitResponse.self, from: json)
 
-    try assertEqual(response.settings.dayBoundaryTime, "04:00:00")
+    try assert(response.settings.updatedAt.timeIntervalSince1970 > 0, "settings timestamp should decode")
     try assertEqual(response.dayRecord.calendarDate, "2026-09-06")
     try assertEqual(response.dayRecord.plan[0].startTime, "08:00:00")
-    try assertEqual(response.dayRecord.actual[0].isOpen, false)
   }
 
   func test_dayEventsResponse_decodesNullAcceptedEventCategory() throws {
@@ -337,6 +325,7 @@ final class WidgetStateStoreTests {
       eventType: "amendment",
       categoryId: 3,
       occurredAt: Fixtures.now,
+      occurredAtLocal: TimeFormats.localTimestamp(for: Fixtures.now),
       targetClientEventId: "event-0",
       correctedAt: Fixtures.now
     )
@@ -348,7 +337,7 @@ final class WidgetStateStoreTests {
     try assertEqual(object?["client_event_id"] as? String, "event-1")
     try assertEqual(object?["event_type"] as? String, "amendment")
     try assertEqual(object?["target_client_event_id"] as? String, "event-0")
-    try assert(object?["corrected_at"] != nil, "corrected_at should be encoded")
+     try assert(object?["occurred_at_local"] != nil, "occurred_at_local should be encoded")
   }
 
   func test_init_freshDay_createsRecord() async throws {
@@ -363,10 +352,7 @@ final class WidgetStateStoreTests {
     let plannedBlock = Fixtures.blockCoveringNow(categoryId: Fixtures.categoryA.id)
     let dayRecord = DayRecord(
       calendarDate: Fixtures.today,
-      plan: [plannedBlock],
-      actual: [],
-      createdAt: Date(),
-      updatedAt: Date()
+      plan: [plannedBlock]
     )
     let h = WidgetTestHarness(existingRecord: dayRecord)
     await h.initialize()
@@ -381,7 +367,7 @@ final class WidgetStateStoreTests {
   }
 
   func test_init_existingRecord_doesNotCreate() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    let h = WidgetTestHarness(existingRecord: Fixtures.record())
     await h.initialize()
     try h.assertNoSubmitEvents()
   }
@@ -395,9 +381,7 @@ final class WidgetStateStoreTests {
   func test_invalidBootstrap_keepsStoreInitializing() async throws {
     let invalidRecord = DayRecord(
       calendarDate: Fixtures.today,
-      plan: [PlannedBlock(categoryId: 1, startTime: "not-a-time", durationMinutes: 60)],
-      createdAt: Fixtures.now,
-      updatedAt: Fixtures.now
+      plan: [PlannedBlock(categoryId: 1, startTime: "not-a-time", durationMinutes: 60)]
     )
     let h = WidgetTestHarness(existingRecord: invalidRecord)
     await h.initialize()
@@ -406,14 +390,12 @@ final class WidgetStateStoreTests {
     try assert(h.store.lastError != nil, "Bootstrap failure must be exposed")
   }
 
-  func test_untrackedActualBlock_withoutCategoryIsValid() async throws {
-    let record = Fixtures.record(actual: [
-      Fixtures.actualBlock(categoryId: nil, blockType: "untracked", startTime: "04:00:00")
-    ])
+  func test_actualBlocksAreNotPartOfWidgetPlanModel() async throws {
+    let record = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: record)
     await h.initialize()
     try assert(h.store.displayState == .active,
-      "Untracked actual blocks are valid without a category")
+      "The widget should initialize from the plan without actual blocks")
   }
 
   func test_selectCategory_logsTransition() async throws {
@@ -518,14 +500,13 @@ final class WidgetStateStoreTests {
     try h.assertSubmitEventDetails(index: 1, expectedType: "amendment", expectedIncomingId: nil)
     let amendments = h.mock.submitEventsCalls.map { $0.events[0] }
     try assertEqual(amendments[0].targetClientEventId, amendments[1].targetClientEventId)
-    let expectedCorrectedTime = initialEventTime.addingTimeInterval(-10 * 60)
     try assert(
-      abs(amendments[1].correctedAt!.timeIntervalSince(expectedCorrectedTime)) < 2,
-      "Repeated offsets should apply cumulatively to the target event"
+      amendments[0].correctedAtLocal?.suffix(6) == amendments[1].correctedAtLocal?.suffix(6),
+      "Amendments should preserve the target event timezone offset"
     )
     try assert(
-      amendments[1].occurredAt > amendments[0].occurredAt,
-      "Amendments should be ordered by submission time"
+      amendments[0].correctedAtLocal != amendments[0].occurredAtLocal,
+      "Amendments should carry the corrected wall-clock time"
     )
     try assert(h.store.offsetMinutes == 10, "Offset should accumulate to 10")
   }
@@ -681,7 +662,7 @@ final class WidgetStateStoreTests {
   // ─────────────────────────────────────────────────────────────
 
   func test_submitEvents_useCorrectCalendarDate() async throws {
-    let record = Fixtures.record(actual: [Fixtures.actualBlock()])
+    let record = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
 
@@ -733,13 +714,11 @@ final class WidgetStateStoreTests {
       createdAt: Fixtures.now,
       updatedAt: Fixtures.now
     )
-    let plannedBlock = Fixtures.blockCoveringNow(categoryId: pomodoroCategory.id)
+    let plannedBlock = PlannedBlock(
+      categoryId: pomodoroCategory.id, startTime: "00:00:00", durationMinutes: 24 * 60)
     let dayRecord = DayRecord(
       calendarDate: Fixtures.today,
-      plan: [plannedBlock],
-      actual: [],
-      createdAt: Date(),
-      updatedAt: Date()
+      plan: [plannedBlock]
     )
     let h = WidgetTestHarness(categories: [pomodoroCategory], existingRecord: dayRecord)
     await h.initializeAndResetCalls()
@@ -760,12 +739,42 @@ final class WidgetStateStoreTests {
     )
   }
 
+  @MainActor
+  func test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges() async throws {
+    var context = WidgetContext()
+    context.currentCategory = Fixtures.categoryA
+    context.plannedCategory = Fixtures.categoryB
+
+    let result = confirmationResult(context: context, nextState: ActiveState())
+
+    let transitionCategoryIds = result.effects.compactMap { effect -> Int? in
+      guard case .logTransition(let category, _) = effect else { return nil }
+      return category.id
+    }
+    try assertEqual(transitionCategoryIds, [Fixtures.categoryB.id])
+  }
+
+  @MainActor
+  func test_confirmationWithoutCategoryChange_logsTransition() async throws {
+    var context = WidgetContext()
+    context.currentCategory = Fixtures.categoryA
+    context.plannedCategory = Fixtures.categoryA
+
+    let result = confirmationResult(context: context, nextState: ActiveState())
+
+    let transitionCategoryIds = result.effects.compactMap { effect -> Int? in
+      guard case .logTransition(let category, _) = effect else { return nil }
+      return category.id
+    }
+    try assertEqual(transitionCategoryIds, [Fixtures.categoryA.id])
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Group 11: Event Validation — All Fields Correct
   // ─────────────────────────────────────────────────────────────
 
   func test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() async throws {
-    let record = Fixtures.record(actual: [Fixtures.actualBlock(categoryId: Fixtures.categoryA.id)])
+    let record = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
 
@@ -780,6 +789,8 @@ final class WidgetStateStoreTests {
     try assertEqual(date1, record.calendarDate)
     try assertEqual(events1.count, 1)
     try assertEqual(events1[0].categoryId, Fixtures.categoryA.id)
+    try assert(events1[0].occurredAtLocal.count == 25, "Local timestamp should include numeric offset")
+    try assert(events1[0].occurredAtLocal.last == "0", "Local timestamp should be RFC3339")
 
     // Verify second call
     let (date2, events2) = calls[1]
@@ -819,7 +830,7 @@ struct TestRunner {
       ("test_init_existingRecord_doesNotCreate", { try await tests.test_init_existingRecord_doesNotCreate() }),
       ("test_invalidScheduleTime_doesNotSelectBlock", { try tests.test_invalidScheduleTime_doesNotSelectBlock() }),
       ("test_invalidBootstrap_keepsStoreInitializing", { try await tests.test_invalidBootstrap_keepsStoreInitializing() }),
-      ("test_untrackedActualBlock_withoutCategoryIsValid", { try await tests.test_untrackedActualBlock_withoutCategoryIsValid() }),
+      ("test_actualBlocksAreNotPartOfWidgetPlanModel", { try await tests.test_actualBlocksAreNotPartOfWidgetPlanModel() }),
       ("test_selectCategory_logsTransition", { try await tests.test_selectCategory_logsTransition() }),
       ("test_initialState_isInitializing", { try await tests.test_initialState_isInitializing() }),
       ("test_afterInitialize_isActive", { try await tests.test_afterInitialize_isActive() }),
@@ -845,6 +856,8 @@ struct TestRunner {
       ("test_transitionEvent_populatesEventFields", { try await tests.test_transitionEvent_populatesEventFields() }),
       ("test_confirmationEvent_populatesEventFields", { try await tests.test_confirmationEvent_populatesEventFields() }),
       ("test_pomodoroCompleted_sendsConfirmationEvent", { try await tests.test_pomodoroCompleted_sendsConfirmationEvent() }),
+      ("test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges", { try await tests.test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges() }),
+      ("test_confirmationWithoutCategoryChange_logsTransition", { try await tests.test_confirmationWithoutCategoryChange_logsTransition() }),
       ("test_submitEventsCall_usesCorrectCalendarDateAndEventSequence", { try await tests.test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() }),
     ]
 

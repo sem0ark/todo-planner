@@ -1,12 +1,14 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 export interface UserSettings {
-  day_boundary_time: string;
+  day_range_start_time: string;
+  day_range_end_time: string;
   updated_at: string;
 }
 
 export interface UserSettingsInput {
-  day_boundary_time: string;
+  day_range_start_time: string;
+  day_range_end_time: string;
 }
 
 export async function getSettings(token: string): Promise<UserSettings> {

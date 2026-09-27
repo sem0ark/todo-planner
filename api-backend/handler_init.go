@@ -82,13 +82,13 @@ func loadSettingsForInit(request *http.Request, transaction pgx.Tx, userID int) 
 	var settings UserSettings
 	err := transaction.QueryRow(
 		request.Context(),
-		`SELECT id, user_id, day_boundary_time, updated_at FROM user_settings WHERE user_id = $1`, userID,
-	).Scan(&settings.ID, &settings.UserID, &settings.DayBoundaryTime, &settings.UpdatedAt)
+		`SELECT id, user_id, day_range_start_time, day_range_end_time, updated_at FROM user_settings WHERE user_id = $1`, userID,
+	).Scan(&settings.ID, &settings.UserID, &settings.DayRangeStartTime, &settings.DayRangeEndTime, &settings.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		err = transaction.QueryRow(
 			request.Context(),
-			`INSERT INTO user_settings(user_id) VALUES($1) RETURNING id, user_id, day_boundary_time, updated_at`, userID,
-		).Scan(&settings.ID, &settings.UserID, &settings.DayBoundaryTime, &settings.UpdatedAt)
+			`INSERT INTO user_settings(user_id) VALUES($1) RETURNING id, user_id, day_range_start_time, day_range_end_time, updated_at`, userID,
+		).Scan(&settings.ID, &settings.UserID, &settings.DayRangeStartTime, &settings.DayRangeEndTime, &settings.UpdatedAt)
 	}
 	return &settings, err
 }

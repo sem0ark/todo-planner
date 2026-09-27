@@ -35,8 +35,8 @@ func TestGetSettingsHandler_Success(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if settings.DayBoundaryTime != mustScheduleTime("04:00:00") {
-		t.Errorf("Expected default time '04:00:00', got '%v'", settings.DayBoundaryTime)
+	if settings.DayRangeStartTime != mustScheduleTime("04:00:00") {
+		t.Errorf("Expected default time '04:00:00', got '%v'", settings.DayRangeStartTime)
 	}
 }
 
@@ -89,7 +89,7 @@ func TestPutSettingsHandler_Success(t *testing.T) {
 		t.Fatalf("settings setup failed: %v", err)
 	}
 
-	reqBody := UserSettingsInput{DayBoundaryTime: mustScheduleTime("06:30:00")}
+	reqBody := UserSettingsInput{DayRangeStartTime: mustScheduleTime("06:30:00"), DayRangeEndTime: mustScheduleTime("23:00:00")}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		t.Fatalf("failed to marshal request: %v", err)
@@ -115,8 +115,8 @@ func TestPutSettingsHandler_Success(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if settings.DayBoundaryTime != mustScheduleTime("06:30:00") {
-		t.Errorf("Expected time '06:30:00', got '%v'", settings.DayBoundaryTime)
+	if settings.DayRangeStartTime != mustScheduleTime("06:30:00") {
+		t.Errorf("Expected time '06:30:00', got '%v'", settings.DayRangeStartTime)
 	}
 }
 
@@ -139,7 +139,7 @@ func TestPutSettingsHandler_InvalidTimeFormat(t *testing.T) {
 	for _, invalidTime := range invalidTimes {
 		t.Run("InvalidTime_"+invalidTime, func(t *testing.T) {
 			// Arrange
-			body := fmt.Appendf(nil, `{"day_boundary_time":%q}`, invalidTime)
+			body := fmt.Appendf(nil, `{"day_range_start_time":%q,"day_range_end_time":"23:00:00"}`, invalidTime)
 			req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 
@@ -178,7 +178,7 @@ func TestPutSettingsHandler_ValidTimeFormats(t *testing.T) {
 	for _, validTime := range validTimes {
 		t.Run("ValidTime_"+validTime, func(t *testing.T) {
 			// Arrange
-			reqBody := UserSettingsInput{DayBoundaryTime: mustScheduleTime(validTime)}
+			reqBody := UserSettingsInput{DayRangeStartTime: mustScheduleTime(validTime), DayRangeEndTime: mustScheduleTime("23:00:00")}
 			body, err := json.Marshal(reqBody)
 			if err != nil {
 				t.Fatalf("failed to marshal request: %v", err)
@@ -201,8 +201,8 @@ func TestPutSettingsHandler_ValidTimeFormats(t *testing.T) {
 
 			var settings PublicSettings
 			json.NewDecoder(w.Body).Decode(&settings)
-			if settings.DayBoundaryTime != mustScheduleTime(validTime) {
-				t.Errorf("Expected time '%s', got '%v'", validTime, settings.DayBoundaryTime)
+			if settings.DayRangeStartTime != mustScheduleTime(validTime) {
+				t.Errorf("Expected time '%s', got '%v'", validTime, settings.DayRangeStartTime)
 			}
 		})
 	}
@@ -213,7 +213,7 @@ func TestPutSettingsHandler_NoAuth(t *testing.T) {
 	db := setupTestDB(t)
 	api := NewAPI(db, "test-secret", NewLogger("test"))
 
-	reqBody := UserSettingsInput{DayBoundaryTime: mustScheduleTime("06:30:00")}
+	reqBody := UserSettingsInput{DayRangeStartTime: mustScheduleTime("06:30:00"), DayRangeEndTime: mustScheduleTime("23:00:00")}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		t.Fatalf("failed to marshal request: %v", err)
