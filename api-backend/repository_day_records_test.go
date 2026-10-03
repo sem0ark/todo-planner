@@ -9,7 +9,7 @@ import (
 
 func computeActualTimelineForTest(t *testing.T, events []DayEvent, referenceTime time.Time) []ComputedBlock {
 	t.Helper()
-	blocks, err := computeTimeline(events, referenceTime, false)
+	blocks, err := computeTimeline(events)
 	if err != nil {
 		t.Fatalf("computeTimeline failed: %v", err)
 	}
@@ -526,14 +526,8 @@ func TestComputeActualBlocks_SingleTransition(t *testing.T) {
 	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
-	if len(blocks) != 1 {
-		t.Fatalf("Expected 1 block, got %d", len(blocks))
-	}
-	if blocks[0].CategoryID == nil || *blocks[0].CategoryID != categoryID {
-		t.Errorf("Expected category_id %d, got %v", categoryID, blocks[0].CategoryID)
-	}
-	if blocks[0].DurationMinutes != 30 {
-		t.Errorf("Expected 30 minutes, got %d", blocks[0].DurationMinutes)
+	if len(blocks) != 0 {
+		t.Errorf("Expected no materialized blocks, got %d", len(blocks))
 	}
 }
 
@@ -568,8 +562,8 @@ func TestComputeActualBlocks_MultipleTransitions(t *testing.T) {
 	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
-	if len(blocks) != 3 {
-		t.Fatalf("Expected 3 blocks, got %d", len(blocks))
+	if len(blocks) != 2 {
+		t.Fatalf("Expected 2 blocks, got %d", len(blocks))
 	}
 
 	// First block: 9:00 to 12:00 (180 minutes)
@@ -588,13 +582,6 @@ func TestComputeActualBlocks_MultipleTransitions(t *testing.T) {
 		t.Errorf("Block 1: Expected 60 minutes, got %d", blocks[1].DurationMinutes)
 	}
 
-	// Third block: latest transition is capped at 30 minutes.
-	if *blocks[2].CategoryID != category1 {
-		t.Errorf("Block 2: Expected category %d, got %d", category1, *blocks[2].CategoryID)
-	}
-	if blocks[2].DurationMinutes != 30 {
-		t.Errorf("Block 2: Expected 30 minutes, got %d", blocks[2].DurationMinutes)
-	}
 }
 
 func TestComputeActualBlocks_MixedEvents(t *testing.T) {
@@ -602,7 +589,6 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 	category1 := 5
 	category2 := 10
 	referenceTime := parseTime("2026-07-20T17:00:00Z")
-
 	events := []DayEvent{
 		{
 			ID:         1,
@@ -641,16 +627,15 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 		t.Errorf("Block 0: Expected 180 minutes, got %d", blocks[0].DurationMinutes)
 	}
 
-	// Second block: latest transition is capped at 30 minutes.
-	if blocks[1].DurationMinutes != 30 {
-		t.Errorf("Block 1: Expected 30 minutes, got %d", blocks[1].DurationMinutes)
+	// Second block ends at the latest confirmation.
+	if blocks[1].DurationMinutes != 120 {
+		t.Errorf("Block 1: Expected 120 minutes, got %d", blocks[1].DurationMinutes)
 	}
 }
 
 func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 	// Arrange - equal effective transition times are invalid, not silently skipped.
 	category1 := 5
-	referenceTime := parseTime("2026-07-20T17:00:00Z")
 
 	events := []DayEvent{
 		{
@@ -668,7 +653,7 @@ func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 	}
 
 	// Act
-	_, err := computeTimeline(events, referenceTime, false)
+	_, err := computeTimeline(events)
 
 	// Assert
 	if !errors.Is(err, ErrNonMonotonicTransitions) {
@@ -700,8 +685,8 @@ func TestComputeActualBlocks_CategoryID(t *testing.T) {
 	blocks := computeActualTimelineForTest(t, events, referenceTime)
 
 	// Assert
-	if len(blocks) != 2 {
-		t.Fatalf("Expected 2 blocks, got %d", len(blocks))
+	if len(blocks) != 1 {
+		t.Fatalf("Expected 1 block, got %d", len(blocks))
 	}
 	if blocks[0].CategoryID == nil {
 		t.Errorf("Expected category_id, got nil")
@@ -721,7 +706,7 @@ func TestComputeActualBlocks_ExcludesSubMinuteOngoingBlock(t *testing.T) {
 	// Act
 	blocks := computeActualTimelineForTest(t, events, startTime.Add(59*time.Second))
 
-	// Assert: a transition with no remaining day time produces no actual block.
+	// Assert: a transition without a later confirmation produces no actual block.
 	if len(blocks) != 0 {
 		t.Fatalf("Expected no actual blocks, got %+v", blocks)
 	}

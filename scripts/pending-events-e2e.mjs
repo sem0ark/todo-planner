@@ -1,5 +1,65 @@
 #!/usr/bin/env node
 
+/**
+This utility replays the widget's manually collected pending-event backup through
+the public API, then reads the resulting day records back through the same API
+used by the web review page.
+
+For this diagnostic replay, every non-amendment event is sent as a `transition`,
+including events originally marked as `confirmation`. This exposes category
+changes that the original confirmation semantics hide, and intentionally keeps
+same-category transitions so their timestamps can be inspected.
+
+Start the local stack first, then run:
+
+```bash
+node scripts/pending-events-e2e.mjs --open
+```
+
+The script creates a unique test account, registers a desktop device, creates
+the five categories from `MockTodoPlannerRepository`, creates a review template,
+replays the events, and prints every resulting block in this format:
+
+```text
+2026-09-07
+  04:00:00 - 12:53:09   533m  untracked Untracked
+  12:53:09 - 13:01:00     8m  actual    Learning
+```
+
+The printed credentials and `#/review` URL can be used to inspect the same
+records manually in the web frontend. The backup dates are not necessarily the
+current week, so use the review page's previous/next week controls to reach the
+printed range.
+
+The script fails on persistence/calculation problems: missing day records,
+negative durations, overlaps, or unknown category IDs. It also prints human
+plausibility warnings without failing:
+
+If a date batch receives HTTP 400, the script reports the backend error and
+replays that date one event at a time, skipping only the individual events that
+still receive HTTP 400. Other API failures stop the run immediately.
+
+- zero or sub-five-minute blocks often indicate rapid duplicate transitions;
+- uninterrupted Working/Learning blocks over two hours deserve a break review;
+- Exercise blocks over two hours deserve a continuity review.
+
+These warnings are deliberately separate from correctness. The backend should
+calculate exactly what the event stream says, even when the event stream is not
+physiologically realistic.
+
+Useful options:
+
+```text
+--backup PATH       use another pending-events backup
+--api URL           use another backend URL
+--frontend URL      print another frontend URL
+--username NAME     log in instead of creating a test account
+--password VALUE    password for an existing account
+--no-plan           skip creating the visual review template
+--open              open the review page on macOS
+```
+**/
+
 import { readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 

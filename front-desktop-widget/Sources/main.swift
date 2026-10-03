@@ -21,13 +21,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Enforce singleton - check if another instance is already running
     if !ensureSingleInstance() {
-      print("[APP] Another instance is already running. Activating existing instance...")
+      WidgetLogger.debug("Another instance is already running; activating existing instance")
       NSApplication.shared.terminate(nil)
       return
     }
 
-    print("[APP] Single instance check passed")
-    print("[APP] Starting as menu bar app...")
+    WidgetLogger.debug("Single instance check passed")
+    WidgetLogger.debug("Starting as menu bar app")
 
     // Create the Menu Bar Item
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -57,7 +57,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     // Install global keyboard event monitor (only when popover is showing)
-    print("[APP] Menu bar app initialized successfully")
+    WidgetLogger.debug("Menu bar app initialized successfully")
 
     // Listen for confirmation needed events
     NotificationCenter.default.addObserver(
@@ -80,12 +80,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc private func handleConfirmationNeeded() {
-    print("[APP] Confirmation needed - auto-opening popover")
+    WidgetLogger.debug("Confirmation needed; auto-opening popover")
     showPopover()
   }
 
   @objc private func handlePomodoroCompleted() {
-    print("[APP] Pomodoro completed - auto-opening popover")
+    WidgetLogger.debug("Pomodoro completed; auto-opening popover")
     showPopover()
   }
 
@@ -132,13 +132,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Install keyboard monitor when popover opens
     installKeyboardMonitor()
-    print("[APP] Popover opened")
+    WidgetLogger.debug("Popover opened")
   }
 
   func closePopover() {
     popover.performClose(nil)
     removeKeyboardMonitor()
-    print("[APP] Popover closed")
+    WidgetLogger.debug("Popover closed")
   }
 
   private func installKeyboardMonitor() {
@@ -180,7 +180,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       let url = URL(string: urlString)
     {
       let displayedURLPrefix = String(urlString.prefix(32))
-      print("[DEEPLINK] Received URL: \(displayedURLPrefix)...")
+      WidgetLogger.debug("Received deep link", context: ["urlPrefix": displayedURLPrefix])
 
       // Show popover when deep link is received
       showPopover()

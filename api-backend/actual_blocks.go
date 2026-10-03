@@ -60,7 +60,7 @@ func resolveTimeline(events []DayEvent) []resolvedDayEvent {
 	return resolvedEvents
 }
 
-func computeResolvedBlocks(events []resolvedDayEvent, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
+func computeResolvedBlocks(events []resolvedDayEvent) ([]ComputedBlock, error) {
 	transitions := make([]resolvedDayEvent, 0)
 	var currentCategoryID *int
 	for _, event := range events {
@@ -91,30 +91,30 @@ func computeResolvedBlocks(events []resolvedDayEvent, now time.Time, isPastDay b
 	}
 
 	last := transitions[len(transitions)-1]
-	finalDurationMinutes := 30
-	if !isPastDay {
-		elapsedMinutes := int(now.Sub(last.effectiveAt).Minutes())
-		if elapsedMinutes < finalDurationMinutes {
-			finalDurationMinutes = maxInt(elapsedMinutes, 0)
-		}
-	}
-	if finalDurationMinutes > 0 {
+	latestConfirmationAt := latestConfirmationAfter(events, last.effectiveAt)
+	if latestConfirmationAt != nil {
 		blocks = append(blocks, ComputedBlock{
 			CategoryID: last.event.CategoryID, BlockType: "actual", StartTime: last.effectiveAt,
-			DurationMinutes: finalDurationMinutes,
+			DurationMinutes: int(latestConfirmationAt.Sub(last.effectiveAt).Minutes()),
 		})
 	}
 	return blocks, nil
 }
 
-func computeTimeline(events []DayEvent, now time.Time, isPastDay bool) ([]ComputedBlock, error) {
-	resolvedEvents := resolveTimeline(events)
-	return computeResolvedBlocks(resolvedEvents, now, isPastDay)
+func latestConfirmationAfter(events []resolvedDayEvent, start time.Time) *time.Time {
+	for eventIndex := len(events) - 1; eventIndex >= 0; eventIndex-- {
+		event := events[eventIndex]
+		if !event.effectiveAt.After(start) {
+			return nil
+		}
+		if event.event.EventType == "confirmation" {
+			return &event.effectiveAt
+		}
+	}
+	return nil
 }
 
-func maxInt(left, right int) int {
-	if left > right {
-		return left
-	}
-	return right
+func computeTimeline(events []DayEvent) ([]ComputedBlock, error) {
+	resolvedEvents := resolveTimeline(events)
+	return computeResolvedBlocks(resolvedEvents)
 }

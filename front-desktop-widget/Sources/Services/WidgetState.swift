@@ -8,6 +8,7 @@ import SwiftUI
 extension Notification.Name {
   static let confirmationNeeded = Notification.Name("confirmationNeeded")
   static let pomodoroCompleted = Notification.Name("pomodoroCompleted")
+  static let authenticationRequired = Notification.Name("authenticationRequired")
 }
 
 enum PomodoroPhase {
@@ -323,7 +324,7 @@ func logEvent(
   )
 
   _ = try await repo.submitEvents(calendarDate: calendarDate, events: [event])
-  print("[LOCAL] Event appended: \(type.rawValue)")
+  WidgetLogger.debug("Local event appended", context: ["eventType": type.rawValue])
   return (event.clientEventId, event)
 }
 
@@ -357,7 +358,9 @@ final class InitializingState: WidgetStateLogic {
 
     ctx.lastEventTime = Date()
 
-    print("[INIT] System Status: Picked planned category on startup. Transitioning to ActiveState.")
+    WidgetLogger.debug(
+      "Picked planned category on startup; transitioning to active state",
+      context: ["hasPlannedCategory": String(plannedCategory != nil)])
 
     var effects: [WidgetEffect] = [.updateMenuBarIcon]
     if let category = plannedCategory {
@@ -381,10 +384,14 @@ final class ActiveState: WidgetStateLogic {
       return StateResult(nextState: InitializingState(), updatedContext: ctx, effects: [])
 
     case .primaryAction:
+      var effects: [WidgetEffect] = []
+      if let category = ctx.currentCategory {
+        effects.append(.logConfirmation(category: category))
+      }
       if ctx.currentCategory?.hasPomodoroEnabled == true {
         togglePomodoro(&ctx)
       }
-      return StateResult(nextState: self, updatedContext: ctx, effects: [])
+      return StateResult(nextState: self, updatedContext: ctx, effects: effects)
 
     case .selectCategory(let category):
       return transitionResult(context: ctx, category: category)
@@ -393,6 +400,16 @@ final class ActiveState: WidgetStateLogic {
       guard ctx.currentCategory != nil, let lastEventClientId = ctx.lastEventClientId else {
         WidgetLogger.error(
           "Cannot adjust offset without a persisted event", context: ["minutes": String(minutes)])
+        return StateResult(nextState: self, updatedContext: ctx, effects: [])
+      }
+      let proposedOffsetSeconds = ctx.offsetSeconds + minutes * 60
+      guard proposedOffsetSeconds >= 0 else {
+        WidgetLogger.debug(
+          "Ignoring offset adjustment below zero",
+          context: [
+            "minutes": String(minutes),
+            "currentOffsetSeconds": String(ctx.offsetSeconds),
+          ])
         return StateResult(nextState: self, updatedContext: ctx, effects: [])
       }
       let retroactiveTime = ctx.lastEventTime.addingTimeInterval(TimeInterval(-minutes * 60))
@@ -503,6 +520,10 @@ class WidgetStateStore {
   var categories: [Category] { context.categories }
   var currentDayRecord: DayRecord? { context.currentDayRecord }
   var settings: UserSettings? { context.settings }
+  var hasCachedBootstrap: Bool {
+    let today = DateFormatter.yyyyMMdd.string(from: Date())
+    return ((try? repository.cachedInitialization(calendarDate: today)) ?? nil) != nil
+  }
   var currentCategory: Category? { context.currentCategory }
   var isOnSchedule: Bool {
     guard let current = context.currentCategory, let planned = plannedCategory else { return false }
@@ -579,23 +600,71 @@ class WidgetStateStore {
   // MARK: - Intent Dispatcher
 
   func dispatch(_ action: WidgetAction) async {
-    print(
-      "[ACTION] Received: \(actionDescription(action)); state=\(stateDescription(displayState))")
+    WidgetLogger.debug(
+      "Action received",
+      context: [
+        "action": actionDescription(action),
+        "state": stateDescription(displayState),
+      ])
 
     context.plannedCategory = plannedCategory
     let result = currentState.handle(action: action, context: context)
     await apply(result)
 
-    print(
-      "[ACTION] Completed: \(actionDescription(action)); state=\(stateDescription(displayState))")
+    WidgetLogger.debug(
+      "Action completed",
+      context: [
+        "action": actionDescription(action),
+        "state": stateDescription(displayState),
+      ])
   }
 
   // MARK: - Compatibility API
+
+  func start() async {
+    WidgetLogger.debug("Starting widget from local cache when available")
+    let loadedCache = initializeFromCache()
+    if !loadedCache, repository.getAuthToken() != nil {
+      await initialize()
+    }
+
+    startPeriodicRefresh()
+    await synchronizeOnStartup()
+    WidgetLogger.debug(
+      "Widget startup completed", context: ["usedCache": String(loadedCache)])
+  }
+
+  @discardableResult
+  func initializeFromCache() -> Bool {
+    let today = DateFormatter.yyyyMMdd.string(from: Date())
+    do {
+      guard let bootstrap = try repository.cachedInitialization(calendarDate: today) else {
+        return false
+      }
+      try validateBootstrap(bootstrap, requestedDate: nil)
+      applyBootstrap(bootstrap, resetCurrentCategory: true)
+      context.currentDayRecord = DayRecord(calendarDate: today, plan: bootstrap.dayRecords[0].plan)
+      currentState = ActiveState()
+      lastError = nil
+      WidgetLogger.debug(
+        "Widget activated from cached bootstrap",
+        context: [
+          "cachedCalendarDate": bootstrap.dayRecords[0].calendarDate, "calendarDate": today,
+        ])
+      return true
+    } catch {
+      WidgetLogger.error(
+        "Cached bootstrap is unavailable",
+        context: ["calendarDate": today, "error": String(describing: error)])
+      return false
+    }
+  }
 
   func initialize() async {
     do {
       try await loadData()
       await dispatch(.initialize)
+      lastError = nil
     } catch {
       lastError = String(describing: error)
       WidgetLogger.error(
@@ -619,19 +688,35 @@ class WidgetStateStore {
     let today = DateFormatter.yyyyMMdd.string(from: Date())
     let bootstrap = try await repository.initialize(calendarDate: today)
     try validateBootstrap(bootstrap, requestedDate: today)
-
-    context.categories = bootstrap.categories
-    context.settings = bootstrap.settings
-    context.currentPlannedBlocks = bootstrap.dayRecord.plan
-    context.currentDayRecord = bootstrap.dayRecord
+    applyBootstrap(bootstrap, resetCurrentCategory: true)
   }
 
-  private func validateBootstrap(_ bootstrap: InitResponse, requestedDate: String) throws {
-    guard bootstrap.dayRecord.calendarDate == requestedDate else {
-      throw StorageError.invalidContract("day_record calendar date does not match request")
+  private func applyBootstrap(_ bootstrap: InitResponse, resetCurrentCategory: Bool) {
+    context.categories = bootstrap.categories
+    context.settings = bootstrap.settings
+    context.currentPlannedBlocks = bootstrap.dayRecords[0].plan
+    context.currentDayRecord = bootstrap.dayRecords[0]
+
+    let currentPlannedBlock =
+      TimeLogic.getCurrentPlannedBlock(
+        at: Date(), from: context.currentPlannedBlocks)
+      ?? TimeLogic.getNextPlannedBlock(at: Date(), from: context.currentPlannedBlocks)
+    let plannedCategory = context.categories.first { $0.id == currentPlannedBlock?.categoryId }
+    context.plannedCategory = plannedCategory
+
+    if resetCurrentCategory || context.currentCategory == nil
+      || !context.categories.contains(where: { $0.id == context.currentCategory?.id })
+    {
+      context.currentCategory = plannedCategory
+    }
+  }
+
+  private func validateBootstrap(_ bootstrap: InitResponse, requestedDate: String?) throws {
+    if let requestedDate, bootstrap.dayRecords[0].calendarDate != requestedDate {
+      throw StorageError.invalidContract("day_records calendar date does not match request")
     }
     let categoryIds = Set(bootstrap.categories.map(\.id))
-    for block in bootstrap.dayRecord.plan {
+    for block in bootstrap.dayRecords[0].plan {
       guard categoryIds.contains(block.categoryId), block.durationMinutes > 0,
         TimeLogic.parseSeconds(from: block.startTime) != nil
       else {
@@ -647,20 +732,85 @@ class WidgetStateStore {
   func adjustOffset(minutes: Int) async { await dispatch(.adjustOffset(minutes)) }
 
   func synchronize() async {
+    WidgetLogger.debug("Widget synchronization requested")
+
+    guard repository.getAuthToken() != nil else {
+      lastError = String(describing: StorageError.unauthorized)
+      WidgetLogger.error("Synchronization requires authentication")
+      NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+      return
+    }
+
+    var synchronizationError: Error?
     do {
       try await repository.synchronize()
-      lastError = nil
     } catch {
-      lastError = String(describing: error)
-      WidgetLogger.error("Synchronization failed", context: ["error": lastError!])
+      synchronizationError = error
     }
+
+    refreshFromCache()
+
+    if let synchronizationError {
+      lastError = String(describing: synchronizationError)
+      WidgetLogger.error("Synchronization failed", context: ["error": lastError!])
+      if isAuthenticationError(synchronizationError) {
+        NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+      }
+    } else {
+      lastError = nil
+    }
+  }
+
+  private func isAuthenticationError(_ error: Error) -> Bool {
+    if case StorageError.unauthorized = error {
+      return true
+    }
+    if case APIError.unauthorized = error {
+      return true
+    }
+    return String(describing: error).contains("unauthorized")
   }
 
   func synchronizeOnStartup() async {
     guard !didSynchronizeAtStartup else { return }
+    guard repository.getAuthToken() != nil else {
+      didSynchronizeAtStartup = true
+      return
+    }
     await synchronize()
     if lastError == nil {
       didSynchronizeAtStartup = true
+    }
+  }
+
+  func clearLocalData() async {
+    WidgetLogger.debug("Clearing local widget data")
+    do {
+      try repository.clearLocalData()
+      context = WidgetContext()
+      currentState = InitializingState()
+      lastError = nil
+    } catch {
+      lastError = String(describing: error)
+      WidgetLogger.error("Failed to clear local widget data", context: ["error": lastError!])
+    }
+  }
+
+  private func refreshFromCache() {
+    let today = DateFormatter.yyyyMMdd.string(from: Date())
+    do {
+      guard let bootstrap = try repository.cachedInitialization(calendarDate: today) else {
+        return
+      }
+      try validateBootstrap(bootstrap, requestedDate: today)
+      applyBootstrap(bootstrap, resetCurrentCategory: displayState == .initializing)
+      if displayState == .initializing {
+        currentState = ActiveState()
+      }
+    } catch {
+      WidgetLogger.error(
+        "Cached bootstrap refresh was ignored",
+        context: ["calendarDate": today, "error": String(describing: error)])
     }
   }
 
@@ -764,7 +914,7 @@ class WidgetStateStore {
       + "plannedCategory=\(categoryDescription(context.plannedCategory)); "
       + "plannedBlock=\(plannedBlockDescription(plannedBlock)); "
       + "offsetSeconds=\(context.offsetSeconds)"
-    print(message)
+    WidgetLogger.debug("Effect applied", context: ["details": message])
   }
 
   private func categoryDescription(_ category: Category?) -> String {

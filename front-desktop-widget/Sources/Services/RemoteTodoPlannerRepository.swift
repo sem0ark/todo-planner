@@ -3,14 +3,20 @@ import Foundation
 final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerRepository {
   private let api: TodoPlannerAPI
   private let eventStore: LocalEventStore
+  private let bootstrapCache: BootstrapCache
 
-  init(api: TodoPlannerAPI = APIClient.shared, eventStore: LocalEventStore = .shared) {
+  init(
+    api: TodoPlannerAPI = APIClient.shared,
+    eventStore: LocalEventStore = .shared,
+    bootstrapCache: BootstrapCache = .shared
+  ) {
     self.api = api
     self.eventStore = eventStore
+    self.bootstrapCache = bootstrapCache
   }
 
   func getAuthToken() -> String? {
-    return UserDefaults.standard.string(forKey: "com.todoplanner.widget.jwt_token")
+    return api.authToken
   }
 
   func persistAuthToken(_ token: String) async throws {
@@ -26,7 +32,13 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
   }
 
   func initialize(calendarDate: String) async throws -> InitResponse {
-    return try await api.initialize(calendarDate: calendarDate)
+    let response = try await api.initialize(calendarDate: calendarDate)
+    try bootstrapCache.save(response: response, calendarDate: calendarDate)
+    return response
+  }
+
+  func cachedInitialization(calendarDate: String) throws -> InitResponse? {
+    try bootstrapCache.load(calendarDate: calendarDate)?.response
   }
 
   func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse {
@@ -41,6 +53,39 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
   }
 
   func synchronize() async throws {
+    WidgetLogger.debug("Synchronization started")
+    var synchronizationError: Error?
+    do {
+      try await synchronizePendingEvents()
+    } catch {
+      synchronizationError = error
+    }
+
+    if api.authToken != nil {
+      WidgetLogger.debug("Refreshing bootstrap during synchronization")
+      do {
+        _ = try await initialize(calendarDate: DateFormatter.yyyyMMdd.string(from: Date()))
+      } catch {
+        if synchronizationError == nil {
+          synchronizationError = error
+        }
+      }
+    }
+
+    if let synchronizationError {
+      WidgetLogger.debug(
+        "Synchronization failed", context: ["error": String(describing: synchronizationError)])
+      throw synchronizationError
+    }
+    WidgetLogger.debug("Synchronization completed")
+  }
+
+  func clearLocalData() throws {
+    try eventStore.clearAll()
+    try bootstrapCache.removeAll()
+  }
+
+  private func synchronizePendingEvents() async throws {
     let pendingEvents = try eventStore.pendingEvents()
     let groupedEvents = Dictionary(grouping: pendingEvents, by: \.calendarDate)
 

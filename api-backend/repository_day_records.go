@@ -728,13 +728,7 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 		return nil, err
 	}
 
-	var calendarDate CalendarDate
-	if err := transaction.QueryRow(ctx, `SELECT calendar_date FROM day_records WHERE id = $1`, dayRecordID).Scan(&calendarDate); err != nil {
-		return nil, err
-	}
-	now := time.Now().UTC()
-	today := CalendarDate(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC))
-	computedBlocks, err := computeTimeline(events, now, calendarDate.Before(today))
+	computedBlocks, err := computeTimeline(events)
 	if err != nil {
 		return nil, err
 	}
@@ -746,7 +740,7 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 
 	// Persist computed blocks to database
 	blocks := make([]ActualBlock, 0, len(computedBlocks))
-	now = time.Now()
+	now := time.Now()
 
 	for _, computed := range computedBlocks {
 		var block ActualBlock

@@ -18,6 +18,7 @@ instruction file when one is added for a subdirectory.
 - Preserve existing public APIs and data contracts unless the request requires a change, and add or update focused tests for behavior changes.
 - Do not create action-summary or report files on task completion if not explicitly asked. Put durable documentation in the appropriate file under `docs/`.
 - Use `make lint` for repository linting, `make test` for backend tests, and `make test` from `front-desktop-widget/` for widget tests.
+- Prefer the documented `make` target over its underlying tool command. Repository targets may prepare services, configure environment variables, or perform required setup.
 
 ## Approved Commands
 
@@ -61,6 +62,9 @@ instruction file when one is added for a subdirectory.
 ### General Instructions
 
 - **Readability and clarity over brevity**: Write code that is easily readable and maintainable over compact or "clever" one-liners.
+- Prefer one current code path over compatibility fallbacks or legacy branches.
+  - When a contract changes, update its consumers and tests together.
+  - Do not preserve obsolete shapes through projections, aliases, or alternate decoding paths unless explicitly required.
 - **Explain algorithms**: Document the approach, time/space complexity, and non-obvious design choices.
 - **Explicit error handling**: Handle edge cases and failures cleanly according to language idioms:
   - **Python**: Focused `try/except` blocks with specific exception types.

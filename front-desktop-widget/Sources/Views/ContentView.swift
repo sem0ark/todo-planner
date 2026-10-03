@@ -52,6 +52,17 @@ private func formatDuration(minutes: Int) -> String {
   return "\(hours)h \(paddedMinutes)m"
 }
 
+private let startTimeFormatter: DateFormatter = {
+  let formatter = DateFormatter()
+  formatter.locale = Locale(identifier: "en_US_POSIX")
+  formatter.dateFormat = "HH:mm"
+  return formatter
+}()
+
+private func formatStartTime(_ date: Date) -> String {
+  startTimeFormatter.string(from: date)
+}
+
 struct StyleTokens {
   // Background colors
   static let deepVoid = Color(hex: Palette.deepVoid)
@@ -84,7 +95,12 @@ struct ContentView: View {
 
   var body: some View {
     Group {
-      if authController.isCheckingAuth {
+      switch contentViewMode(
+        isCheckingAuthentication: authController.isCheckingAuth,
+        isAuthenticated: authController.isAuthenticated,
+        hasCachedBootstrap: widgetState.hasCachedBootstrap
+      ) {
+      case .checkingAuthentication:
         // Show loading state while checking authentication
         ZStack {
           StyleTokens.baseVoid
@@ -96,7 +112,7 @@ struct ContentView: View {
               .foregroundColor(StyleTokens.mutedText)
           }
         }
-      } else if authController.isAuthenticated {
+      case .widget:
         HStack(spacing: 0) {
           // Left Panel (65%)
           LeftPanelView(widgetState: widgetState)
@@ -113,9 +129,8 @@ struct ContentView: View {
             .frame(width: 112)
         }
         .task {
-          await widgetState.synchronizeOnStartup()
-          await widgetState.initialize()
-          widgetState.startPeriodicRefresh()
+          WidgetLogger.debug("Content view starting widget state")
+          await widgetState.start()
         }
         .onDisappear {
           widgetState.stopPeriodicRefresh()
@@ -125,7 +140,7 @@ struct ContentView: View {
             handleKeyPress(event)
           }
         }
-      } else {
+      case .login:
         LoginView(authController: authController)
       }
     }
@@ -140,31 +155,36 @@ struct ContentView: View {
     .task {
       await authController.checkInitialAuth()
     }
+    .onReceive(NotificationCenter.default.publisher(for: .authenticationRequired)) { _ in
+      Task { await authController.handleAuthenticationRequired() }
+    }
   }
 
   private func handleKeyPress(_ event: NSEvent) {
     let key = event.charactersIgnoringModifiers ?? ""
 
-    print("[KEY] Key pressed: '\(key)' (keyCode: \(event.keyCode))")
+    WidgetLogger.debug(
+      "Key pressed", context: ["key": key, "keyCode": String(event.keyCode)])
 
     Task {
       switch key {
-      case "\r", " ":  // Primary action key
-        print("[KEY] Return / Space")
+      case "\r":  // Primary action key
+        WidgetLogger.debug("Primary action key pressed")
         await widgetState.handlePrimaryAction()
       case "1", "2", "3", "4", "5", "6", "7", "8", "9":
         if let number = Int(key) {
           let index = number - 1
           guard index < widgetState.categories.count else { return }
-          print("[KEY] Number \(number) - transitioning to category")
+          WidgetLogger.debug(
+            "Category shortcut pressed", context: ["number": String(number)])
           await widgetState.handleSelectCategory(widgetState.categories[index])
         }
       case "[":
-        print("[KEY] [ - adjusting offset -15m")
-        await widgetState.adjustOffset(minutes: -15)
-      case "]":
-        print("[KEY] ] - adjusting offset +15m")
+        WidgetLogger.debug("Keyboard offset adjustment", context: ["minutes": "15"])
         await widgetState.adjustOffset(minutes: 15)
+      case "]":
+        WidgetLogger.debug("Keyboard offset adjustment", context: ["minutes": "-15"])
+        await widgetState.adjustOffset(minutes: -15)
       default:
         break
       }
@@ -291,45 +311,60 @@ struct ActiveView: View {
   var widgetState: WidgetStateStore
   @State private var pomoPulseScale: CGFloat = 1.0
   @State private var pomoPulseOpacity: Double = 1.0
+  @State private var returnPulseOpacity: Double = 1.0
 
   var body: some View {
     if let category = widgetState.currentCategory {
       let textColor = Color.white  // Always use white for text (matching React)
 
       VStack(spacing: 0) {
-        if widgetState.scheduleDeviation != nil {
-          HStack(spacing: 4) {
-            Text("T-\(formatDuration(minutes: widgetState.offsetMinutes))")
-              .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
-              .monospacedDigit()
-              .foregroundColor(StyleTokens.offsetGreen)
+        HStack(spacing: 4) {
+          Text("START \(formatStartTime(widgetState.lastEventTime))")
+            .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
+            .monospacedDigit()
+            .foregroundColor(StyleTokens.offsetGreen)
 
-            Spacer(minLength: 0)
+          Spacer(minLength: 0)
 
-            OffsetButton(label: "-15m", minutes: 15, widgetState: widgetState)
-            OffsetButton(label: "+15m", minutes: 15, widgetState: widgetState)
+          OffsetButton(label: "-15m", minutes: 15, widgetState: widgetState)
+          OffsetButton(label: "+15m", minutes: -15, widgetState: widgetState)
 
+          if widgetState.scheduleDeviation != nil {
             Button("RETURN") {
+              WidgetLogger.debug("Return to plan requested from unplanned category")
               Task { await widgetState.dispatch(.returnToPlan) }
             }
             .font(.system(size: Typography.tinyMono, design: .monospaced))
-            .foregroundColor(.white)
+            .foregroundColor(.white.opacity(returnPulseOpacity))
             .padding(.horizontal, 5)
             .padding(.vertical, 3)
             .background(StyleTokens.baseVoid.opacity(Palette.hoverOpacity))
             .cornerRadius(StyleTokens.radiusButton)
             .buttonStyle(PlainButtonStyle())
+            .onAppear {
+              withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                returnPulseOpacity = 0.45
+              }
+            }
           }
-          .padding(.horizontal, 8)
-          .frame(height: 28)
-          .background(StyleTokens.baseVoid.opacity(Palette.overlayOpacity))
-          .overlay(
-            Rectangle()
-              .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
-              .frame(height: 1),
-            alignment: .bottom
-          )
         }
+        .padding(.horizontal, 8)
+        .frame(height: 28)
+        .background(
+          widgetState.scheduleDeviation == nil
+            ? StyleTokens.baseVoid.opacity(Palette.overlayOpacity)
+            : StyleTokens.baseVoid.opacity(Palette.hoverOpacity)
+        )
+        .overlay(
+          Rectangle()
+            .fill(
+              widgetState.scheduleDeviation == nil
+                ? StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity)
+                : StyleTokens.structuralBorder.opacity(Palette.borderOpacity)
+            )
+            .frame(height: 1),
+          alignment: .bottom
+        )
 
         // Main category block
         ZStack(alignment: .topLeading) {
@@ -455,6 +490,8 @@ struct OffsetButton: View {
 
   var body: some View {
     Button(action: {
+      WidgetLogger.debug(
+        "Time nudge requested", context: ["minutes": String(minutes), "label": label])
       Task { await widgetState.adjustOffset(minutes: minutes) }
     }) {
       Text(label)
@@ -502,7 +539,12 @@ struct RightRailView: View {
       if isMenuExpanded {
         actionButton(title: "Reload", systemImage: "arrow.clockwise") {
           isMenuExpanded = false
-          Task { await widgetState.reload() }
+          Task {
+            WidgetLogger.debug("Refresh requested; waiting for web authentication")
+            if await authController.authenticateFromWeb() {
+              await widgetState.synchronize()
+            }
+          }
         }
 
         actionButton(title: "Sync", systemImage: "arrow.triangle.2.circlepath") {
@@ -560,18 +602,21 @@ struct RightRailView: View {
   }
 
   private func openWebApp() {
-    print("[WEB] Opening web app in browser...")
+    WidgetLogger.debug("Opening web app in browser")
     if let url = URL(string: BuildConfig.webAppBaseURL + "/") {
       NSWorkspace.shared.open(url)
-      print("[WEB] Browser opened: \(BuildConfig.webAppBaseURL)")
+      WidgetLogger.debug("Web app browser opened", context: ["url": BuildConfig.webAppBaseURL])
     } else {
-      print("[ERROR] Invalid web app URL: \(BuildConfig.webAppBaseURL)")
+      WidgetLogger.error(
+        "Invalid web app URL", context: ["url": BuildConfig.webAppBaseURL])
     }
   }
 
   private func logout() {
     Task {
+      WidgetLogger.debug("Logout requested")
       widgetState.stopPeriodicRefresh()
+      await widgetState.clearLocalData()
       await authController.handleLogout()
     }
   }

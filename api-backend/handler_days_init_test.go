@@ -44,13 +44,19 @@ func TestInitCreatesAndLoadsDayRecord(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
 	var payload struct {
-		DayRecord PublicDayRecord `json:"day_record"`
+		DayRecords []PublicDayRecord `json:"day_records"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatalf("failed to decode init response: %v", err)
 	}
-	if payload.DayRecord.CalendarDate != mustCalendarDate("2026-09-06") {
-		t.Fatalf("expected initialized date, got %s", payload.DayRecord.CalendarDate)
+	if len(payload.DayRecords) != initPlanDays {
+		t.Fatalf("expected %d initialized days, got %d", initPlanDays, len(payload.DayRecords))
+	}
+	if payload.DayRecords[0].CalendarDate != mustCalendarDate("2026-09-06") {
+		t.Fatalf("expected first initialized date, got %s", payload.DayRecords[0].CalendarDate)
+	}
+	if payload.DayRecords[initPlanDays-1].CalendarDate != mustCalendarDate("2026-09-12") {
+		t.Fatalf("expected last initialized date, got %s", payload.DayRecords[initPlanDays-1].CalendarDate)
 	}
 }
 

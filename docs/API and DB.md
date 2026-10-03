@@ -961,7 +961,7 @@ Native clients may persist events locally and submit them in batches during star
 2. **Sort by effective time** — Deterministic order: `(effective_at, server_id)`, never client timestamp alone, to guarantee repeatable results across recomputation.
 3. **Clamp to day boundary** — Events outside the day's 24-hour window are excluded (retained for audit).
 4. **Extract boundaries** — Transitions always drive actual block computation. A confirmation with the same category as the current block is attached to that block; a confirmation with a different category creates a boundary like a transition.
-5. **Compute blocks** — If zero boundaries exist, the entire day is `untracked`. Otherwise, each boundary closes the prior block and opens a new one. The final block is `is_open: true` if today; otherwise closed at day boundary. Time before the first boundary is `untracked`.
+5. **Compute blocks** — If zero boundaries exist, the entire day is `untracked`. Otherwise, each boundary closes the prior block and opens a new one. When no later boundary exists, the latest attached confirmation closes the materialized duration of the final block; without one, the open block is not materialized. Time before the first boundary is `untracked`.
 
 **Block Computation Rules:**
 - A day with **zero boundaries** has **zero actual blocks** and is entirely `untracked`.

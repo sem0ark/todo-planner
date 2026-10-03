@@ -13,10 +13,14 @@ type initRequest struct {
 }
 
 type initResponse struct {
-	Settings   PublicSettings  `json:"settings"`
-	Categories []BlockCategory `json:"categories"`
-	DayRecord  PublicDayRecord `json:"day_record"`
+	Settings   PublicSettings    `json:"settings"`
+	Categories []BlockCategory   `json:"categories"`
+	DayRecords []PublicDayRecord `json:"day_records"`
 }
+
+// initPlanDays is the number of consecutive days returned by the bootstrap endpoint,
+// including the requested calendar date.
+const initPlanDays = 7
 
 // initHandler returns the small bootstrap payload required by a native client.
 func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Request) {
@@ -57,24 +61,33 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 		http.Error(responseWriter, "failed to load categories", http.StatusInternalServerError)
 		return
 	}
-	dayRecordID, err := findOrCreateDayRecord(request.Context(), transaction, userID, calendarDate)
-	if err != nil {
-		http.Error(responseWriter, "failed to load day", http.StatusInternalServerError)
-		return
+	dayRecordIDs := make([]int, 0, initPlanDays)
+	for dayIndex := 0; dayIndex < initPlanDays; dayIndex++ {
+		dayRecordDate := calendarDate.AddDate(0, 0, dayIndex)
+		dayRecordID, findError := findOrCreateDayRecord(request.Context(), transaction, userID, dayRecordDate)
+		if findError != nil {
+			http.Error(responseWriter, "failed to load days", http.StatusInternalServerError)
+			return
+		}
+		dayRecordIDs = append(dayRecordIDs, dayRecordID)
 	}
 	if err := transaction.Commit(request.Context()); err != nil {
 		http.Error(responseWriter, "failed to initialize client", http.StatusInternalServerError)
 		return
 	}
-	record, err := api.dayRecordRepo.FindByID(request.Context(), dayRecordID, userID)
-	if err != nil {
-		http.Error(responseWriter, "failed to load day", http.StatusInternalServerError)
-		return
+	dayRecords := make([]PublicDayRecord, 0, len(dayRecordIDs))
+	for _, dayRecordID := range dayRecordIDs {
+		record, findError := api.dayRecordRepo.FindByID(request.Context(), dayRecordID, userID)
+		if findError != nil {
+			http.Error(responseWriter, "failed to load days", http.StatusInternalServerError)
+			return
+		}
+		dayRecords = append(dayRecords, toPublicDayRecord(record))
 	}
 	writeJSON(responseWriter, initResponse{
 		Settings:   toPublicSettings(*settings),
 		Categories: categories,
-		DayRecord:  toPublicDayRecord(record),
+		DayRecords: dayRecords,
 	})
 }
 

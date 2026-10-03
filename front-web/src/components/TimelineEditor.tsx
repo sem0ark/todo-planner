@@ -177,7 +177,7 @@ function BlockEditPopover({
               minimumDuration,
               Math.round(
                 (parseInt(event.target.value) || minimumDuration) /
-                durationStep,
+                  durationStep,
               ) * durationStep,
             );
             onUpdate(blockIndex, { duration_minutes: value });

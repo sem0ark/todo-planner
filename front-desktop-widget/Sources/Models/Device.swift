@@ -26,7 +26,7 @@ struct UserSettings: Codable {
       ?? "04:00:00"
     dayRangeEndTime =
       try container.decodeIfPresent(String.self, forKey: .dayRangeEndTime)
-      ?? "28:00:00"
+      ?? "23:00:00"
     updatedAt = try container.decode(Date.self, forKey: .updatedAt)
   }
 
@@ -39,7 +39,7 @@ struct UserSettings: Codable {
 
   init(
     dayRangeStartTime: String = "04:00:00",
-    dayRangeEndTime: String = "28:00:00",
+    dayRangeEndTime: String = "23:00:00",
     updatedAt: Date
   ) {
     self.dayRangeStartTime = dayRangeStartTime
@@ -51,9 +51,26 @@ struct UserSettings: Codable {
 struct InitResponse: Codable {
   let settings: UserSettings
   let categories: [Category]
-  let dayRecord: DayRecord
+  let dayRecords: [DayRecord]
+
   enum CodingKeys: String, CodingKey {
     case settings, categories
-    case dayRecord = "day_record"
+    case dayRecords = "day_records"
+  }
+}
+
+struct CachedInitResponse: Codable {
+  let schemaVersion: Int
+  let calendarDate: String
+  let fetchedAt: Date
+  let response: InitResponse
+
+  static let currentSchemaVersion = 1
+
+  init(calendarDate: String, response: InitResponse, fetchedAt: Date = Date()) {
+    self.schemaVersion = Self.currentSchemaVersion
+    self.calendarDate = calendarDate
+    self.fetchedAt = fetchedAt
+    self.response = response
   }
 }

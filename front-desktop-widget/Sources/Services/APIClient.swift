@@ -10,6 +10,7 @@ enum APIError: Error {
 }
 
 protocol TodoPlannerAPI: Sendable {
+  var authToken: String? { get }
   func setAuthToken(_ token: String)
   func clearAuthToken()
   func validateToken() async throws -> Bool
@@ -21,28 +22,16 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   static let shared = APIClient()
 
   private let baseURL: String
-  private var authToken: String?
-  private let tokenKey = "com.todoplanner.widget.jwt_token"
+  private(set) var authToken: String?
   private let deviceKey = "com.todoplanner.widget.device_id"
-  private var initializationCache: [String: InitResponse] = [:]
   private var deviceId: Int?
-
-  var currentDeviceId: Int? { deviceId }
 
   private init() {
     // Load API_BASE_URL from build configuration (set via Makefile)
     // Usage: make build API_BASE_URL=https://api.example.com
     self.baseURL = BuildConfig.apiBaseURL
 
-    print("[CONFIG] API Base URL: \(self.baseURL)")
-
-    // Try to load token from UserDefaults on init
-    if let savedToken = loadTokenFromAppData() {
-      print("[AUTH] Loaded JWT from app data")
-      self.authToken = savedToken
-    } else {
-      print("[AUTH] No saved JWT found in app data")
-    }
+    WidgetLogger.debug("API base URL configured", context: ["baseURL": self.baseURL])
 
     let storedDevice = UserDefaults.standard.object(forKey: deviceKey)
     if let storedDeviceId = storedDevice as? Int, storedDeviceId > 0 {
@@ -57,41 +46,19 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   func setAuthToken(_ token: String) {
     self.authToken = token
     self.deviceId = nil
-    self.initializationCache.removeAll()
     UserDefaults.standard.removeObject(forKey: deviceKey)
-    saveTokenToAppData(token)
+    WidgetLogger.debug("Authentication token stored in memory only")
   }
 
   func clearAuthToken() {
     self.authToken = nil
     self.deviceId = nil
-    self.initializationCache.removeAll()
     UserDefaults.standard.removeObject(forKey: deviceKey)
-    deleteTokenFromAppData()
+    WidgetLogger.debug("Cleared in-memory authentication token")
   }
 
   func hasAuthToken() -> Bool {
     return authToken != nil
-  }
-
-  // MARK: - App Data Storage (UserDefaults)
-  // TODO: Consider encrypting the token before storing in UserDefaults
-  // or using a more secure storage mechanism for production
-
-  private func saveTokenToAppData(_ token: String) {
-    UserDefaults.standard.set(token, forKey: tokenKey)
-    UserDefaults.standard.synchronize()
-    print("[OK] JWT saved to app data")
-  }
-
-  private func loadTokenFromAppData() -> String? {
-    return UserDefaults.standard.string(forKey: tokenKey)
-  }
-
-  private func deleteTokenFromAppData() {
-    UserDefaults.standard.removeObject(forKey: tokenKey)
-    UserDefaults.standard.synchronize()
-    print("[OK] JWT deleted from app data")
   }
 
   // MARK: - Token Validation
@@ -99,17 +66,17 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   /// Validates if the current token is still valid by checking device registration
   func validateToken() async throws -> Bool {
     guard authToken != nil else {
-      print("[AUTH] No token to validate")
+      WidgetLogger.debug("No authentication token to validate")
       return false
     }
 
     do {
       // Validate by attempting device registration or init
       _ = try await registerDeviceIfNeeded()
-      print("[OK] Token is valid")
+      WidgetLogger.debug("Authentication token is valid")
       return true
     } catch APIError.unauthorized {
-      print("[AUTH] Token is invalid or expired")
+      WidgetLogger.debug("Authentication token is invalid or expired")
       clearAuthToken()
       return false
     } catch {
@@ -123,23 +90,24 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     method: String = "GET",
     body: Encodable? = nil
   ) async throws -> T {
-    print("[API] API Request: \(method) \(baseURL)\(endpoint)")
+    WidgetLogger.debug(
+      "API request started", context: ["method": method, "endpoint": endpoint])
 
     guard let url = URL(string: baseURL + endpoint) else {
-      print("[ERROR] Invalid URL: \(baseURL)\(endpoint)")
+      WidgetLogger.error("Invalid API URL", context: ["endpoint": endpoint])
       throw APIError.invalidURL
     }
 
     var request = URLRequest(url: url)
+    request.timeoutInterval = 15
     request.httpMethod = method
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
     if let token = authToken {
-      let tokenPreview = String(token.prefix(20))
-      print("[AUTH] Authorization: Bearer \(tokenPreview)...")
+      WidgetLogger.debug("Authorization header configured")
       request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     } else {
-      print("[WARN] No auth token set")
+      WidgetLogger.debug("No authentication token set")
     }
 
     if let body = body {
@@ -147,29 +115,28 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
       encoder.dateEncodingStrategy = .iso8601
       do {
         request.httpBody = try encoder.encode(body)
-        if let bodyString = String(data: request.httpBody!, encoding: .utf8) {
-          print("[OUT] Request body: \(bodyString)")
-        }
+        WidgetLogger.debug(
+          "Request body encoded", context: ["bytes": String(request.httpBody?.count ?? 0)])
       } catch {
-        print("[ERROR] Failed to encode request body: \(error)")
+        WidgetLogger.error(
+          "Failed to encode request body", context: ["error": String(describing: error)])
         throw error
       }
     }
 
     do {
-      print("[WAIT] Sending request...")
+      WidgetLogger.debug("Sending API request")
       let (data, response) = try await URLSession.shared.data(for: request)
 
       guard let httpResponse = response as? HTTPURLResponse else {
-        print("[ERROR] Invalid response type")
+        WidgetLogger.error("Invalid API response type")
         throw APIError.invalidResponse
       }
 
-      print("[IN] Response status: \(httpResponse.statusCode)")
+      WidgetLogger.debug(
+        "API response received", context: ["statusCode": String(httpResponse.statusCode)])
 
-      let responseString =
-        String(data: data, encoding: .utf8) ?? "<non-UTF8 body: \(data.base64EncodedString())>"
-      print("[IN] Response body (\(data.count) bytes): '\(responseString)'")
+      WidgetLogger.debug("API response body received", context: ["bytes": String(data.count)])
 
       switch httpResponse.statusCode {
       case 200...299:
@@ -177,63 +144,78 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
         decoder.dateDecodingStrategy = .iso8601
         do {
           let decoded = try decoder.decode(T.self, from: data)
-          print("[OK] Successfully decoded response")
+          WidgetLogger.debug("API response decoded successfully")
           return decoded
         } catch {
-          print("[ERROR] Decoding error: \(error)")
+          WidgetLogger.error(
+            "API response decoding failed", context: ["error": String(describing: error)])
           if let decodingError = error as? DecodingError {
             switch decodingError {
             case .keyNotFound(let key, let context):
-              print("   Missing key '\(key.stringValue)' - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Missing response key",
+                context: ["key": key.stringValue, "details": context.debugDescription])
             case .typeMismatch(let type, let context):
-              print("   Type mismatch for type '\(type)' - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Response type mismatch",
+                context: ["type": String(describing: type), "details": context.debugDescription])
             case .valueNotFound(let type, let context):
-              print("   Value not found for type '\(type)' - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Response value missing",
+                context: ["type": String(describing: type), "details": context.debugDescription])
             case .dataCorrupted(let context):
-              print("   Data corrupted - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Response data corrupted", context: ["details": context.debugDescription])
             @unknown default:
-              print("   Unknown decoding error")
+              WidgetLogger.error("Unknown response decoding error")
             }
           }
           throw APIError.decodingError(error)
         }
       case 401:
-        print("[ERROR] Unauthorized (401)")
+        WidgetLogger.error("API request unauthorized", context: ["statusCode": "401"])
+        clearAuthToken()
         throw APIError.unauthorized
       default:
         let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-        print("[ERROR] Server error \(httpResponse.statusCode): \(errorMessage)")
+        WidgetLogger.error(
+          "API server error",
+          context: ["statusCode": String(httpResponse.statusCode), "message": errorMessage])
         throw APIError.serverError(httpResponse.statusCode, errorMessage)
       }
     } catch let error as APIError {
       throw error
     } catch {
-      print("[ERROR] Network error: \(error)")
+      WidgetLogger.error("API network error", context: ["error": String(describing: error)])
       throw APIError.networkError(error)
     }
   }
 
   func initialize(calendarDate: String) async throws -> InitResponse {
-    let currentDeviceId = try await registerDeviceIfNeeded()
+    let registeredDeviceId = try await registerDeviceIfNeeded()
     struct InitRequest: Encodable {
       let device_id: Int
       let calendar_date: String
     }
 
-    let response: InitResponse
     do {
-      response = try await makeRequest(
+      return try await makeRequest(
         endpoint: "/init",
         method: "POST",
-        body: InitRequest(device_id: currentDeviceId, calendar_date: calendarDate)
+        body: InitRequest(device_id: registeredDeviceId, calendar_date: calendarDate)
       )
     } catch APIError.serverError(404, let message) where message.contains("device not found") {
       WidgetLogger.error(
         "Registered device was rejected by server",
-        context: ["calendarDate": calendarDate, "deviceId": String(currentDeviceId)])
-      throw APIError.serverError(404, message)
+        context: ["calendarDate": calendarDate, "deviceId": String(registeredDeviceId)])
+      clearDeviceRegistration()
+      let replacementDeviceId = try await registerDeviceIfNeeded()
+      return try await makeRequest(
+        endpoint: "/init",
+        method: "POST",
+        body: InitRequest(device_id: replacementDeviceId, calendar_date: calendarDate)
+      )
     }
-    return response
   }
 
   private func registerDeviceIfNeeded() async throws -> Int {
@@ -250,16 +232,33 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     return registration.deviceId
   }
 
+  private func clearDeviceRegistration() {
+    deviceId = nil
+    UserDefaults.standard.removeObject(forKey: deviceKey)
+  }
+
   func postDayEvents(
     date: String,
     events: [DayEvent]
   ) async throws -> DayEventsResponse {
-    let request = DayEventsRequest(deviceId: try await registerDeviceIfNeeded(), events: events)
-    return try await makeRequest(
-      endpoint: "/days/\(date)/events",
-      method: "POST",
-      body: request
-    )
+    let registeredDeviceId = try await registerDeviceIfNeeded()
+    do {
+      let request = DayEventsRequest(deviceId: registeredDeviceId, events: events)
+      return try await makeRequest(
+        endpoint: "/days/\(date)/events",
+        method: "POST",
+        body: request
+      )
+    } catch APIError.serverError(404, let message) where message.contains("device not found") {
+      clearDeviceRegistration()
+      let replacementDeviceId = try await registerDeviceIfNeeded()
+      let request = DayEventsRequest(deviceId: replacementDeviceId, events: events)
+      return try await makeRequest(
+        endpoint: "/days/\(date)/events",
+        method: "POST",
+        body: request
+      )
+    }
   }
 
 }
