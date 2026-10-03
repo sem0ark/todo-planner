@@ -3,6 +3,8 @@ import Foundation
 import Observation
 import SwiftUI
 
+private let widgetTickerIntervalSeconds = 5
+
 // MARK: - Core Type Definitions
 
 extension Notification.Name {
@@ -95,7 +97,7 @@ protocol WidgetStateLogic {
   /// Processes user intents (e.g., button clicks, key presses).
   func handle(action: WidgetAction, context: WidgetContext) -> StateResult
 
-  /// Processes temporal events (e.g., 1s heartbeat, boundary checks).
+  /// Processes temporal events (e.g., periodic heartbeat, boundary checks).
   func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult
 }
 
@@ -183,7 +185,7 @@ func tickPomodoro(_ context: inout WidgetContext) -> PomodoroTickOutcome {
   guard limit > 0 else { return .none }
 
   let previousElapsed = context.pomodoroElapsed
-  context.pomodoroElapsed += 1
+  context.pomodoroElapsed += widgetTickerIntervalSeconds
 
   let autoSkipLimit = Int(Double(limit) * 1.5)
   let crossedWorkLimit =
@@ -974,11 +976,12 @@ class WidgetStateStore {
   // MARK: - Heartbeat
 
   private func setupTicker() {
-    ticker = Timer.publish(every: 5.0, on: .main, in: .common)
+    ticker = Timer.publish(
+      every: TimeInterval(widgetTickerIntervalSeconds), on: .main, in: .common)
       .autoconnect()
       .sink { [weak self] _ in
         guard let self = self else { return }
-        self.tick += 1
+        self.tick += widgetTickerIntervalSeconds
         self.context.plannedCategory = self.plannedCategory
         let result = self.currentState.onTick(
           context: self.context, currentPlannedBlock: self.currentPlannedBlock)
