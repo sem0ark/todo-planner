@@ -1,5 +1,10 @@
 package main
 
+import (
+	"sort"
+	"time"
+)
+
 var (
 	ErrUnknownCategoryID           = NewBadRequestError("unknown category_id")
 	ErrMissingEventCategory        = NewBadRequestError("category_id is required for all events")
@@ -14,7 +19,6 @@ var (
 	ErrInvalidBlockStartTime       = NewBadRequestError("start_time must be a valid time")
 	ErrInvalidBlockDuration        = NewBadRequestError("block duration must be non-negative")
 	ErrBlockExceedsDay             = NewBadRequestError("block must end by 24:00")
-	ErrActualBlocksOverlap         = NewBadRequestError("actual blocks must not overlap")
 	ErrInvalidDayDateRange         = NewBadRequestError("invalid date range")
 	ErrDeviceIDRequired            = NewBadRequestError("device_id is required")
 	ErrMissingLocalTimestamp       = NewBadRequestError("occurred_at_local is required")
@@ -46,7 +50,7 @@ func validateDayEvents(events []DayEventInput) error {
 		if event.EventType != "confirmation" && event.EventType != "transition" && event.EventType != "amendment" {
 			return ErrInvalidEventType
 		}
-		if event.EventType == "transition" && event.CategoryID == nil {
+		if (event.EventType == "transition" || event.EventType == "confirmation") && event.CategoryID == nil {
 			return ErrMissingEventCategory
 		}
 		if event.EventType == "amendment" && (event.TargetClientEventID == "" || event.CorrectedAt == nil) {
@@ -89,8 +93,7 @@ func validateDateEvents(events []DayEventInput) error {
 }
 
 func validateActualBlocks(blocks []ActualBlockInput) error {
-	previousEndSecond := 0
-	for index, block := range blocks {
+	for _, block := range blocks {
 		if block.BlockType != "actual" && block.BlockType != "blank" {
 			return ErrInvalidActualBlockType
 		}
@@ -109,13 +112,57 @@ func validateActualBlocks(blocks []ActualBlockInput) error {
 		if blockExceedsDay(block.StartTime, block.DurationMinutes) {
 			return ErrBlockExceedsDay
 		}
-		startSecond := scheduleTimeSecondOfDay(block.StartTime)
-		if index > 0 && startSecond < previousEndSecond {
-			return ErrActualBlocksOverlap
-		}
-		previousEndSecond = startSecond + block.DurationMinutes*60
 	}
 	return nil
+}
+
+// resolveOverlappingActualBlocks applies posted blocks in order. Each later
+// block replaces the covered portions of earlier blocks, splitting an earlier
+// block when the later block is in its middle.
+func resolveOverlappingActualBlocks(blocks []ActualBlockInput) []ActualBlockInput {
+	resolvedBlocks := make([]ActualBlockInput, 0, len(blocks))
+	for _, laterBlock := range blocks {
+		laterStartSecond := scheduleTimeSecondOfDay(laterBlock.StartTime)
+		laterEndSecond := laterStartSecond + laterBlock.DurationMinutes*60
+		remainingBlocks := make([]ActualBlockInput, 0, len(resolvedBlocks)+1)
+
+		for _, earlierBlock := range resolvedBlocks {
+			earlierStartSecond := scheduleTimeSecondOfDay(earlierBlock.StartTime)
+			earlierEndSecond := earlierStartSecond + earlierBlock.DurationMinutes*60
+			if laterEndSecond <= earlierStartSecond || laterStartSecond >= earlierEndSecond {
+				remainingBlocks = append(remainingBlocks, earlierBlock)
+				continue
+			}
+
+			if earlierStartSecond < laterStartSecond {
+				leftBlock := earlierBlock
+				leftBlock.DurationMinutes = (laterStartSecond - earlierStartSecond) / 60
+				if leftBlock.DurationMinutes > 0 {
+					remainingBlocks = append(remainingBlocks, leftBlock)
+				}
+			}
+			if laterEndSecond < earlierEndSecond {
+				rightBlock := earlierBlock
+				rightBlock.StartTime = scheduleTimeFromSeconds(laterEndSecond)
+				rightBlock.DurationMinutes = (earlierEndSecond - laterEndSecond) / 60
+				if rightBlock.DurationMinutes > 0 {
+					remainingBlocks = append(remainingBlocks, rightBlock)
+				}
+			}
+		}
+
+		resolvedBlocks = append(remainingBlocks, laterBlock)
+	}
+
+	sort.SliceStable(resolvedBlocks, func(leftIndex, rightIndex int) bool {
+		return scheduleTimeSecondOfDay(resolvedBlocks[leftIndex].StartTime) <
+			scheduleTimeSecondOfDay(resolvedBlocks[rightIndex].StartTime)
+	})
+	return resolvedBlocks
+}
+
+func scheduleTimeFromSeconds(totalSeconds int) ScheduleTime {
+	return ScheduleTime(time.Date(0, time.January, 1, 0, 0, totalSeconds, 0, time.UTC))
 }
 
 func blockExceedsDay(startTime ScheduleTime, durationMinutes int) bool {

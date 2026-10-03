@@ -62,6 +62,7 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 			*storageOffsetMinutes,
 		)
 	}
+	actualBlocks = resolveOverlappingActualBlocks(actualBlocks)
 	if err := validateActualBlocks(actualBlocks); err != nil {
 		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
 		return

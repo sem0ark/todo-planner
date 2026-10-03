@@ -14,7 +14,7 @@ func publicTemplateRequestForTest(input DayTemplateInput) dayTemplateRequest {
 	plan := make([]templatePlanRequest, 0, len(input.SnapshotBlocks))
 	for _, block := range input.SnapshotBlocks {
 		plan = append(plan, templatePlanRequest{CategoryID: block.CategoryID,
-			StartTime: formatScheduleTime(block.StartTime), DurationMinutes: block.DurationMinutes})
+			StartTime: block.StartTime, DurationMinutes: block.DurationMinutes})
 	}
 	return dayTemplateRequest{Name: input.Name, TemplateGroupID: input.TemplateGroupID, Plan: &plan}
 }

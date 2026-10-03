@@ -18,10 +18,6 @@ type initResponse struct {
 	DayRecords []PublicDayRecord `json:"day_records"`
 }
 
-// initPlanDays is the number of consecutive days returned by the bootstrap endpoint,
-// including the requested calendar date.
-const initPlanDays = 7
-
 // initHandler returns the small bootstrap payload required by a native client.
 func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {

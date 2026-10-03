@@ -21,8 +21,8 @@ type PublicSettings struct {
 
 func toPublicSettings(settings UserSettings) PublicSettings {
 	return PublicSettings{
-		DayRangeStartTime: formatScheduleTime(settings.DayRangeStartTime),
-		DayRangeEndTime:   formatScheduleTime(settings.DayRangeEndTime),
+		DayRangeStartTime: settings.DayRangeStartTime,
+		DayRangeEndTime:   settings.DayRangeEndTime,
 		UpdatedAt:         APITimestamp(settings.UpdatedAt),
 	}
 }
