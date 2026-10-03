@@ -84,22 +84,18 @@ struct StyleTokens {
 }
 
 struct ContentView: View {
-  @State private var authController: AuthController
+  private let authController: AuthController
   @State private var widgetState: WidgetStateStore
 
   init() {
     let repo = RepositoryFactory.createRepository()
-    _authController = State(wrappedValue: AuthController(repository: repo))
+    self.authController = AuthController(repository: repo)
     _widgetState = State(wrappedValue: WidgetStateStore(repository: repo))
   }
 
   var body: some View {
     Group {
-      switch contentViewMode(
-        isCheckingAuthentication: authController.isCheckingAuth,
-        isAuthenticated: authController.isAuthenticated,
-        hasCachedBootstrap: widgetState.hasCachedBootstrap
-      ) {
+      switch widgetState.screenState {
       case .checkingAuthentication:
         // Show loading state while checking authentication
         ZStack {
@@ -128,10 +124,6 @@ struct ContentView: View {
           RightRailView(widgetState: widgetState, authController: authController)
             .frame(width: 112)
         }
-        .task {
-          WidgetLogger.debug("Content view starting widget state")
-          await widgetState.start()
-        }
         .onDisappear {
           widgetState.stopPeriodicRefresh()
         }
@@ -141,7 +133,7 @@ struct ContentView: View {
           }
         }
       case .login:
-        LoginView(authController: authController)
+        LoginView(authController: authController, widgetState: widgetState)
       }
     }
     .frame(width: 320, height: 200)
@@ -153,10 +145,7 @@ struct ContentView: View {
     )
     .shadow(color: .black.opacity(Palette.shadowOpacity), radius: 12, x: 0, y: 4)
     .task {
-      await authController.checkInitialAuth()
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .authenticationRequired)) { _ in
-      Task { await authController.handleAuthenticationRequired() }
+      await widgetState.start()
     }
   }
 
@@ -616,8 +605,7 @@ struct RightRailView: View {
     Task {
       WidgetLogger.debug("Logout requested")
       widgetState.stopPeriodicRefresh()
-      await widgetState.clearLocalData()
-      await authController.handleLogout()
+      await widgetState.logout()
     }
   }
 }

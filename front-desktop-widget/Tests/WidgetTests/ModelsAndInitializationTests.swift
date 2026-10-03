@@ -220,6 +220,65 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assert(h.store.displayState == .active, "After initialize, should be active")
   }
 
+  func test_startWithoutCacheOrAuthenticationShowsLogin() async throws {
+    let harness = WidgetTestHarness(existingRecord: nil)
+    harness.mock.authToken = nil
+
+    await harness.store.start()
+
+    try assertEqual(harness.store.screenState, .login)
+  }
+
+  func test_startWithCachedBootstrapWithoutAuthenticationShowsWidget() async throws {
+    let harness = WidgetTestHarness(existingRecord: Fixtures.record())
+    await harness.initialize()
+    harness.mock.authToken = nil
+    harness.store.screenState = .checkingAuthentication
+
+    await harness.store.start()
+
+    try assertEqual(harness.store.screenState, .widget)
+    try assertEqual(harness.store.displayState, .active)
+  }
+
+  func test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget() async throws {
+    let harness = WidgetTestHarness(existingRecord: Fixtures.record())
+
+    await harness.store.start()
+
+    try assertEqual(harness.store.screenState, .widget)
+    try assertEqual(harness.store.displayState, .active)
+    try assertEqual(harness.mock.calls.count, 1)
+    try assertEqual(harness.mock.calls.compactMap { call -> String? in
+      guard case .initialize(let date) = call else { return nil }
+      return date
+    }, [Fixtures.today])
+  }
+
+  func test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache() async throws {
+    let harness = WidgetTestHarness(existingRecord: Fixtures.record())
+    await harness.initialize()
+    harness.store.screenState = .login
+    harness.mock.resetCalls()
+
+    await harness.store.authenticationSucceeded()
+
+    try assertEqual(harness.store.screenState, .widget)
+    try assertEqual(harness.store.displayState, .active)
+    try assertEqual(harness.mock.calls.count, 1)
+    try assertEqual(harness.mock.calls.first?.description, "initialize(\(Fixtures.today))")
+  }
+
+  func test_authenticationSucceededWithNoAPIDataRemainsChecking() async throws {
+    let harness = WidgetTestHarness(existingRecord: nil)
+    harness.store.screenState = .login
+
+    await harness.store.authenticationSucceeded()
+
+    try assertEqual(harness.store.screenState, .checkingAuthentication)
+    try assert(harness.store.lastError != nil, "API bootstrap failure should be exposed")
+  }
+
   static func testMethods() -> [TestCase] {
     let tests = ModelsAndInitializationTests()
     return [
@@ -240,6 +299,11 @@ final class ModelsAndInitializationTests: WidgetTestCase {
       ("test_reload_fetchesRemoteDataAndReturnsToActive", { try await tests.test_reload_fetchesRemoteDataAndReturnsToActive() }),
       ("test_missingScheduleData_isNotOnSchedule", { try await tests.test_missingScheduleData_isNotOnSchedule() }),
       ("test_stateTransition_initialToActive", { try await tests.test_stateTransition_initialToActive() }),
+      ("test_startWithoutCacheOrAuthenticationShowsLogin", { try await tests.test_startWithoutCacheOrAuthenticationShowsLogin() }),
+      ("test_startWithCachedBootstrapWithoutAuthenticationShowsWidget", { try await tests.test_startWithCachedBootstrapWithoutAuthenticationShowsWidget() }),
+      ("test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget", { try await tests.test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget() }),
+      ("test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache", { try await tests.test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache() }),
+      ("test_authenticationSucceededWithNoAPIDataRemainsChecking", { try await tests.test_authenticationSucceededWithNoAPIDataRemainsChecking() }),
     ]
   }
 }

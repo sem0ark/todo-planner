@@ -13,7 +13,6 @@ struct TestRunner {
     print("")
 
     let testMethods = WidgetLoggerTests.testMethods()
-      + ContentViewTests.testMethods()
       + PersistenceTests.testMethods()
       + RepositorySyncTests.testMethods()
       + ModelsAndInitializationTests.testMethods()

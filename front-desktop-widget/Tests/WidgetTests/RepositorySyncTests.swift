@@ -2,16 +2,6 @@ import Foundation
 
 @MainActor
 final class RepositorySyncTests: WidgetTestCase {
-  func test_authenticationUsesMemoryTokenWithoutValidationRequest() async throws {
-    let repository = MockRepository()
-    let authController = AuthController(repository: repository)
-
-    await authController.checkInitialAuth()
-
-    try assert(authController.isAuthenticated, "A memory token should authenticate the session")
-    try assertEqual(repository.validateAuthCallCount, 0)
-  }
-
   func test_apiClientDoesNotPersistAuthenticationToken() throws {
     let tokenKey = "com.todoplanner.widget.jwt_token"
     UserDefaults.standard.removeObject(forKey: tokenKey)
@@ -149,26 +139,16 @@ final class RepositorySyncTests: WidgetTestCase {
   func test_synchronizeWithoutAuthenticationRequestsLogin() async throws {
     let harness = WidgetTestHarness(existingRecord: Fixtures.record())
     harness.mock.authToken = nil
-    var authenticationRequired = false
-    let observer = NotificationCenter.default.addObserver(
-      forName: .authenticationRequired,
-      object: nil,
-      queue: .main
-    ) { _ in
-      authenticationRequired = true
-    }
 
     await harness.store.synchronize()
-    NotificationCenter.default.removeObserver(observer)
 
-    try assert(authenticationRequired, "Synchronization should request authentication")
+    try assertEqual(harness.store.screenState, .login)
     try assert(harness.store.lastError == "unauthorized", "Missing authentication should be exposed")
   }
 
   static func testMethods() -> [TestCase] {
     let tests = RepositorySyncTests()
     return [
-      ("test_authenticationUsesMemoryTokenWithoutValidationRequest", { try await tests.test_authenticationUsesMemoryTokenWithoutValidationRequest() }),
       ("test_apiClientDoesNotPersistAuthenticationToken", { try tests.test_apiClientDoesNotPersistAuthenticationToken() }),
       ("test_synchronizeSendsSortedEventsAsSingleBatch", { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }),
       ("test_synchronize400FallsBackToIndividualEvents", { try await tests.test_synchronize400FallsBackToIndividualEvents() }),
