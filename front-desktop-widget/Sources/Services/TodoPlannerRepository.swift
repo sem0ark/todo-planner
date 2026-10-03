@@ -1,16 +1,28 @@
 import Foundation
+import os
 
 enum WidgetLogger {
-  static func debug(_ message: String, context: [String: String] = [:]) {
+  private static let logger = Logger(
+    subsystem: "com.todoplanner.widget",
+    category: "widget"
+  )
+
+  static func format(_ message: String, context: [String: String] = [:]) -> String {
     let details = context.sorted { first, second in first.key < second.key }
       .map { entry in "\(entry.key)=\(entry.value)" }.joined(separator: " ")
-    print("[DEBUG] \(message)\(details.isEmpty ? "" : " | \(details)")")
+    return "\(message)\(details.isEmpty ? "" : " | \(details)")"
+  }
+
+  static func debug(_ message: String, context: [String: String] = [:]) {
+    let formattedMessage = format("[DEBUG] \(message)", context: context)
+    print(formattedMessage)
+    logger.debug("\(formattedMessage, privacy: .public)")
   }
 
   static func error(_ message: String, context: [String: String] = [:]) {
-    let details = context.sorted { $0.key < $1.key }
-      .map { "\($0.key)=\($0.value)" }.joined(separator: " ")
-    print("[ERROR] \(message)\(details.isEmpty ? "" : " | \(details)")")
+    let formattedMessage = format("[ERROR] \(message)", context: context)
+    print(formattedMessage)
+    logger.error("\(formattedMessage, privacy: .public)")
   }
 }
 

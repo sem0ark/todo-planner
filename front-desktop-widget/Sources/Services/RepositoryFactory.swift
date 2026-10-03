@@ -6,17 +6,18 @@ enum RepositoryFactory {
   static func createRepository() -> TodoPlannerRepository {
     let mode = BuildConfig.storageMode
 
-    print("[FACTORY] Storage mode: \(mode)")
+    WidgetLogger.debug("Storage mode selected", context: ["mode": mode])
 
     switch mode {
     case "mock":
-      print("[FACTORY] Using MockTodoPlannerRepository (in-memory)")
+      WidgetLogger.debug("Using mock repository")
       return MockTodoPlannerRepository()
     case "remote":
-      print("[FACTORY] Using RemoteTodoPlannerRepository (API)")
+      WidgetLogger.debug("Using remote repository")
       return RemoteTodoPlannerRepository()
     default:
-      print("[FACTORY] Unknown mode '\(mode)', defaulting to remote")
+      WidgetLogger.error(
+        "Unknown storage mode; defaulting to remote", context: ["mode": mode])
       return RemoteTodoPlannerRepository()
     }
   }

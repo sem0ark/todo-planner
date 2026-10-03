@@ -8,6 +8,7 @@ import SwiftUI
 extension Notification.Name {
   static let confirmationNeeded = Notification.Name("confirmationNeeded")
   static let pomodoroCompleted = Notification.Name("pomodoroCompleted")
+  static let authenticationRequired = Notification.Name("authenticationRequired")
 }
 
 enum PomodoroPhase {
@@ -323,7 +324,7 @@ func logEvent(
   )
 
   _ = try await repo.submitEvents(calendarDate: calendarDate, events: [event])
-  print("[LOCAL] Event appended: \(type.rawValue)")
+  WidgetLogger.debug("Local event appended", context: ["eventType": type.rawValue])
   return (event.clientEventId, event)
 }
 
@@ -357,7 +358,9 @@ final class InitializingState: WidgetStateLogic {
 
     ctx.lastEventTime = Date()
 
-    print("[INIT] System Status: Picked planned category on startup. Transitioning to ActiveState.")
+    WidgetLogger.debug(
+      "Picked planned category on startup; transitioning to active state",
+      context: ["hasPlannedCategory": String(plannedCategory != nil)])
 
     var effects: [WidgetEffect] = [.updateMenuBarIcon]
     if let category = plannedCategory {
@@ -597,15 +600,23 @@ class WidgetStateStore {
   // MARK: - Intent Dispatcher
 
   func dispatch(_ action: WidgetAction) async {
-    print(
-      "[ACTION] Received: \(actionDescription(action)); state=\(stateDescription(displayState))")
+    WidgetLogger.debug(
+      "Action received",
+      context: [
+        "action": actionDescription(action),
+        "state": stateDescription(displayState),
+      ])
 
     context.plannedCategory = plannedCategory
     let result = currentState.handle(action: action, context: context)
     await apply(result)
 
-    print(
-      "[ACTION] Completed: \(actionDescription(action)); state=\(stateDescription(displayState))")
+    WidgetLogger.debug(
+      "Action completed",
+      context: [
+        "action": actionDescription(action),
+        "state": stateDescription(displayState),
+      ])
   }
 
   // MARK: - Compatibility API
@@ -722,6 +733,14 @@ class WidgetStateStore {
 
   func synchronize() async {
     WidgetLogger.debug("Widget synchronization requested")
+
+    guard repository.getAuthToken() != nil else {
+      lastError = String(describing: StorageError.unauthorized)
+      WidgetLogger.error("Synchronization requires authentication")
+      NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+      return
+    }
+
     var synchronizationError: Error?
     do {
       try await repository.synchronize()
@@ -734,9 +753,22 @@ class WidgetStateStore {
     if let synchronizationError {
       lastError = String(describing: synchronizationError)
       WidgetLogger.error("Synchronization failed", context: ["error": lastError!])
+      if isAuthenticationError(synchronizationError) {
+        NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+      }
     } else {
       lastError = nil
     }
+  }
+
+  private func isAuthenticationError(_ error: Error) -> Bool {
+    if case StorageError.unauthorized = error {
+      return true
+    }
+    if case APIError.unauthorized = error {
+      return true
+    }
+    return String(describing: error).contains("unauthorized")
   }
 
   func synchronizeOnStartup() async {
@@ -882,7 +914,7 @@ class WidgetStateStore {
       + "plannedCategory=\(categoryDescription(context.plannedCategory)); "
       + "plannedBlock=\(plannedBlockDescription(plannedBlock)); "
       + "offsetSeconds=\(context.offsetSeconds)"
-    print(message)
+    WidgetLogger.debug("Effect applied", context: ["details": message])
   }
 
   private func categoryDescription(_ category: Category?) -> String {

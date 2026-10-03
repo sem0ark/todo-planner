@@ -11,13 +11,13 @@ final class ContentViewTests {
       .checkingAuthentication)
   }
 
-  func test_cachedBootstrapShowsWidgetWithoutAuthentication() throws {
+  func test_cachedBootstrapStillRequiresAuthentication() throws {
     try assertEqual(
       contentViewMode(
         isCheckingAuthentication: false,
         isAuthenticated: false,
         hasCachedBootstrap: true),
-      .widget)
+      .login)
   }
 
   func test_authenticatedSessionShowsWidgetWithoutCache() throws {
@@ -36,5 +36,14 @@ final class ContentViewTests {
         isAuthenticated: false,
         hasCachedBootstrap: false),
       .login)
+  }
+  static func testMethods() -> [TestCase] {
+    let tests = ContentViewTests()
+    return [
+      ("test_checkingAuthenticationTakesPriority", { try tests.test_checkingAuthenticationTakesPriority() }),
+      ("test_cachedBootstrapStillRequiresAuthentication", { try tests.test_cachedBootstrapStillRequiresAuthentication() }),
+      ("test_authenticatedSessionShowsWidgetWithoutCache", { try tests.test_authenticatedSessionShowsWidgetWithoutCache() }),
+      ("test_missingSessionAndCacheShowsLogin", { try tests.test_missingSessionAndCacheShowsLogin() }),
+    ]
   }
 }

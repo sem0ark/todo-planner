@@ -70,11 +70,11 @@ struct LoginView: View {
   }
 
   private func setupDeepLinkHandler() {
-    print("[LOGIN] Setting up deep link handler")
+    WidgetLogger.debug("Setting up deep link handler")
 
     // Check if there's already a pending token (app was opened via URL before view appeared)
     if let pendingToken = DeepLinkHandler.shared.consumePendingToken() {
-      print("[LOGIN] Found pending token from deep link, using it now")
+      WidgetLogger.debug("Found pending authentication token from deep link")
       self.token = pendingToken
       self.setToken()
       return
@@ -82,33 +82,34 @@ struct LoginView: View {
 
     // Set up callback for future tokens
     DeepLinkHandler.shared.onTokenReceived = { receivedToken in
-      print("[LOGIN] Received token via callback")
+      WidgetLogger.debug("Received authentication token via deep link callback")
       self.token = receivedToken
       self.setToken()
     }
   }
 
   private func openWebAuth() {
-    print("[AUTH] Opening web browser for authentication...")
+    WidgetLogger.debug("Opening web browser for authentication")
     if let url = URL(string: webAppAuthURL) {
       NSWorkspace.shared.open(url)
-      print("[AUTH] Browser opened: \(webAppAuthURL)")
+      WidgetLogger.debug("Authentication browser opened", context: ["url": webAppAuthURL])
     } else {
-      print("[ERROR] Invalid web app URL: \(webAppAuthURL)")
+      WidgetLogger.error("Invalid web authentication URL", context: ["url": webAppAuthURL])
     }
   }
 
   private func setToken() {
     guard !token.isEmpty else { return }
 
-    print("[AUTH] Setting authentication token...")
-    print("[AUTH] Token length: \(token.count) characters")
+    WidgetLogger.debug(
+      "Setting authentication token", context: ["length": String(token.count)])
 
     Task {
       do {
         try await authController.setAuthToken(token)
       } catch {
-        print("[ERROR] Failed to set token: \(error)")
+        WidgetLogger.error(
+          "Failed to set authentication token", context: ["error": String(describing: error)])
         errorMessage = "Authentication failed"
       }
     }

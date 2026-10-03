@@ -31,7 +31,7 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     // Usage: make build API_BASE_URL=https://api.example.com
     self.baseURL = BuildConfig.apiBaseURL
 
-    print("[CONFIG] API Base URL: \(self.baseURL)")
+    WidgetLogger.debug("API base URL configured", context: ["baseURL": self.baseURL])
 
     let storedDevice = UserDefaults.standard.object(forKey: deviceKey)
     if let storedDeviceId = storedDevice as? Int, storedDeviceId > 0 {
@@ -47,14 +47,14 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     self.authToken = token
     self.deviceId = nil
     UserDefaults.standard.removeObject(forKey: deviceKey)
-    print("[AUTH] JWT stored in memory only")
+    WidgetLogger.debug("Authentication token stored in memory only")
   }
 
   func clearAuthToken() {
     self.authToken = nil
     self.deviceId = nil
     UserDefaults.standard.removeObject(forKey: deviceKey)
-    print("[AUTH] Cleared in-memory JWT")
+    WidgetLogger.debug("Cleared in-memory authentication token")
   }
 
   func hasAuthToken() -> Bool {
@@ -66,17 +66,17 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   /// Validates if the current token is still valid by checking device registration
   func validateToken() async throws -> Bool {
     guard authToken != nil else {
-      print("[AUTH] No token to validate")
+      WidgetLogger.debug("No authentication token to validate")
       return false
     }
 
     do {
       // Validate by attempting device registration or init
       _ = try await registerDeviceIfNeeded()
-      print("[OK] Token is valid")
+      WidgetLogger.debug("Authentication token is valid")
       return true
     } catch APIError.unauthorized {
-      print("[AUTH] Token is invalid or expired")
+      WidgetLogger.debug("Authentication token is invalid or expired")
       clearAuthToken()
       return false
     } catch {
@@ -90,10 +90,11 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     method: String = "GET",
     body: Encodable? = nil
   ) async throws -> T {
-    print("[API] API Request: \(method) \(baseURL)\(endpoint)")
+    WidgetLogger.debug(
+      "API request started", context: ["method": method, "endpoint": endpoint])
 
     guard let url = URL(string: baseURL + endpoint) else {
-      print("[ERROR] Invalid URL: \(baseURL)\(endpoint)")
+      WidgetLogger.error("Invalid API URL", context: ["endpoint": endpoint])
       throw APIError.invalidURL
     }
 
@@ -103,11 +104,10 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
     if let token = authToken {
-      let tokenPreview = String(token.prefix(20))
-      print("[AUTH] Authorization: Bearer \(tokenPreview)...")
+      WidgetLogger.debug("Authorization header configured")
       request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     } else {
-      print("[WARN] No auth token set")
+      WidgetLogger.debug("No authentication token set")
     }
 
     if let body = body {
@@ -115,29 +115,28 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
       encoder.dateEncodingStrategy = .iso8601
       do {
         request.httpBody = try encoder.encode(body)
-        if let bodyString = String(data: request.httpBody!, encoding: .utf8) {
-          print("[OUT] Request body: \(bodyString)")
-        }
+        WidgetLogger.debug(
+          "Request body encoded", context: ["bytes": String(request.httpBody?.count ?? 0)])
       } catch {
-        print("[ERROR] Failed to encode request body: \(error)")
+        WidgetLogger.error(
+          "Failed to encode request body", context: ["error": String(describing: error)])
         throw error
       }
     }
 
     do {
-      print("[WAIT] Sending request...")
+      WidgetLogger.debug("Sending API request")
       let (data, response) = try await URLSession.shared.data(for: request)
 
       guard let httpResponse = response as? HTTPURLResponse else {
-        print("[ERROR] Invalid response type")
+        WidgetLogger.error("Invalid API response type")
         throw APIError.invalidResponse
       }
 
-      print("[IN] Response status: \(httpResponse.statusCode)")
+      WidgetLogger.debug(
+        "API response received", context: ["statusCode": String(httpResponse.statusCode)])
 
-      let responseString =
-        String(data: data, encoding: .utf8) ?? "<non-UTF8 body: \(data.base64EncodedString())>"
-      print("[IN] Response body (\(data.count) bytes): '\(responseString)'")
+      WidgetLogger.debug("API response body received", context: ["bytes": String(data.count)])
 
       switch httpResponse.statusCode {
       case 200...299:
@@ -145,38 +144,49 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
         decoder.dateDecodingStrategy = .iso8601
         do {
           let decoded = try decoder.decode(T.self, from: data)
-          print("[OK] Successfully decoded response")
+          WidgetLogger.debug("API response decoded successfully")
           return decoded
         } catch {
-          print("[ERROR] Decoding error: \(error)")
+          WidgetLogger.error(
+            "API response decoding failed", context: ["error": String(describing: error)])
           if let decodingError = error as? DecodingError {
             switch decodingError {
             case .keyNotFound(let key, let context):
-              print("   Missing key '\(key.stringValue)' - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Missing response key",
+                context: ["key": key.stringValue, "details": context.debugDescription])
             case .typeMismatch(let type, let context):
-              print("   Type mismatch for type '\(type)' - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Response type mismatch",
+                context: ["type": String(describing: type), "details": context.debugDescription])
             case .valueNotFound(let type, let context):
-              print("   Value not found for type '\(type)' - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Response value missing",
+                context: ["type": String(describing: type), "details": context.debugDescription])
             case .dataCorrupted(let context):
-              print("   Data corrupted - \(context.debugDescription)")
+              WidgetLogger.error(
+                "Response data corrupted", context: ["details": context.debugDescription])
             @unknown default:
-              print("   Unknown decoding error")
+              WidgetLogger.error("Unknown response decoding error")
             }
           }
           throw APIError.decodingError(error)
         }
       case 401:
-        print("[ERROR] Unauthorized (401)")
+        WidgetLogger.error("API request unauthorized", context: ["statusCode": "401"])
+        clearAuthToken()
         throw APIError.unauthorized
       default:
         let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-        print("[ERROR] Server error \(httpResponse.statusCode): \(errorMessage)")
+        WidgetLogger.error(
+          "API server error",
+          context: ["statusCode": String(httpResponse.statusCode), "message": errorMessage])
         throw APIError.serverError(httpResponse.statusCode, errorMessage)
       }
     } catch let error as APIError {
       throw error
     } catch {
-      print("[ERROR] Network error: \(error)")
+      WidgetLogger.error("API network error", context: ["error": String(describing: error)])
       throw APIError.networkError(error)
     }
   }

@@ -33,7 +33,7 @@ final class AuthController {
     try await repository.persistAuthToken(token)
     isAuthenticated = true
     lastError = nil
-    print("[OK] Authentication successful")
+    WidgetLogger.debug("Authentication successful")
   }
 
   func authenticateFromWeb() async -> Bool {
@@ -71,15 +71,22 @@ final class AuthController {
   /// Clear authentication and logout
   func handleLogout() async {
     WidgetLogger.debug("Logging out...")
-    print("[AUTH] Logging out...")
+    WidgetLogger.debug("Logging out")
     do {
       try await repository.clearAuth()
       isAuthenticated = false
       lastError = nil
-      print("[OK] Logout successful")
+      WidgetLogger.debug("Logout successful")
     } catch {
       WidgetLogger.error("Logout failed", context: ["error": String(describing: error)])
       lastError = String(describing: error)
     }
+  }
+
+  func handleAuthenticationRequired() async {
+    isAuthenticated = false
+    lastError = "Authentication required"
+    WidgetLogger.debug("Authentication required; showing login")
+    try? await repository.clearAuth()
   }
 }

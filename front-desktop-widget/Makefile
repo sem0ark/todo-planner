@@ -149,7 +149,7 @@ universal: ## Build universal binary (arm64 + x86_64)
 logs: ## Stream application logs
 	@echo "Streaming logs from $(BUNDLE_ID)..."
 	@echo "Press Ctrl+C to stop"
-	@log stream --level info --predicate 'subsystem == "$(BUNDLE_ID)"' --style compact
+	@log stream --level debug --predicate 'subsystem == "$(BUNDLE_ID)"' --style compact
 
 setup: ## Initial setup
 	@command -v swiftc >/dev/null 2>&1 || { echo "Swift not found."; exit 1; }

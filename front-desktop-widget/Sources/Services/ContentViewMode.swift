@@ -14,7 +14,7 @@ func contentViewMode(
   if isCheckingAuthentication {
     return .checkingAuthentication
   }
-  if isAuthenticated || hasCachedBootstrap {
+  if isAuthenticated {
     return .widget
   }
   return .login

@@ -1,5 +1,4 @@
-# Design specification
-See [Design documenation](../docs/style%20system%20v1.md)
+See [Design documenation](../docs/style%20system%20v1.md) and [requirements](../docs/requirements.md).
 
 ## The Shortcut Map
 *Designed for zero-mouse latency.*

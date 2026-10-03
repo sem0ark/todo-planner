@@ -155,31 +155,36 @@ struct ContentView: View {
     .task {
       await authController.checkInitialAuth()
     }
+    .onReceive(NotificationCenter.default.publisher(for: .authenticationRequired)) { _ in
+      Task { await authController.handleAuthenticationRequired() }
+    }
   }
 
   private func handleKeyPress(_ event: NSEvent) {
     let key = event.charactersIgnoringModifiers ?? ""
 
-    print("[KEY] Key pressed: '\(key)' (keyCode: \(event.keyCode))")
+    WidgetLogger.debug(
+      "Key pressed", context: ["key": key, "keyCode": String(event.keyCode)])
 
     Task {
       switch key {
-      case "\r", " ":  // Primary action key
-        print("[KEY] Return / Space")
+      case "\r":  // Primary action key
+        WidgetLogger.debug("Primary action key pressed")
         await widgetState.handlePrimaryAction()
       case "1", "2", "3", "4", "5", "6", "7", "8", "9":
         if let number = Int(key) {
           let index = number - 1
           guard index < widgetState.categories.count else { return }
-          print("[KEY] Number \(number) - transitioning to category")
+          WidgetLogger.debug(
+            "Category shortcut pressed", context: ["number": String(number)])
           await widgetState.handleSelectCategory(widgetState.categories[index])
         }
       case "[":
-        print("[KEY] [ - adjusting offset -15m")
-        await widgetState.adjustOffset(minutes: -15)
-      case "]":
-        print("[KEY] ] - adjusting offset +15m")
+        WidgetLogger.debug("Keyboard offset adjustment", context: ["minutes": "15"])
         await widgetState.adjustOffset(minutes: 15)
+      case "]":
+        WidgetLogger.debug("Keyboard offset adjustment", context: ["minutes": "-15"])
+        await widgetState.adjustOffset(minutes: -15)
       default:
         break
       }
@@ -597,12 +602,13 @@ struct RightRailView: View {
   }
 
   private func openWebApp() {
-    print("[WEB] Opening web app in browser...")
+    WidgetLogger.debug("Opening web app in browser")
     if let url = URL(string: BuildConfig.webAppBaseURL + "/") {
       NSWorkspace.shared.open(url)
-      print("[WEB] Browser opened: \(BuildConfig.webAppBaseURL)")
+      WidgetLogger.debug("Web app browser opened", context: ["url": BuildConfig.webAppBaseURL])
     } else {
-      print("[ERROR] Invalid web app URL: \(BuildConfig.webAppBaseURL)")
+      WidgetLogger.error(
+        "Invalid web app URL", context: ["url": BuildConfig.webAppBaseURL])
     }
   }
 
