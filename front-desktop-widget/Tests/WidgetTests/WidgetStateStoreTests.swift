@@ -53,6 +53,8 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
   var stubbedCreatedRecord: DayRecord?
   var stubbedEventsResponse: DayEventsResponse?
   var shouldThrowOnSubmitEvents = false
+  private(set) var validateAuthCallCount = 0
+  private var cachedBootstrap: InitResponse?
 
   private(set) var calls: [RecordedCall] = []
 
@@ -68,7 +70,10 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
   func getAuthToken() -> String? { "test-token" }
   func persistAuthToken(_ token: String) async throws {}
   func clearAuth() async throws {}
-  func validateAuth() async throws -> Bool { true }
+  func validateAuth() async throws -> Bool {
+    validateAuthCallCount += 1
+    return true
+  }
 
   func initialize(calendarDate: String) async throws -> InitResponse {
     calls.append(.initialize(date: calendarDate))
@@ -80,12 +85,14 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
     } else {
       throw StorageError.notFound
     }
-    return InitResponse(
+    let response = InitResponse(
        settings: UserSettings(
-         dayRangeStartTime: "04:00:00", dayRangeEndTime: "28:00:00", updatedAt: Fixtures.now),
+         dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Fixtures.now),
       categories: stubbedCategories,
       dayRecord: dayRecord
     )
+    cachedBootstrap = response
+    return response
   }
 
   func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse {
@@ -98,9 +105,22 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
 
   func hasPendingSync() async -> Bool { false }
   func synchronize() async throws {}
+  func cachedInitialization(calendarDate: String) throws -> InitResponse? {
+    guard cachedBootstrap?.dayRecord.calendarDate == calendarDate else { return nil }
+    return cachedBootstrap
+  }
+  func clearLocalData() throws { cachedBootstrap = nil }
 }
 
 final class SynchronizationAPI: TodoPlannerAPI, @unchecked Sendable {
+  var authToken: String?
+  var initializationResponse: InitResponse?
+
+  init(authToken: String? = nil, initializationResponse: InitResponse? = nil) {
+    self.authToken = authToken
+    self.initializationResponse = initializationResponse
+  }
+
   private(set) var postedEvents: [[DayEvent]] = []
   var results: [Result<DayEventsResponse, APIError>] = []
 
@@ -108,7 +128,8 @@ final class SynchronizationAPI: TodoPlannerAPI, @unchecked Sendable {
   func clearAuthToken() {}
   func validateToken() async throws -> Bool { true }
   func initialize(calendarDate: String) async throws -> InitResponse {
-    throw StorageError.notFound
+    guard let initializationResponse else { throw StorageError.notFound }
+    return initializationResponse
   }
 
   func postDayEvents(date: String, events: [DayEvent]) async throws -> DayEventsResponse {
@@ -264,6 +285,144 @@ final class WidgetStateStoreTests {
       .appendingPathComponent("TodoPlannerWidgetTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return (LocalEventStore(storageDirectory: directory), directory)
+  }
+
+  private func makeTemporaryBootstrapCache() throws -> (BootstrapCache, URL) {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TodoPlannerWidgetBootstrapTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return (BootstrapCache(storageDirectory: directory), directory)
+  }
+
+  private func makeBootstrapResponse(calendarDate: String = Fixtures.today) -> InitResponse {
+    InitResponse(
+      settings: UserSettings(
+        dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Fixtures.now),
+      categories: [Fixtures.categoryA],
+      dayRecord: DayRecord(
+        calendarDate: calendarDate,
+        plan: [PlannedBlock(categoryId: Fixtures.categoryA.id, startTime: "00:00:00", durationMinutes: 1440)]
+      )
+    )
+  }
+
+  func test_bootstrapCache_roundTripsAndRejectsOtherDates() throws {
+    let (cache, directory) = try makeTemporaryBootstrapCache()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let response = makeBootstrapResponse()
+
+    try cache.save(response: response, calendarDate: Fixtures.today)
+
+    let loadedResponse = try cache.load(calendarDate: Fixtures.today)?.response
+    try assertEqual(loadedResponse?.dayRecord.calendarDate, Fixtures.today)
+    try assertEqual(loadedResponse?.categories.map(\.id), [Fixtures.categoryA.id])
+    try assert(cache.load(calendarDate: "2099-01-01") == nil, "Cache must be date scoped")
+
+    try cache.removeAll()
+    try assert(cache.load(calendarDate: Fixtures.today) == nil, "Cache should be removable")
+  }
+
+  func test_bootstrapCache_rejectsMismatchedResponseDate() throws {
+    let (cache, directory) = try makeTemporaryBootstrapCache()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let response = makeBootstrapResponse(calendarDate: "2099-01-01")
+
+    try assert(
+      (try? cache.save(response: response, calendarDate: Fixtures.today)) == nil,
+      "Cache must reject a response for another date")
+  }
+
+  func test_cachedBootstrap_startsWidgetWithoutLoggingTransition() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initialize()
+    h.mock.resetCalls()
+    h.store.context = WidgetContext()
+    h.store.currentState = InitializingState()
+
+    try assert(h.store.initializeFromCache(), "A successful initialization should create a cache")
+    try assertEqual(h.store.displayState, .active)
+    try assertEqual(h.store.currentCategory?.id, Fixtures.categoryA.id)
+    try h.assertNoSubmitEvents()
+  }
+
+  func test_synchronize_refreshesBootstrapCache() async throws {
+    let (eventStore, eventDirectory) = try makeTemporaryEventStore()
+    let (cache, cacheDirectory) = try makeTemporaryBootstrapCache()
+    defer {
+      try? FileManager.default.removeItem(at: eventDirectory)
+      try? FileManager.default.removeItem(at: cacheDirectory)
+    }
+    let api = SynchronizationAPI(
+      authToken: "test-token", initializationResponse: makeBootstrapResponse())
+    let repository = RemoteTodoPlannerRepository(
+      api: api, eventStore: eventStore, bootstrapCache: cache)
+
+    try await repository.synchronize()
+
+    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecord.calendarDate, Fixtures.today)
+  }
+
+  func test_synchronizeRefreshFailurePreservesExistingBootstrapCache() async throws {
+    let (eventStore, eventDirectory) = try makeTemporaryEventStore()
+    let (cache, cacheDirectory) = try makeTemporaryBootstrapCache()
+    defer {
+      try? FileManager.default.removeItem(at: eventDirectory)
+      try? FileManager.default.removeItem(at: cacheDirectory)
+    }
+    let existingResponse = makeBootstrapResponse()
+    try cache.save(response: existingResponse, calendarDate: Fixtures.today)
+    let api = SynchronizationAPI(authToken: "test-token")
+    let repository = RemoteTodoPlannerRepository(
+      api: api, eventStore: eventStore, bootstrapCache: cache)
+
+    do {
+      try await repository.synchronize()
+      throw AssertionError.failed("Bootstrap refresh failure should propagate")
+    } catch StorageError.notFound {
+      // Expected: a failed refresh must not remove the previous cache.
+    }
+
+    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecord.calendarDate, Fixtures.today)
+  }
+
+  func test_clearLocalDataRemovesEventsAndBootstrapCache() throws {
+    let (eventStore, eventDirectory) = try makeTemporaryEventStore()
+    let (cache, cacheDirectory) = try makeTemporaryBootstrapCache()
+    defer {
+      try? FileManager.default.removeItem(at: eventDirectory)
+      try? FileManager.default.removeItem(at: cacheDirectory)
+    }
+    let event = Fixtures.event(id: "logout-event", occurredAt: Fixtures.now)
+    try eventStore.append(calendarDate: Fixtures.today, event: event)
+    try cache.save(response: makeBootstrapResponse(), calendarDate: Fixtures.today)
+    let repository = RemoteTodoPlannerRepository(
+      api: SynchronizationAPI(), eventStore: eventStore, bootstrapCache: cache)
+
+    try repository.clearLocalData()
+
+    try assert(eventStore.pendingEvents().isEmpty, "Logout should clear pending events")
+    try assert(eventStore.backupEvents().isEmpty, "Logout should clear backup events")
+    try assert(cache.load(calendarDate: Fixtures.today) == nil, "Logout should clear bootstrap cache")
+  }
+
+  func test_authenticationUsesMemoryTokenWithoutValidationRequest() async throws {
+    let repository = MockRepository()
+    let authController = AuthController(repository: repository)
+
+    await authController.checkInitialAuth()
+
+    try assert(authController.isAuthenticated, "A memory token should authenticate the session")
+    try assertEqual(repository.validateAuthCallCount, 0)
+  }
+
+  func test_apiClientDoesNotPersistAuthenticationToken() throws {
+    let tokenKey = "com.todoplanner.widget.jwt_token"
+    UserDefaults.standard.removeObject(forKey: tokenKey)
+    APIClient.shared.setAuthToken("memory-only-token")
+
+    try assert(UserDefaults.standard.string(forKey: tokenKey) == nil, "JWT must not be persisted")
+
+    APIClient.shared.clearAuthToken()
   }
 
   func test_localEventStoreBackupSurvivesQueueRemoval() throws {
@@ -672,7 +831,7 @@ final class WidgetStateStoreTests {
     try assert(abs(h.store.lastEventTime.timeIntervalSince(expectedTime)) < 2, "Offset time should be retroactive")
   }
 
-  func test_adjustOffset_forward() async throws {
+  func test_adjustOffset_negativeIsBlocked() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
@@ -680,8 +839,8 @@ final class WidgetStateStoreTests {
 
     await h.store.dispatch(.adjustOffset(-5))
 
-    try h.assertSubmitEventsCount(1)
-    try assert(h.store.offsetMinutes == -5, "Offset should accumulate")
+    try h.assertNoSubmitEvents()
+    try assert(h.store.offsetMinutes == 0, "Offset must not become negative")
   }
 
   func test_adjustOffset_multipleAccumulate() async throws {
@@ -891,16 +1050,17 @@ final class WidgetStateStoreTests {
   }
 
   func test_confirmationEvent_populatesEventFields() async throws {
-    // Confirmations happen when there's a block boundary at initialization or on tick
-    // For this test, we just verify the structure when it does occur
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
 
-    // primaryAction in Active state with no boundary doesn't submit; verify state
     await h.store.dispatch(.primaryAction)
 
-    // This is expected - confirmation events only fire on boundary conditions
-    // which require time-based triggers not easily testable here
+    try h.assertSubmitEventsCount(1)
+    try h.assertSubmitEventDetails(
+      index: 0,
+      expectedType: "confirmation",
+      expectedIncomingId: Fixtures.categoryA.id
+    )
     try assert(h.store.displayState == .active, "Should remain active when no boundary")
   }
 
@@ -1016,17 +1176,29 @@ struct TestRunner {
     print("")
 
     let tests = WidgetStateStoreTests()
+    let contentViewTests = ContentViewTests()
     var results: [TestResult] = []
 
     let testMethods: [(String, () async throws -> Void)] = [
+      ("test_contentView_checkingAuthenticationTakesPriority", { try contentViewTests.test_checkingAuthenticationTakesPriority() }),
+      ("test_contentView_cachedBootstrapShowsWidgetWithoutAuthentication", { try contentViewTests.test_cachedBootstrapShowsWidgetWithoutAuthentication() }),
+      ("test_contentView_authenticatedSessionShowsWidgetWithoutCache", { try contentViewTests.test_authenticatedSessionShowsWidgetWithoutCache() }),
+      ("test_contentView_missingSessionAndCacheShowsLogin", { try contentViewTests.test_missingSessionAndCacheShowsLogin() }),
       ("test_localEventStoreBackupSurvivesQueueRemoval", { try tests.test_localEventStoreBackupSurvivesQueueRemoval() }),
       ("test_localEventStoreMigratesLegacyJSONQueueToJSONLines", { try tests.test_localEventStoreMigratesLegacyJSONQueueToJSONLines() }),
       ("test_localEventStoreBackfillsMissingLocalTimestamps", { try tests.test_localEventStoreBackfillsMissingLocalTimestamps() }),
       ("test_appendFailurePreservesQueueAndBackup", { try tests.test_appendFailurePreservesQueueAndBackup() }),
       ("test_atomicQueueRewriteFailurePreservesContents", { try tests.test_atomicQueueRewriteFailurePreservesContents() }),
+      ("test_bootstrapCache_roundTripsAndRejectsOtherDates", { try tests.test_bootstrapCache_roundTripsAndRejectsOtherDates() }),
+      ("test_bootstrapCache_rejectsMismatchedResponseDate", { try tests.test_bootstrapCache_rejectsMismatchedResponseDate() }),
+      ("test_clearLocalDataRemovesEventsAndBootstrapCache", { try tests.test_clearLocalDataRemovesEventsAndBootstrapCache() }),
+      ("test_apiClientDoesNotPersistAuthenticationToken", { try tests.test_apiClientDoesNotPersistAuthenticationToken() }),
+      ("test_authenticationUsesMemoryTokenWithoutValidationRequest", { try await tests.test_authenticationUsesMemoryTokenWithoutValidationRequest() }),
       ("test_synchronizeSendsSortedEventsAsSingleBatch", { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }),
       ("test_synchronize400FallsBackToIndividualEvents", { try await tests.test_synchronize400FallsBackToIndividualEvents() }),
       ("test_synchronizeNon400ErrorPreservesQueue", { try await tests.test_synchronizeNon400ErrorPreservesQueue() }),
+      ("test_synchronize_refreshesBootstrapCache", { try await tests.test_synchronize_refreshesBootstrapCache() }),
+      ("test_synchronizeRefreshFailurePreservesExistingBootstrapCache", { try await tests.test_synchronizeRefreshFailurePreservesExistingBootstrapCache() }),
       ("test_init_freshDay_createsRecord", { try await tests.test_init_freshDay_createsRecord() }),
       ("test_init_withPlannedCategory_picksCategoryAndLogsTransition", { try await tests.test_init_withPlannedCategory_picksCategoryAndLogsTransition() }),
       ("test_initResponse_decodesCurrentAPIShape", { try tests.test_initResponse_decodesCurrentAPIShape() }),
@@ -1041,11 +1213,12 @@ struct TestRunner {
       ("test_selectCategory_logsTransition", { try await tests.test_selectCategory_logsTransition() }),
       ("test_initialState_isInitializing", { try await tests.test_initialState_isInitializing() }),
       ("test_afterInitialize_isActive", { try await tests.test_afterInitialize_isActive() }),
+      ("test_cachedBootstrap_startsWidgetWithoutLoggingTransition", { try await tests.test_cachedBootstrap_startsWidgetWithoutLoggingTransition() }),
       ("test_reload_fetchesRemoteDataAndReturnsToActive", { try await tests.test_reload_fetchesRemoteDataAndReturnsToActive() }),
       ("test_afterConfirmation_returnsToActive", { try await tests.test_afterConfirmation_returnsToActive() }),
       ("test_multipleSelectCategories", { try await tests.test_multipleSelectCategories() }),
       ("test_adjustOffset_backward", { try await tests.test_adjustOffset_backward() }),
-      ("test_adjustOffset_forward", { try await tests.test_adjustOffset_forward() }),
+      ("test_adjustOffset_negativeIsBlocked", { try await tests.test_adjustOffset_negativeIsBlocked() }),
       ("test_adjustOffset_multipleAccumulate", { try await tests.test_adjustOffset_multipleAccumulate() }),
       ("test_adjustOffset_noCurrentCategory_noSubmit", { try await tests.test_adjustOffset_noCurrentCategory_noSubmit() }),
       ("test_adjustOffset_withoutPersistedEvent_doesNotMutateContext", { try await tests.test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() }),

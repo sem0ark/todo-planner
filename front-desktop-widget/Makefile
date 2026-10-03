@@ -70,11 +70,12 @@ generate-config: Sources/Config.swift ## Ensure Config.swift exists
 test: test-build test-run ## Build and run unit tests
 
 TEST_SOURCES = $(filter-out Sources/main.swift Sources/Views/%, $(SOURCES))
+TEST_FILES = $(shell find Tests/WidgetTests -name '*.swift' -type f | LC_ALL=C sort)
 
 test-build: generate-config
 	@echo "Building tests..."
 	@mkdir -p build
-	$(SWIFTC) -parse-as-library -o build/test_runner -sdk $$(xcrun --show-sdk-path) -target $(ARCH)-apple-macosx14.0 $(TEST_SOURCES) Tests/WidgetTests/WidgetStateStoreTests.swift -suppress-warnings
+	$(SWIFTC) -parse-as-library -o build/test_runner -sdk $$(xcrun --show-sdk-path) -target $(ARCH)-apple-macosx14.0 $(TEST_SOURCES) $(TEST_FILES) -suppress-warnings
 
 test-run:
 	@echo "Running tests..."

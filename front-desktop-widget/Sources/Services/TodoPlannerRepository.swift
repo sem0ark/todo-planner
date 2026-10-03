@@ -34,6 +34,7 @@ protocol TodoPlannerRepository: Sendable {
 
   // MARK: - Client Bootstrap
   func initialize(calendarDate: String) async throws -> InitResponse
+  func cachedInitialization(calendarDate: String) throws -> InitResponse?
 
   // MARK: - Events & Reality Logging
   /// Appends events to the local log; network synchronization happens separately.
@@ -42,4 +43,5 @@ protocol TodoPlannerRepository: Sendable {
   // MARK: - Sync & Persistence (For SQLite/Offline)
   func hasPendingSync() async -> Bool
   func synchronize() async throws
+  func clearLocalData() throws
 }

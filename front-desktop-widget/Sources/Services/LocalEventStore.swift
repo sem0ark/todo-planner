@@ -55,7 +55,7 @@ final class LocalEventStore: @unchecked Sendable {
     defer { lock.unlock() }
     let pendingEvents = try loadUnlocked()
     let entry = PendingDayEvent(calendarDate: calendarDate, event: event)
-    var backupEvents = try loadBackupUnlocked()
+    let backupEvents = try loadBackupUnlocked()
     if !FileManager.default.fileExists(atPath: fileURL.path) {
       try saveJSONLinesUnlocked(pendingEvents, to: fileURL)
     }
@@ -88,6 +88,13 @@ final class LocalEventStore: @unchecked Sendable {
       !clientEventIds.contains($0.event.clientEventId)
     }
     try saveUnlocked(remainingEvents)
+  }
+
+  func clearAll() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    try saveJSONLinesUnlocked([], to: fileURL)
+    try saveJSONLinesUnlocked([], to: backupFileURL)
   }
 
   private func loadUnlocked() throws -> [PendingDayEvent] {

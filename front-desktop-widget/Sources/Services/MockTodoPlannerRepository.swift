@@ -4,9 +4,9 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
   private var mockToken: String? = "mock-jwt-token"
   private var categories: [Category] = []
   private var dayRecord: DayRecord
+  private var cachedBootstrap: InitResponse?
 
   init() {
-    let now = Date()
     let initialCategories = Self.seedCategories()
     let initialPlan = Self.makeScheduleBlocks()
     self.categories = initialCategories
@@ -28,10 +28,17 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
         plan: Self.makeScheduleBlocks()
       )
     }
-    return InitResponse(
+    let response = InitResponse(
       settings: UserSettings(
-        dayRangeStartTime: "04:00:00", dayRangeEndTime: "28:00:00", updatedAt: Date()),
+        dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Date()),
       categories: categories, dayRecord: dayRecord)
+    cachedBootstrap = response
+    return response
+  }
+
+  func cachedInitialization(calendarDate: String) throws -> InitResponse? {
+    guard cachedBootstrap?.dayRecord.calendarDate == calendarDate else { return nil }
+    return cachedBootstrap
   }
 
   func submitEvents(calendarDate: String, events: [DayEvent]) async throws -> DayEventsResponse {
@@ -45,6 +52,8 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     (try? !LocalEventStore.shared.pendingEvents().isEmpty) ?? false
   }
   func synchronize() async throws {}
+
+  func clearLocalData() throws { cachedBootstrap = nil }
 
   private static func seedCategories() -> [Category] {
     let now = Date()

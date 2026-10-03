@@ -10,6 +10,7 @@ enum APIError: Error {
 }
 
 protocol TodoPlannerAPI: Sendable {
+  var authToken: String? { get }
   func setAuthToken(_ token: String)
   func clearAuthToken()
   func validateToken() async throws -> Bool
@@ -21,13 +22,9 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   static let shared = APIClient()
 
   private let baseURL: String
-  private var authToken: String?
-  private let tokenKey = "com.todoplanner.widget.jwt_token"
+  private(set) var authToken: String?
   private let deviceKey = "com.todoplanner.widget.device_id"
-  private var initializationCache: [String: InitResponse] = [:]
   private var deviceId: Int?
-
-  var currentDeviceId: Int? { deviceId }
 
   private init() {
     // Load API_BASE_URL from build configuration (set via Makefile)
@@ -35,14 +32,6 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     self.baseURL = BuildConfig.apiBaseURL
 
     print("[CONFIG] API Base URL: \(self.baseURL)")
-
-    // Try to load token from UserDefaults on init
-    if let savedToken = loadTokenFromAppData() {
-      print("[AUTH] Loaded JWT from app data")
-      self.authToken = savedToken
-    } else {
-      print("[AUTH] No saved JWT found in app data")
-    }
 
     let storedDevice = UserDefaults.standard.object(forKey: deviceKey)
     if let storedDeviceId = storedDevice as? Int, storedDeviceId > 0 {
@@ -57,41 +46,19 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   func setAuthToken(_ token: String) {
     self.authToken = token
     self.deviceId = nil
-    self.initializationCache.removeAll()
     UserDefaults.standard.removeObject(forKey: deviceKey)
-    saveTokenToAppData(token)
+    print("[AUTH] JWT stored in memory only")
   }
 
   func clearAuthToken() {
     self.authToken = nil
     self.deviceId = nil
-    self.initializationCache.removeAll()
     UserDefaults.standard.removeObject(forKey: deviceKey)
-    deleteTokenFromAppData()
+    print("[AUTH] Cleared in-memory JWT")
   }
 
   func hasAuthToken() -> Bool {
     return authToken != nil
-  }
-
-  // MARK: - App Data Storage (UserDefaults)
-  // TODO: Consider encrypting the token before storing in UserDefaults
-  // or using a more secure storage mechanism for production
-
-  private func saveTokenToAppData(_ token: String) {
-    UserDefaults.standard.set(token, forKey: tokenKey)
-    UserDefaults.standard.synchronize()
-    print("[OK] JWT saved to app data")
-  }
-
-  private func loadTokenFromAppData() -> String? {
-    return UserDefaults.standard.string(forKey: tokenKey)
-  }
-
-  private func deleteTokenFromAppData() {
-    UserDefaults.standard.removeObject(forKey: tokenKey)
-    UserDefaults.standard.synchronize()
-    print("[OK] JWT deleted from app data")
   }
 
   // MARK: - Token Validation
@@ -131,6 +98,7 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     }
 
     var request = URLRequest(url: url)
+    request.timeoutInterval = 15
     request.httpMethod = method
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
@@ -214,26 +182,30 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
   }
 
   func initialize(calendarDate: String) async throws -> InitResponse {
-    let currentDeviceId = try await registerDeviceIfNeeded()
+    let registeredDeviceId = try await registerDeviceIfNeeded()
     struct InitRequest: Encodable {
       let device_id: Int
       let calendar_date: String
     }
 
-    let response: InitResponse
     do {
-      response = try await makeRequest(
+      return try await makeRequest(
         endpoint: "/init",
         method: "POST",
-        body: InitRequest(device_id: currentDeviceId, calendar_date: calendarDate)
+        body: InitRequest(device_id: registeredDeviceId, calendar_date: calendarDate)
       )
     } catch APIError.serverError(404, let message) where message.contains("device not found") {
       WidgetLogger.error(
         "Registered device was rejected by server",
-        context: ["calendarDate": calendarDate, "deviceId": String(currentDeviceId)])
-      throw APIError.serverError(404, message)
+        context: ["calendarDate": calendarDate, "deviceId": String(registeredDeviceId)])
+      clearDeviceRegistration()
+      let replacementDeviceId = try await registerDeviceIfNeeded()
+      return try await makeRequest(
+        endpoint: "/init",
+        method: "POST",
+        body: InitRequest(device_id: replacementDeviceId, calendar_date: calendarDate)
+      )
     }
-    return response
   }
 
   private func registerDeviceIfNeeded() async throws -> Int {
@@ -250,16 +222,33 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     return registration.deviceId
   }
 
+  private func clearDeviceRegistration() {
+    deviceId = nil
+    UserDefaults.standard.removeObject(forKey: deviceKey)
+  }
+
   func postDayEvents(
     date: String,
     events: [DayEvent]
   ) async throws -> DayEventsResponse {
-    let request = DayEventsRequest(deviceId: try await registerDeviceIfNeeded(), events: events)
-    return try await makeRequest(
-      endpoint: "/days/\(date)/events",
-      method: "POST",
-      body: request
-    )
+    let registeredDeviceId = try await registerDeviceIfNeeded()
+    do {
+      let request = DayEventsRequest(deviceId: registeredDeviceId, events: events)
+      return try await makeRequest(
+        endpoint: "/days/\(date)/events",
+        method: "POST",
+        body: request
+      )
+    } catch APIError.serverError(404, let message) where message.contains("device not found") {
+      clearDeviceRegistration()
+      let replacementDeviceId = try await registerDeviceIfNeeded()
+      let request = DayEventsRequest(deviceId: replacementDeviceId, events: events)
+      return try await makeRequest(
+        endpoint: "/days/\(date)/events",
+        method: "POST",
+        body: request
+      )
+    }
   }
 
 }
