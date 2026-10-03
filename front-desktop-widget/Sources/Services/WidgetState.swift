@@ -977,16 +977,17 @@ class WidgetStateStore {
 
   private func setupTicker() {
     ticker = Timer.publish(
-      every: TimeInterval(widgetTickerIntervalSeconds), on: .main, in: .common)
-      .autoconnect()
-      .sink { [weak self] _ in
-        guard let self = self else { return }
-        self.tick += widgetTickerIntervalSeconds
-        self.context.plannedCategory = self.plannedCategory
-        let result = self.currentState.onTick(
-          context: self.context, currentPlannedBlock: self.currentPlannedBlock)
-        Task { await self.apply(result) }
-      }
+      every: TimeInterval(widgetTickerIntervalSeconds), on: .main, in: .common
+    )
+    .autoconnect()
+    .sink { [weak self] _ in
+      guard let self = self else { return }
+      self.tick += widgetTickerIntervalSeconds
+      self.context.plannedCategory = self.plannedCategory
+      let result = self.currentState.onTick(
+        context: self.context, currentPlannedBlock: self.currentPlannedBlock)
+      Task { await self.apply(result) }
+    }
   }
 
   func startPeriodicRefresh() {
