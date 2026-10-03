@@ -102,10 +102,14 @@ struct LoginView: View {
   private func setToken() {
     guard !token.isEmpty else { return }
 
-    WidgetLogger.debug(
-      "Setting authentication token", context: ["length": String(token.count)])
+    Task { @MainActor in
+      if authController.hasWorkingAuthenticationToken {
+        WidgetLogger.debug("Ignoring login token because a working token already exists")
+        return
+      }
 
-    Task {
+      WidgetLogger.debug(
+        "Setting authentication token", context: ["length": String(token.count)])
       do {
         try await authController.setAuthToken(token)
         await widgetState.authenticationSucceeded()

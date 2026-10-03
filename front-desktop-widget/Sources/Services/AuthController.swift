@@ -12,6 +12,31 @@ final class AuthController {
     self.repository = repository
   }
 
+  var hasWorkingAuthenticationToken: Bool {
+    guard let token = repository.getAuthToken() else { return false }
+    return Self.isWorkingAuthenticationToken(token)
+  }
+
+  static func isWorkingAuthenticationToken(_ token: String) -> Bool {
+    let tokenParts = token.split(separator: ".")
+    guard tokenParts.count == 3 else {
+      // Keep supporting non-JWT tokens used by local/test repositories.
+      return true
+    }
+
+    var payload = String(tokenParts[1])
+      .replacingOccurrences(of: "-", with: "+")
+      .replacingOccurrences(of: "_", with: "/")
+    payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+
+    guard let payloadData = Data(base64Encoded: payload),
+      let payloadObject = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+      let expiration = payloadObject["exp"] as? TimeInterval
+    else { return false }
+
+    return expiration > Date().timeIntervalSince1970
+  }
+
   /// Stores the authentication token for the current process only.
   func setAuthToken(_ token: String) async throws {
     try await repository.persistAuthToken(token)

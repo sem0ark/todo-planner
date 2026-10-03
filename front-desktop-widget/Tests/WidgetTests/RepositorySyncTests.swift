@@ -96,44 +96,34 @@ final class RepositorySyncTests: WidgetTestCase {
     try assertEqual(eventStore.pendingEvents().map(\.event.clientEventId), [event.clientEventId])
   }
 
-  func test_synchronize_refreshesBootstrapCache() async throws {
+  func test_synchronizeFailurePreservesExistingBootstrapCache() async throws {
     let (eventStore, eventDirectory) = try makeTemporaryEventStore()
     let (cache, cacheDirectory) = try makeTemporaryBootstrapCache()
     defer {
       try? FileManager.default.removeItem(at: eventDirectory)
       try? FileManager.default.removeItem(at: cacheDirectory)
     }
-    let api = SynchronizationAPI(
-      authToken: "test-token", initializationResponse: makeBootstrapResponse())
-    let repository = RemoteTodoPlannerRepository(
-      api: api, eventStore: eventStore, bootstrapCache: cache)
 
-    try await repository.synchronize()
-
-    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecords[0].calendarDate, Fixtures.today)
-  }
-
-  func test_synchronizeRefreshFailurePreservesExistingBootstrapCache() async throws {
-    let (eventStore, eventDirectory) = try makeTemporaryEventStore()
-    let (cache, cacheDirectory) = try makeTemporaryBootstrapCache()
-    defer {
-      try? FileManager.default.removeItem(at: eventDirectory)
-      try? FileManager.default.removeItem(at: cacheDirectory)
-    }
     let existingResponse = makeBootstrapResponse()
     try cache.save(response: existingResponse, calendarDate: Fixtures.today)
+
+    let event = Fixtures.event(id: "network-failure", occurredAt: Fixtures.now)
+    try eventStore.append(calendarDate: Fixtures.today, event: event)
     let api = SynchronizationAPI(authToken: "test-token")
+    api.results = [.failure(.serverError(500, "server unavailable"))]
     let repository = RemoteTodoPlannerRepository(
       api: api, eventStore: eventStore, bootstrapCache: cache)
 
     do {
       try await repository.synchronize()
-      throw AssertionError.failed("Bootstrap refresh failure should propagate")
-    } catch StorageError.notFound {
-      // Expected: a failed refresh must not remove the previous cache.
+      throw AssertionError.failed("Synchronization failure should propagate")
+    } catch APIError.serverError(500, _) {
+      // Expected: failed synchronization must remain retryable.
     }
 
-    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecords[0].calendarDate, Fixtures.today)
+    try assertEqual(
+      try cache.load(calendarDate: Fixtures.today)?.response.dayRecords[0].calendarDate,
+      Fixtures.today)
   }
 
   func test_synchronizeWithoutAuthenticationRequestsLogin() async throws {
@@ -153,8 +143,7 @@ final class RepositorySyncTests: WidgetTestCase {
       ("test_synchronizeSendsSortedEventsAsSingleBatch", { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }),
       ("test_synchronize400FallsBackToIndividualEvents", { try await tests.test_synchronize400FallsBackToIndividualEvents() }),
       ("test_synchronizeNon400ErrorPreservesQueue", { try await tests.test_synchronizeNon400ErrorPreservesQueue() }),
-      ("test_synchronize_refreshesBootstrapCache", { try await tests.test_synchronize_refreshesBootstrapCache() }),
-      ("test_synchronizeRefreshFailurePreservesExistingBootstrapCache", { try await tests.test_synchronizeRefreshFailurePreservesExistingBootstrapCache() }),
+      ("test_synchronizeFailurePreservesExistingBootstrapCache", { try await tests.test_synchronizeFailurePreservesExistingBootstrapCache() }),
       ("test_synchronizeWithoutAuthenticationRequestsLogin", { try await tests.test_synchronizeWithoutAuthenticationRequestsLogin() }),
     ]
   }

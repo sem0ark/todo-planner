@@ -85,12 +85,11 @@ struct StyleTokens {
 
 struct ContentView: View {
   private let authController: AuthController
-  @State private var widgetState: WidgetStateStore
+  private let widgetState: WidgetStateStore
 
-  init() {
-    let repo = RepositoryFactory.createRepository()
-    self.authController = AuthController(repository: repo)
-    _widgetState = State(wrappedValue: WidgetStateStore(repository: repo))
+  init(widgetState: WidgetStateStore, authController: AuthController) {
+    self.widgetState = widgetState
+    self.authController = authController
   }
 
   var body: some View {
@@ -124,9 +123,6 @@ struct ContentView: View {
           RightRailView(widgetState: widgetState, authController: authController)
             .frame(width: 112)
         }
-        .onDisappear {
-          widgetState.stopPeriodicRefresh()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .keyPressed)) { notification in
           if let event = notification.object as? NSEvent {
             handleKeyPress(event)
@@ -134,6 +130,21 @@ struct ContentView: View {
         }
       case .login:
         LoginView(authController: authController, widgetState: widgetState)
+      case .error(let message):
+        VStack(spacing: 10) {
+          Text("Unable to load widget")
+            .font(.system(size: Typography.labelBold))
+            .foregroundColor(StyleTokens.primaryText)
+          Text(message)
+            .font(.system(size: 11))
+            .foregroundColor(StyleTokens.mutedText)
+            .lineLimit(2)
+          Button("Retry") {
+            Task { await widgetState.retryStartup() }
+          }
+          .buttonStyle(.borderedProminent)
+        }
+        .padding(16)
       }
     }
     .frame(width: 320, height: 200)
@@ -144,9 +155,6 @@ struct ContentView: View {
         .stroke(StyleTokens.structuralBorder.opacity(Palette.borderOpacity), lineWidth: 1)
     )
     .shadow(color: .black.opacity(Palette.shadowOpacity), radius: 12, x: 0, y: 4)
-    .task {
-      await widgetState.start()
-    }
   }
 
   private func handleKeyPress(_ event: NSEvent) {

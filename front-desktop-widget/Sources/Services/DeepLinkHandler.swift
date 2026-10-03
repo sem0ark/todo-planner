@@ -10,7 +10,13 @@ class DeepLinkHandler {
   private var pendingToken: String?
 
   func handleURL(_ url: URL) {
-    WidgetLogger.debug("Handling deep link", context: ["url": url.absoluteString])
+    WidgetLogger.debug(
+      "Handling deep link",
+      context: [
+        "scheme": url.scheme ?? "nil",
+        "host": url.host ?? "nil",
+        "path": url.path,
+      ])
 
     guard url.scheme == "todoplanner" else {
       WidgetLogger.error(

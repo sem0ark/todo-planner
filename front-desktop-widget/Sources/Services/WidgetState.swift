@@ -3,6 +3,8 @@ import Foundation
 import Observation
 import SwiftUI
 
+private let widgetTickerIntervalSeconds = 5
+
 // MARK: - Core Type Definitions
 
 extension Notification.Name {
@@ -30,6 +32,7 @@ enum WidgetScreenState: Equatable {
   case checkingAuthentication
   case login
   case widget
+  case error(String)
 }
 
 struct ScheduleDeviation {
@@ -94,7 +97,7 @@ protocol WidgetStateLogic {
   /// Processes user intents (e.g., button clicks, key presses).
   func handle(action: WidgetAction, context: WidgetContext) -> StateResult
 
-  /// Processes temporal events (e.g., 1s heartbeat, boundary checks).
+  /// Processes temporal events (e.g., periodic heartbeat, boundary checks).
   func onTick(context: WidgetContext, currentPlannedBlock: PlannedBlock?) -> StateResult
 }
 
@@ -182,7 +185,7 @@ func tickPomodoro(_ context: inout WidgetContext) -> PomodoroTickOutcome {
   guard limit > 0 else { return .none }
 
   let previousElapsed = context.pomodoroElapsed
-  context.pomodoroElapsed += 1
+  context.pomodoroElapsed += widgetTickerIntervalSeconds
 
   let autoSkipLimit = Int(Double(limit) * 1.5)
   let crossedWorkLimit =
@@ -519,7 +522,6 @@ class WidgetStateStore {
   var context = WidgetContext()
   private let repository: TodoPlannerRepository
   private var tick = 0
-  private var didSynchronizeAtStartup = false
 
   // --- UI Projections (Glanceable Data) ---
   var displayState: WidgetStateIdentity { currentState.identity }
@@ -625,22 +627,34 @@ class WidgetStateStore {
 
   func start() async {
     guard screenState == .checkingAuthentication else { return }
-    WidgetLogger.debug("Starting widget from local cache when available")
-    let loadedCache = initializeFromCache()
-    if loadedCache {
-      screenState = .widget
-    } else if repository.getAuthToken() != nil {
+    let hasAuthenticationToken =
+      repository.getAuthToken().map {
+        AuthController.isWorkingAuthenticationToken($0)
+      } ?? false
+    WidgetLogger.debug(
+      "Starting widget",
+      context: ["hasAuthenticationToken": String(hasAuthenticationToken)])
+
+    if hasAuthenticationToken {
       await initialize()
+      if screenState == .widget {
+        startPeriodicRefresh()
+      }
+      return
+    }
+
+    if repository.getAuthToken() != nil {
+      try? await repository.clearAuth()
+    }
+
+    if initializeFromCache() {
+      startPeriodicRefresh()
     } else {
       screenState = .login
     }
 
-    if screenState == .widget {
-      startPeriodicRefresh()
-      await synchronizeOnStartup()
-    }
     WidgetLogger.debug(
-      "Widget startup completed", context: ["usedCache": String(loadedCache)])
+      "Widget startup completed", context: ["usedCache": String(screenState == .widget)])
   }
 
   func authenticationSucceeded() async {
@@ -650,6 +664,11 @@ class WidgetStateStore {
     if screenState == .widget {
       startPeriodicRefresh()
     }
+  }
+
+  func retryStartup() async {
+    screenState = .checkingAuthentication
+    await start()
   }
 
   @discardableResult
@@ -689,9 +708,11 @@ class WidgetStateStore {
       lastError = String(describing: error)
       if isAuthenticationError(error) {
         screenState = .login
+      } else {
+        screenState = .error(lastError ?? "Unable to load widget data")
       }
       WidgetLogger.error(
-        "Initialization failed; widget remains inactive", context: ["error": lastError!])
+        "Initialization failed", context: ["error": lastError ?? "unknown"])
     }
   }
 
@@ -735,11 +756,14 @@ class WidgetStateStore {
   }
 
   private func validateBootstrap(_ bootstrap: InitResponse, requestedDate: String?) throws {
-    if let requestedDate, bootstrap.dayRecords[0].calendarDate != requestedDate {
+    guard let dayRecord = bootstrap.dayRecords.first else {
+      throw StorageError.invalidContract("bootstrap does not contain a day record")
+    }
+    if let requestedDate, dayRecord.calendarDate != requestedDate {
       throw StorageError.invalidContract("day_records calendar date does not match request")
     }
     let categoryIds = Set(bootstrap.categories.map(\.id))
-    for block in bootstrap.dayRecords[0].plan {
+    for block in dayRecord.plan {
       guard categoryIds.contains(block.categoryId), block.durationMinutes > 0,
         TimeLogic.parseSeconds(from: block.startTime) != nil
       else {
@@ -771,8 +795,6 @@ class WidgetStateStore {
       synchronizationError = error
     }
 
-    refreshFromCache()
-
     if let synchronizationError {
       lastError = String(describing: synchronizationError)
       WidgetLogger.error("Synchronization failed", context: ["error": lastError!])
@@ -780,6 +802,7 @@ class WidgetStateStore {
         screenState = .login
       }
     } else {
+      refreshFromCache()
       lastError = nil
     }
   }
@@ -792,18 +815,6 @@ class WidgetStateStore {
       return true
     }
     return String(describing: error).contains("unauthorized")
-  }
-
-  func synchronizeOnStartup() async {
-    guard !didSynchronizeAtStartup else { return }
-    guard repository.getAuthToken() != nil else {
-      didSynchronizeAtStartup = true
-      return
-    }
-    await synchronize()
-    if lastError == nil {
-      didSynchronizeAtStartup = true
-    }
   }
 
   func clearLocalData() async {
@@ -965,16 +976,18 @@ class WidgetStateStore {
   // MARK: - Heartbeat
 
   private func setupTicker() {
-    ticker = Timer.publish(every: 1.0, on: .main, in: .common)
-      .autoconnect()
-      .sink { [weak self] _ in
-        guard let self = self else { return }
-        self.tick += 1
-        self.context.plannedCategory = self.plannedCategory
-        let result = self.currentState.onTick(
-          context: self.context, currentPlannedBlock: self.currentPlannedBlock)
-        Task { await self.apply(result) }
-      }
+    ticker = Timer.publish(
+      every: TimeInterval(widgetTickerIntervalSeconds), on: .main, in: .common
+    )
+    .autoconnect()
+    .sink { [weak self] _ in
+      guard let self = self else { return }
+      self.tick += widgetTickerIntervalSeconds
+      self.context.plannedCategory = self.plannedCategory
+      let result = self.currentState.onTick(
+        context: self.context, currentPlannedBlock: self.currentPlannedBlock)
+      Task { await self.apply(result) }
+    }
   }
 
   func startPeriodicRefresh() {

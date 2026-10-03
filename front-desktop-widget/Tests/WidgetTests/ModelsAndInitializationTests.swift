@@ -269,14 +269,45 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assertEqual(harness.mock.calls.first?.description, "initialize(\(Fixtures.today))")
   }
 
-  func test_authenticationSucceededWithNoAPIDataRemainsChecking() async throws {
+  func test_authenticationSucceededWithNoAPIDataShowsError() async throws {
     let harness = WidgetTestHarness(existingRecord: nil)
     harness.store.screenState = .login
 
     await harness.store.authenticationSucceeded()
 
-    try assertEqual(harness.store.screenState, .checkingAuthentication)
+    try assert(
+      isErrorState(harness.store.screenState),
+      "API bootstrap failure should leave the loading state")
     try assert(harness.store.lastError != nil, "API bootstrap failure should be exposed")
+  }
+
+  func test_startWithAuthenticationIgnoresCachedBootstrap() async throws {
+    let harness = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await harness.initialize()
+    harness.mock.resetCalls()
+
+    harness.store.screenState = .checkingAuthentication
+    await harness.store.start()
+
+    try assertEqual(harness.store.screenState, .widget)
+    try assertEqual(harness.mock.calls.count, 1)
+    try assertEqual(harness.mock.calls.first?.description, "initialize(\(Fixtures.today))")
+  }
+
+  func test_startWithAuthenticationFailureShowsError() async throws {
+    let harness = WidgetTestHarness(existingRecord: nil)
+    harness.mock.initializationError = StorageError.networkFailure(
+      NSError(domain: "MockError", code: 1))
+
+    await harness.store.start()
+
+    try assert(isErrorState(harness.store.screenState), "Remote failure should show an error state")
+    try assert(harness.store.lastError != nil, "Remote failure should be exposed")
+  }
+
+  private func isErrorState(_ state: WidgetScreenState) -> Bool {
+    if case .error = state { return true }
+    return false
   }
 
   static func testMethods() -> [TestCase] {
@@ -303,7 +334,9 @@ final class ModelsAndInitializationTests: WidgetTestCase {
       ("test_startWithCachedBootstrapWithoutAuthenticationShowsWidget", { try await tests.test_startWithCachedBootstrapWithoutAuthenticationShowsWidget() }),
       ("test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget", { try await tests.test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget() }),
       ("test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache", { try await tests.test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache() }),
-      ("test_authenticationSucceededWithNoAPIDataRemainsChecking", { try await tests.test_authenticationSucceededWithNoAPIDataRemainsChecking() }),
+      ("test_authenticationSucceededWithNoAPIDataShowsError", { try await tests.test_authenticationSucceededWithNoAPIDataShowsError() }),
+      ("test_startWithAuthenticationIgnoresCachedBootstrap", { try await tests.test_startWithAuthenticationIgnoresCachedBootstrap() }),
+      ("test_startWithAuthenticationFailureShowsError", { try await tests.test_startWithAuthenticationFailureShowsError() }),
     ]
   }
 }
