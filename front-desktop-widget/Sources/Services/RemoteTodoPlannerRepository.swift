@@ -61,17 +61,6 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
       synchronizationError = error
     }
 
-    if api.authToken != nil {
-      WidgetLogger.debug("Refreshing bootstrap during synchronization")
-      do {
-        _ = try await initialize(calendarDate: DateFormatter.yyyyMMdd.string(from: Date()))
-      } catch {
-        if synchronizationError == nil {
-          synchronizationError = error
-        }
-      }
-    }
-
     if let synchronizationError {
       WidgetLogger.debug(
         "Synchronization failed", context: ["error": String(describing: synchronizationError)])
