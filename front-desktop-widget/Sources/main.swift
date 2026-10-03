@@ -13,10 +13,20 @@ struct TodoPlannerWidgetApp: App {
   }
 }
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
   var statusItem: NSStatusItem?
   var popover = NSPopover()
   var keyMonitor: Any?
+  private let authController: AuthController
+  private let widgetState: WidgetStateStore
+
+  override init() {
+    let repository = RepositoryFactory.createRepository()
+    self.authController = AuthController(repository: repository)
+    self.widgetState = WidgetStateStore(repository: repository)
+    super.init()
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Enforce singleton - check if another instance is already running
@@ -46,7 +56,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     popover.contentSize = NSSize(width: 320, height: 200)
     popover.behavior = .transient  // Closes when clicking outside
     popover.animates = true
-    popover.contentViewController = NSHostingController(rootView: ContentView())
+    popover.contentViewController = NSHostingController(
+      rootView: ContentView(widgetState: widgetState, authController: authController))
+
+    Task {
+      await widgetState.start()
+    }
 
     // Register for URL events
     NSAppleEventManager.shared().setEventHandler(

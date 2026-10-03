@@ -54,6 +54,7 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
   var stubbedCreatedRecord: DayRecord?
   var stubbedEventsResponse: DayEventsResponse?
   var shouldThrowOnSubmitEvents = false
+  var initializationError: Error?
   private(set) var validateAuthCallCount = 0
   private var cachedBootstrap: InitResponse?
 
@@ -78,6 +79,9 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
 
   func initialize(calendarDate: String) async throws -> InitResponse {
     calls.append(.initialize(date: calendarDate))
+    if let initializationError {
+      throw initializationError
+    }
     let dayRecord: DayRecord
     if let existingRecord = stubbedDayRecord {
       dayRecord = existingRecord
