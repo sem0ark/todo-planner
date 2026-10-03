@@ -220,6 +220,27 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assert(h.store.displayState == .active, "After initialize, should be active")
   }
 
+  func test_startWithoutCacheOrAuthenticationShowsLogin() async throws {
+    let harness = WidgetTestHarness(existingRecord: nil)
+    harness.mock.authToken = nil
+
+    await harness.store.start()
+
+    try assertEqual(harness.store.screenState, .login)
+  }
+
+  func test_startWithCachedBootstrapWithoutAuthenticationShowsWidget() async throws {
+    let harness = WidgetTestHarness(existingRecord: Fixtures.record())
+    await harness.initialize()
+    harness.mock.authToken = nil
+    harness.store.screenState = .checkingAuthentication
+
+    await harness.store.start()
+
+    try assertEqual(harness.store.screenState, .widget)
+    try assertEqual(harness.store.displayState, .active)
+  }
+
   static func testMethods() -> [TestCase] {
     let tests = ModelsAndInitializationTests()
     return [
@@ -240,6 +261,8 @@ final class ModelsAndInitializationTests: WidgetTestCase {
       ("test_reload_fetchesRemoteDataAndReturnsToActive", { try await tests.test_reload_fetchesRemoteDataAndReturnsToActive() }),
       ("test_missingScheduleData_isNotOnSchedule", { try await tests.test_missingScheduleData_isNotOnSchedule() }),
       ("test_stateTransition_initialToActive", { try await tests.test_stateTransition_initialToActive() }),
+      ("test_startWithoutCacheOrAuthenticationShowsLogin", { try await tests.test_startWithoutCacheOrAuthenticationShowsLogin() }),
+      ("test_startWithCachedBootstrapWithoutAuthenticationShowsWidget", { try await tests.test_startWithCachedBootstrapWithoutAuthenticationShowsWidget() }),
     ]
   }
 }

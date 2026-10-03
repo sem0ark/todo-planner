@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LoginView: View {
   var authController: AuthController
+  var widgetState: WidgetStateStore
   @State private var token: String = ""
   @State private var errorMessage: String?
 
@@ -107,6 +108,7 @@ struct LoginView: View {
     Task {
       do {
         try await authController.setAuthToken(token)
+        await widgetState.authenticationSucceeded()
       } catch {
         WidgetLogger.error(
           "Failed to set authentication token", context: ["error": String(describing: error)])

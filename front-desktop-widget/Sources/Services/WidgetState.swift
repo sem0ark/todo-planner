@@ -8,7 +8,6 @@ import SwiftUI
 extension Notification.Name {
   static let confirmationNeeded = Notification.Name("confirmationNeeded")
   static let pomodoroCompleted = Notification.Name("pomodoroCompleted")
-  static let authenticationRequired = Notification.Name("authenticationRequired")
 }
 
 enum PomodoroPhase {
@@ -25,6 +24,12 @@ enum WidgetStateIdentity {
   case initializing
   case active
   case prompted
+}
+
+enum WidgetScreenState: Equatable {
+  case checkingAuthentication
+  case login
+  case widget
 }
 
 struct ScheduleDeviation {
@@ -510,6 +515,7 @@ final class PromptedState: WidgetStateLogic {
 class WidgetStateStore {
   // --- Source of Truth ---
   var currentState: WidgetStateLogic = InitializingState()
+  var screenState: WidgetScreenState = .checkingAuthentication
   var context = WidgetContext()
   private let repository: TodoPlannerRepository
   private var tick = 0
@@ -520,10 +526,6 @@ class WidgetStateStore {
   var categories: [Category] { context.categories }
   var currentDayRecord: DayRecord? { context.currentDayRecord }
   var settings: UserSettings? { context.settings }
-  var hasCachedBootstrap: Bool {
-    let today = DateFormatter.yyyyMMdd.string(from: Date())
-    return ((try? repository.cachedInitialization(calendarDate: today)) ?? nil) != nil
-  }
   var currentCategory: Category? { context.currentCategory }
   var isOnSchedule: Bool {
     guard let current = context.currentCategory, let planned = plannedCategory else { return false }
@@ -619,19 +621,35 @@ class WidgetStateStore {
       ])
   }
 
-  // MARK: - Compatibility API
+  // MARK: - Screen Lifecycle
 
   func start() async {
+    guard screenState == .checkingAuthentication else { return }
     WidgetLogger.debug("Starting widget from local cache when available")
     let loadedCache = initializeFromCache()
-    if !loadedCache, repository.getAuthToken() != nil {
+    if loadedCache {
+      screenState = .widget
+    } else if repository.getAuthToken() != nil {
       await initialize()
+    } else {
+      screenState = .login
     }
 
-    startPeriodicRefresh()
-    await synchronizeOnStartup()
+    if screenState == .widget {
+      startPeriodicRefresh()
+      await synchronizeOnStartup()
+    }
     WidgetLogger.debug(
       "Widget startup completed", context: ["usedCache": String(loadedCache)])
+  }
+
+  func authenticationSucceeded() async {
+    screenState = .checkingAuthentication
+
+    await initialize()
+    if screenState == .widget {
+      startPeriodicRefresh()
+    }
   }
 
   @discardableResult
@@ -645,6 +663,7 @@ class WidgetStateStore {
       applyBootstrap(bootstrap, resetCurrentCategory: true)
       context.currentDayRecord = DayRecord(calendarDate: today, plan: bootstrap.dayRecords[0].plan)
       currentState = ActiveState()
+      screenState = .widget
       lastError = nil
       WidgetLogger.debug(
         "Widget activated from cached bootstrap",
@@ -664,9 +683,13 @@ class WidgetStateStore {
     do {
       try await loadData()
       await dispatch(.initialize)
+      screenState = .widget
       lastError = nil
     } catch {
       lastError = String(describing: error)
+      if isAuthenticationError(error) {
+        screenState = .login
+      }
       WidgetLogger.error(
         "Initialization failed; widget remains inactive", context: ["error": lastError!])
     }
@@ -736,8 +759,8 @@ class WidgetStateStore {
 
     guard repository.getAuthToken() != nil else {
       lastError = String(describing: StorageError.unauthorized)
+      screenState = .login
       WidgetLogger.error("Synchronization requires authentication")
-      NotificationCenter.default.post(name: .authenticationRequired, object: nil)
       return
     }
 
@@ -754,7 +777,7 @@ class WidgetStateStore {
       lastError = String(describing: synchronizationError)
       WidgetLogger.error("Synchronization failed", context: ["error": lastError!])
       if isAuthenticationError(synchronizationError) {
-        NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+        screenState = .login
       }
     } else {
       lastError = nil
@@ -793,6 +816,17 @@ class WidgetStateStore {
     } catch {
       lastError = String(describing: error)
       WidgetLogger.error("Failed to clear local widget data", context: ["error": lastError!])
+    }
+  }
+
+  func logout() async {
+    await clearLocalData()
+    do {
+      try await repository.clearAuth()
+      screenState = .login
+    } catch {
+      lastError = String(describing: error)
+      WidgetLogger.error("Logout failed", context: ["error": lastError!])
     }
   }
 

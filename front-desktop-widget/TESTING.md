@@ -21,7 +21,6 @@ Tests are organized by production responsibility:
 - **`RepositorySyncTests.swift`** - Authentication and remote synchronization
 - **`ModelsAndInitializationTests.swift`** - Model encoding/decoding and widget initialization
 - **`WidgetInteractionTests.swift`** - Widget state actions, transitions, offsets, confirmations, and failures
-- **`ContentViewTests.swift`** - Authentication-driven content view mode decisions
 - **`LoggerTests.swift`** - Logger formatting and context ordering
 - **`TestRunner.swift`** - Standalone entry point, suite aggregation, and reporting
 
