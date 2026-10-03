@@ -98,7 +98,7 @@ struct ContentView: View {
       switch contentViewMode(
         isCheckingAuthentication: authController.isCheckingAuth,
         isAuthenticated: authController.isAuthenticated,
-        hasCachedBootstrap: widgetState.hasCachedBootstrapForToday
+        hasCachedBootstrap: widgetState.hasCachedBootstrap
       ) {
       case .checkingAuthentication:
         // Show loading state while checking authentication

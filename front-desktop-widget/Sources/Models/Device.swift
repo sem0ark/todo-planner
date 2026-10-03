@@ -51,10 +51,11 @@ struct UserSettings: Codable {
 struct InitResponse: Codable {
   let settings: UserSettings
   let categories: [Category]
-  let dayRecord: DayRecord
+  let dayRecords: [DayRecord]
+
   enum CodingKeys: String, CodingKey {
     case settings, categories
-    case dayRecord = "day_record"
+    case dayRecords = "day_records"
   }
 }
 

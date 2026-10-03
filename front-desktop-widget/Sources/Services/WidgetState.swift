@@ -517,9 +517,9 @@ class WidgetStateStore {
   var categories: [Category] { context.categories }
   var currentDayRecord: DayRecord? { context.currentDayRecord }
   var settings: UserSettings? { context.settings }
-  var hasCachedBootstrapForToday: Bool {
+  var hasCachedBootstrap: Bool {
     let today = DateFormatter.yyyyMMdd.string(from: Date())
-    return (try? repository.cachedInitialization(calendarDate: today)) != nil
+    return ((try? repository.cachedInitialization(calendarDate: today)) ?? nil) != nil
   }
   var currentCategory: Category? { context.currentCategory }
   var isOnSchedule: Bool {
@@ -630,12 +630,16 @@ class WidgetStateStore {
       guard let bootstrap = try repository.cachedInitialization(calendarDate: today) else {
         return false
       }
-      try validateBootstrap(bootstrap, requestedDate: today)
+      try validateBootstrap(bootstrap, requestedDate: nil)
       applyBootstrap(bootstrap, resetCurrentCategory: true)
+      context.currentDayRecord = DayRecord(calendarDate: today, plan: bootstrap.dayRecords[0].plan)
       currentState = ActiveState()
       lastError = nil
       WidgetLogger.debug(
-        "Widget activated from cached bootstrap", context: ["calendarDate": today])
+        "Widget activated from cached bootstrap",
+        context: [
+          "cachedCalendarDate": bootstrap.dayRecords[0].calendarDate, "calendarDate": today,
+        ])
       return true
     } catch {
       WidgetLogger.error(
@@ -679,8 +683,8 @@ class WidgetStateStore {
   private func applyBootstrap(_ bootstrap: InitResponse, resetCurrentCategory: Bool) {
     context.categories = bootstrap.categories
     context.settings = bootstrap.settings
-    context.currentPlannedBlocks = bootstrap.dayRecord.plan
-    context.currentDayRecord = bootstrap.dayRecord
+    context.currentPlannedBlocks = bootstrap.dayRecords[0].plan
+    context.currentDayRecord = bootstrap.dayRecords[0]
 
     let currentPlannedBlock =
       TimeLogic.getCurrentPlannedBlock(
@@ -696,12 +700,12 @@ class WidgetStateStore {
     }
   }
 
-  private func validateBootstrap(_ bootstrap: InitResponse, requestedDate: String) throws {
-    guard bootstrap.dayRecord.calendarDate == requestedDate else {
-      throw StorageError.invalidContract("day_record calendar date does not match request")
+  private func validateBootstrap(_ bootstrap: InitResponse, requestedDate: String?) throws {
+    if let requestedDate, bootstrap.dayRecords[0].calendarDate != requestedDate {
+      throw StorageError.invalidContract("day_records calendar date does not match request")
     }
     let categoryIds = Set(bootstrap.categories.map(\.id))
-    for block in bootstrap.dayRecord.plan {
+    for block in bootstrap.dayRecords[0].plan {
       guard categoryIds.contains(block.categoryId), block.durationMinutes > 0,
         TimeLogic.parseSeconds(from: block.startTime) != nil
       else {

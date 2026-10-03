@@ -89,7 +89,7 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
        settings: UserSettings(
          dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Fixtures.now),
       categories: stubbedCategories,
-      dayRecord: dayRecord
+      dayRecords: [dayRecord]
     )
     cachedBootstrap = response
     return response
@@ -106,7 +106,7 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
   func hasPendingSync() async -> Bool { false }
   func synchronize() async throws {}
   func cachedInitialization(calendarDate: String) throws -> InitResponse? {
-    guard cachedBootstrap?.dayRecord.calendarDate == calendarDate else { return nil }
+    guard cachedBootstrap?.dayRecords[0].calendarDate == calendarDate else { return nil }
     return cachedBootstrap
   }
   func clearLocalData() throws { cachedBootstrap = nil }
@@ -299,10 +299,10 @@ final class WidgetStateStoreTests {
       settings: UserSettings(
         dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Fixtures.now),
       categories: [Fixtures.categoryA],
-      dayRecord: DayRecord(
+      dayRecords: [DayRecord(
         calendarDate: calendarDate,
         plan: [PlannedBlock(categoryId: Fixtures.categoryA.id, startTime: "00:00:00", durationMinutes: 1440)]
-      )
+      )]
     )
   }
 
@@ -314,8 +314,11 @@ final class WidgetStateStoreTests {
     try cache.save(response: response, calendarDate: Fixtures.today)
 
     let loadedResponse = try cache.load(calendarDate: Fixtures.today)?.response
-    try assertEqual(loadedResponse?.dayRecord.calendarDate, Fixtures.today)
+    try assertEqual(loadedResponse?.dayRecords[0].calendarDate, Fixtures.today)
     try assertEqual(loadedResponse?.categories.map(\.id), [Fixtures.categoryA.id])
+    try assertEqual(
+      try cache.load(calendarDate: Fixtures.today)?.response.dayRecords[0].calendarDate,
+      Fixtures.today)
     try assert(cache.load(calendarDate: "2099-01-01") == nil, "Cache must be date scoped")
 
     try cache.removeAll()
@@ -330,6 +333,22 @@ final class WidgetStateStoreTests {
     try assert(
       (try? cache.save(response: response, calendarDate: Fixtures.today)) == nil,
       "Cache must reject a response for another date")
+  }
+
+  func test_bootstrapCache_returnsNilWhenTodayIsMissing() throws {
+    let (cache, directory) = try makeTemporaryBootstrapCache()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    try cache.save(
+      response: makeBootstrapResponse(calendarDate: "2026-09-19"),
+      calendarDate: "2026-09-19")
+    try cache.save(
+      response: makeBootstrapResponse(calendarDate: "2026-09-26"),
+      calendarDate: "2026-09-26")
+
+    let cachedResponse = try cache.load(calendarDate: Fixtures.today)
+
+    try assert(cachedResponse == nil, "Cache must not use another calendar date")
   }
 
   func test_cachedBootstrap_startsWidgetWithoutLoggingTransition() async throws {
@@ -359,7 +378,7 @@ final class WidgetStateStoreTests {
 
     try await repository.synchronize()
 
-    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecord.calendarDate, Fixtures.today)
+    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecords[0].calendarDate, Fixtures.today)
   }
 
   func test_synchronizeRefreshFailurePreservesExistingBootstrapCache() async throws {
@@ -382,7 +401,7 @@ final class WidgetStateStoreTests {
       // Expected: a failed refresh must not remove the previous cache.
     }
 
-    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecord.calendarDate, Fixtures.today)
+    try assertEqual(try cache.load(calendarDate: Fixtures.today)?.response.dayRecords[0].calendarDate, Fixtures.today)
   }
 
   func test_clearLocalDataRemovesEventsAndBootstrapCache() throws {
@@ -598,7 +617,7 @@ final class WidgetStateStoreTests {
         "updated_at": "2026-09-06T14:30:00Z"
       },
       "categories": [],
-      "day_record": {
+      "day_records": [{
         "calendar_date": "2026-09-06",
         "day_template_id": 5,
         "plan": [
@@ -618,7 +637,7 @@ final class WidgetStateStoreTests {
         ],
         "created_at": "2026-09-06T07:55:00Z",
         "updated_at": "2026-09-06T14:30:00Z"
-      }
+      }]
     }
     """.data(using: .utf8)!
     let decoder = JSONDecoder()
@@ -627,8 +646,8 @@ final class WidgetStateStoreTests {
     let response = try decoder.decode(InitResponse.self, from: json)
 
     try assert(response.settings.updatedAt.timeIntervalSince1970 > 0, "settings timestamp should decode")
-    try assertEqual(response.dayRecord.calendarDate, "2026-09-06")
-    try assertEqual(response.dayRecord.plan[0].startTime, "08:00:00")
+    try assertEqual(response.dayRecords[0].calendarDate, "2026-09-06")
+    try assertEqual(response.dayRecords[0].plan[0].startTime, "08:00:00")
   }
 
   func test_dayEventsResponse_decodesNullAcceptedEventCategory() throws {
@@ -1191,6 +1210,7 @@ struct TestRunner {
       ("test_atomicQueueRewriteFailurePreservesContents", { try tests.test_atomicQueueRewriteFailurePreservesContents() }),
       ("test_bootstrapCache_roundTripsAndRejectsOtherDates", { try tests.test_bootstrapCache_roundTripsAndRejectsOtherDates() }),
       ("test_bootstrapCache_rejectsMismatchedResponseDate", { try tests.test_bootstrapCache_rejectsMismatchedResponseDate() }),
+      ("test_bootstrapCache_returnsNilWhenTodayIsMissing", { try tests.test_bootstrapCache_returnsNilWhenTodayIsMissing() }),
       ("test_clearLocalDataRemovesEventsAndBootstrapCache", { try tests.test_clearLocalDataRemovesEventsAndBootstrapCache() }),
       ("test_apiClientDoesNotPersistAuthenticationToken", { try tests.test_apiClientDoesNotPersistAuthenticationToken() }),
       ("test_authenticationUsesMemoryTokenWithoutValidationRequest", { try await tests.test_authenticationUsesMemoryTokenWithoutValidationRequest() }),

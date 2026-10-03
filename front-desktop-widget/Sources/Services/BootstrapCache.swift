@@ -37,7 +37,7 @@ final class BootstrapCache: @unchecked Sendable {
       let cachedResponse = try JSONDecoder.widgetDecoder.decode(CachedInitResponse.self, from: data)
       guard cachedResponse.schemaVersion == CachedInitResponse.currentSchemaVersion,
         cachedResponse.calendarDate == calendarDate,
-        cachedResponse.response.dayRecord.calendarDate == calendarDate
+        cachedResponse.dayRecordsContainOnlyCalendarDate
       else {
         WidgetLogger.debug(
           "Bootstrap cache rejected", context: ["calendarDate": calendarDate])
@@ -54,7 +54,7 @@ final class BootstrapCache: @unchecked Sendable {
   }
 
   func save(response: InitResponse, calendarDate: String) throws {
-    guard response.dayRecord.calendarDate == calendarDate else {
+    guard response.dayRecords.contains(where: { $0.calendarDate == calendarDate }) else {
       throw StorageError.invalidContract("bootstrap calendar date does not match request")
     }
 
@@ -62,10 +62,16 @@ final class BootstrapCache: @unchecked Sendable {
     defer { lock.unlock() }
 
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let data = try JSONEncoder.widgetEncoder.encode(
-      CachedInitResponse(calendarDate: calendarDate, response: response))
-    try data.write(to: cacheURL(calendarDate: calendarDate), options: .atomic)
-    WidgetLogger.debug("Bootstrap cache saved", context: ["calendarDate": calendarDate])
+    for dayRecord in response.dayRecords {
+      let dayResponse = InitResponse(
+        settings: response.settings,
+        categories: response.categories,
+        dayRecords: [dayRecord])
+      let data = try JSONEncoder.widgetEncoder.encode(
+        CachedInitResponse(calendarDate: dayRecord.calendarDate, response: dayResponse))
+      try data.write(to: cacheURL(calendarDate: dayRecord.calendarDate), options: .atomic)
+      WidgetLogger.debug("Bootstrap cache saved", context: ["calendarDate": dayRecord.calendarDate])
+    }
   }
 
   func removeAll() throws {
@@ -83,5 +89,11 @@ final class BootstrapCache: @unchecked Sendable {
 
   private func cacheURL(calendarDate: String) -> URL {
     directory.appendingPathComponent("\(calendarDate).json")
+  }
+}
+
+extension CachedInitResponse {
+  fileprivate var dayRecordsContainOnlyCalendarDate: Bool {
+    response.dayRecords.count == 1 && response.dayRecords[0].calendarDate == calendarDate
   }
 }

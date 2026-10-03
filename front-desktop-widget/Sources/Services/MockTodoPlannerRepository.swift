@@ -31,13 +31,13 @@ final class MockTodoPlannerRepository: TodoPlannerRepository, @unchecked Sendabl
     let response = InitResponse(
       settings: UserSettings(
         dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Date()),
-      categories: categories, dayRecord: dayRecord)
+      categories: categories, dayRecords: [dayRecord])
     cachedBootstrap = response
     return response
   }
 
   func cachedInitialization(calendarDate: String) throws -> InitResponse? {
-    guard cachedBootstrap?.dayRecord.calendarDate == calendarDate else { return nil }
+    guard cachedBootstrap?.dayRecords[0].calendarDate == calendarDate else { return nil }
     return cachedBootstrap
   }
 
