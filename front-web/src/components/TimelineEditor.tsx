@@ -401,6 +401,13 @@ export default function TimelineEditor<T extends EditableBlock>({
   };
 
   const findNewBlockPosition = () => {
+    const timelineContainer = containerRef.current;
+    const visibleCenterMinutes = timelineContainer
+      ? dayStartMinutes +
+        (timelineContainer.scrollTop + timelineContainer.clientHeight / 2) /
+          GRID_UNIT
+      : (dayStartMinutes + dayEndMinutes) / 2;
+
     return findNewTimelineBlockPosition(
       blocks.map((block) => ({
         startMinutes: timeToMinutes(block.start_time),
@@ -408,7 +415,32 @@ export default function TimelineEditor<T extends EditableBlock>({
       })),
       dayStartMinutes,
       dayEndMinutes,
+      visibleCenterMinutes,
+      snapInterval,
     );
+  };
+
+  const revealNewBlockPosition = (position: {
+    startMinutes: number;
+    durationMinutes: number;
+  }) => {
+    const timelineContainer = containerRef.current;
+    if (!timelineContainer) return;
+
+    const blockTop = (position.startMinutes - dayStartMinutes) * GRID_UNIT;
+    const blockBottom = blockTop + position.durationMinutes * GRID_UNIT;
+    const visibleTop = timelineContainer.scrollTop;
+    const visibleBottom = visibleTop + timelineContainer.clientHeight;
+    if (blockTop >= visibleTop && blockBottom <= visibleBottom) return;
+
+    const centeredScrollTop =
+      (blockTop + blockBottom - timelineContainer.clientHeight) / 2;
+    const maximumScrollTop =
+      timelineContainer.scrollHeight - timelineContainer.clientHeight;
+    timelineContainer.scrollTo({
+      top: Math.min(maximumScrollTop, Math.max(0, centeredScrollTop)),
+      behavior: "smooth",
+    });
   };
 
   const addBlock = () => {
@@ -425,6 +457,7 @@ export default function TimelineEditor<T extends EditableBlock>({
           : {}),
       } as T,
     ]);
+    revealNewBlockPosition(newBlockPosition);
   };
 
   const addBlankBlock = () => {
@@ -439,6 +472,7 @@ export default function TimelineEditor<T extends EditableBlock>({
         duration_minutes: newBlockPosition.durationMinutes,
       } as T,
     ]);
+    revealNewBlockPosition(newBlockPosition);
   };
 
   const selectedBlockIndex = useMemo(() => {

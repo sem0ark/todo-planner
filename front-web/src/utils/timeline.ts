@@ -3,38 +3,117 @@ export interface TimelinePosition {
   durationMinutes: number;
 }
 
-/** Finds a 30-minute addition point immediately after the latest in-range block. */
+export interface TimelineColumnItem {
+  id: string;
+  offset: number;
+  size: number;
+}
+
+/** Groups adjacent timeline items without treating floating-point noise as overlap. */
+export function groupTimelineItemsIntoColumns<T extends TimelineColumnItem>(
+  items: T[],
+): T[][] {
+  const positionTolerance = 1e-6;
+  const sortedItems = [...items].sort(
+    (left, right) => left.offset - right.offset,
+  );
+  const columns: T[][] = [];
+
+  for (const item of sortedItems) {
+    const availableColumn = columns.find((column) => {
+      const lastItem = column[column.length - 1];
+      return item.offset + positionTolerance >= lastItem.offset + lastItem.size;
+    });
+
+    if (availableColumn) {
+      availableColumn.push(item);
+    } else {
+      columns.push([item]);
+    }
+  }
+
+  return columns;
+}
+
+/** Finds the 30-minute addition point closest to the requested timeline center. */
 export function findNewTimelineBlockPosition(
   blocks: TimelinePosition[],
   dayStartMinutes: number,
   dayEndMinutes: number,
+  targetCenterMinutes: number,
+  snapInterval = 1,
 ): TimelinePosition | null {
-  const latestBlockEndMinutes = blocks.reduce<number | null>(
-    (latestEndMinutes, block) => {
-      const blockEndMinutes = block.startMinutes + block.durationMinutes;
-      if (
-        block.startMinutes >= dayEndMinutes ||
-        blockEndMinutes <= dayStartMinutes
-      ) {
-        return latestEndMinutes;
-      }
-
-      const visibleBlockEndMinutes = Math.min(dayEndMinutes, blockEndMinutes);
-      return latestEndMinutes === null
-        ? visibleBlockEndMinutes
-        : Math.max(latestEndMinutes, visibleBlockEndMinutes);
-    },
-    null,
-  );
-  const startMinutes =
-    latestBlockEndMinutes === null
-      ? dayStartMinutes
-      : latestBlockEndMinutes + 1;
   const durationMinutes = 30;
+  const timelineCenterMinutes = Math.min(
+    dayEndMinutes,
+    Math.max(dayStartMinutes, targetCenterMinutes),
+  );
+  const sortedBlocks = blocks
+    .map((block) => ({
+      startMinutes: Math.max(dayStartMinutes, block.startMinutes),
+      endMinutes: Math.min(
+        dayEndMinutes,
+        block.startMinutes + block.durationMinutes,
+      ),
+    }))
+    .filter((block) => block.endMinutes > block.startMinutes)
+    .sort((left, right) => left.startMinutes - right.startMinutes);
+  const gaps: TimelinePosition[] = [];
+  let gapStartMinutes = dayStartMinutes;
 
-  if (startMinutes + durationMinutes > dayEndMinutes) return null;
+  for (const block of sortedBlocks) {
+    if (block.startMinutes > gapStartMinutes) {
+      gaps.push({
+        startMinutes: gapStartMinutes,
+        durationMinutes: block.startMinutes - gapStartMinutes,
+      });
+    }
+    gapStartMinutes = Math.max(gapStartMinutes, block.endMinutes);
+  }
+  if (gapStartMinutes < dayEndMinutes) {
+    gaps.push({
+      startMinutes: gapStartMinutes,
+      durationMinutes: dayEndMinutes - gapStartMinutes,
+    });
+  }
 
-  return { startMinutes, durationMinutes };
+  const fittingCandidates = gaps
+    .filter((gap) => gap.durationMinutes >= durationMinutes)
+    .map((gap) => {
+      const earliestStartMinutes =
+        Math.ceil(gap.startMinutes / snapInterval) * snapInterval;
+      const latestStartMinutes =
+        Math.floor(
+          (gap.startMinutes + gap.durationMinutes - durationMinutes) /
+            snapInterval,
+        ) * snapInterval;
+      if (earliestStartMinutes > latestStartMinutes) return null;
+
+      const centeredStartMinutes = timelineCenterMinutes - durationMinutes / 2;
+      const preferredStartMinutes = Math.min(
+        latestStartMinutes,
+        Math.max(earliestStartMinutes, centeredStartMinutes),
+      );
+      const snappedStartMinutes =
+        Math.round(preferredStartMinutes / snapInterval) * snapInterval;
+      const startMinutes = Math.min(latestStartMinutes, snappedStartMinutes);
+      return {
+        startMinutes,
+        durationMinutes,
+        distanceFromCenter: Math.abs(
+          startMinutes + durationMinutes / 2 - timelineCenterMinutes,
+        ),
+      };
+    })
+    .filter((candidate) => candidate !== null)
+    .sort((left, right) => left.distanceFromCenter - right.distanceFromCenter);
+
+  return fittingCandidates[0]
+    ? {
+        startMinutes: fittingCandidates[0].startMinutes,
+        durationMinutes,
+      }
+    : null;
 }
 
 export type TimelineDragMode = "move" | "resize-top" | "resize-bottom";

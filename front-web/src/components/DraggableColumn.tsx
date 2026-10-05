@@ -11,7 +11,10 @@ import {
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
-import { constrainTimelineDragDelta } from "../utils/timeline";
+import {
+  constrainTimelineDragDelta,
+  groupTimelineItemsIntoColumns,
+} from "../utils/timeline";
 
 type DragMode = "move" | "resize-top" | "resize-bottom";
 
@@ -30,21 +33,7 @@ function calculateItemPositions(
   items: LayoutItem[],
   baseWidth: number | string,
 ): Record<string, ItemPosition> {
-  const sorted = [...items].sort((a, b) => a.offset - b.offset);
-  const columns: LayoutItem[][] = [];
-
-  sorted.forEach((item) => {
-    let placed = false;
-    for (const col of columns) {
-      const lastItem = col[col.length - 1];
-      if (item.offset >= lastItem.offset + lastItem.size) {
-        col.push(item);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) columns.push([item]);
-  });
+  const columns = groupTimelineItemsIntoColumns(items);
 
   const positions: Record<string, ItemPosition> = {};
   columns.forEach((col, colIndex) => {
