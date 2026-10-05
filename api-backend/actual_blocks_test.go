@@ -1,9 +1,6 @@
 package main
 
-import (
-	"errors"
-	"testing"
-)
+import "testing"
 
 func TestComputeTimelineEventConfigurations(t *testing.T) {
 	firstCategoryID := 1
@@ -141,16 +138,29 @@ func TestComputeTimelineAmendmentChangesEffectiveTime(t *testing.T) {
 	}
 }
 
-func TestComputeTimelineEqualEffectiveTransitionsReturnConflict(t *testing.T) {
-	categoryID := 1
+func TestComputeTimelineEqualEffectiveTransitionsKeepLastObservation(t *testing.T) {
+	firstCategoryID := 1
+	secondCategoryID := 2
 	transitionTime := parseTime("2026-07-20T09:00:00Z")
+	endTime := parseTime("2026-07-20T10:00:00Z")
 	events := []DayEvent{
-		{ID: 1, EventType: "transition", CategoryID: &categoryID, OccurredAt: transitionTime},
-		{ID: 2, EventType: "transition", CategoryID: &categoryID, OccurredAt: transitionTime},
+		{ID: 1, EventType: "transition", CategoryID: &firstCategoryID, OccurredAt: transitionTime},
+		{ID: 2, EventType: "transition", CategoryID: &secondCategoryID, OccurredAt: transitionTime},
+		{ID: 3, EventType: "confirmation", CategoryID: &secondCategoryID, OccurredAt: endTime},
 	}
-	_, err := computeTimeline(events)
-	if !errors.Is(err, ErrNonMonotonicTransitions) {
-		t.Fatalf("expected non-monotonic transition error, got %v", err)
+
+	blocks, err := computeTimeline(events)
+	if err != nil {
+		t.Fatalf("computeTimeline failed: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected one block, got %d: %+v", len(blocks), blocks)
+	}
+	if blocks[0].CategoryID == nil || *blocks[0].CategoryID != secondCategoryID {
+		t.Fatalf("expected last same-time observation category %d, got %+v", secondCategoryID, blocks[0].CategoryID)
+	}
+	if blocks[0].DurationMinutes != 60 {
+		t.Fatalf("expected 60-minute block, got %d", blocks[0].DurationMinutes)
 	}
 }
 

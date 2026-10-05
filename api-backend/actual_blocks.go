@@ -98,6 +98,7 @@ func observationsFromEvents(events []resolvedDayEvent) []timelineObservation {
 }
 
 func calculateTimelineBlocks(observations []timelineObservation) ([]timelineBlock, error) {
+	observations = collapseEqualTimestampObservations(observations)
 	blocks := make([]timelineBlock, 0, len(observations))
 	for index := 0; index < len(observations)-1; index++ {
 		start := observations[index]
@@ -112,6 +113,26 @@ func calculateTimelineBlocks(observations []timelineObservation) ([]timelineBloc
 		})
 	}
 	return blocks, nil
+}
+
+// collapseEqualTimestampObservations keeps the last observation at a timestamp.
+// Resolved events are sorted by timestamp and server ID, so the last observation
+// is the deterministic final state for events recorded at the same instant.
+func collapseEqualTimestampObservations(observations []timelineObservation) []timelineObservation {
+	if len(observations) < 2 {
+		return observations
+	}
+
+	collapsedObservations := make([]timelineObservation, 0, len(observations))
+	for _, observation := range observations {
+		lastIndex := len(collapsedObservations) - 1
+		if lastIndex >= 0 && observation.occurredAt.Equal(collapsedObservations[lastIndex].occurredAt) {
+			collapsedObservations[lastIndex] = observation
+			continue
+		}
+		collapsedObservations = append(collapsedObservations, observation)
+	}
+	return collapsedObservations
 }
 
 func normalizeTimelineBlocks(blocks []timelineBlock) []timelineBlock {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   constrainTimelineDragDelta,
   constrainTimelinePosition,
+  findNewTimelineBlockPosition,
 } from "./timeline";
 
 const options = {
@@ -11,6 +12,54 @@ const options = {
   snapToEdges: true,
   edgeSnapThreshold: 8,
 };
+
+describe("findNewTimelineBlockPosition", () => {
+  it("adds a 30-minute block after the latest block instead of filling an earlier gap", () => {
+    const result = findNewTimelineBlockPosition(
+      [
+        { startMinutes: 8 * 60, durationMinutes: 30 },
+        { startMinutes: 12 * 60, durationMinutes: 45 },
+      ],
+      8 * 60,
+      18 * 60,
+    );
+
+    expect(result).toEqual({
+      startMinutes: 12 * 60 + 46,
+      durationMinutes: 30,
+    });
+  });
+
+  it("starts at the day-range beginning when there are no in-range blocks", () => {
+    const result = findNewTimelineBlockPosition(
+      [{ startMinutes: 7 * 60, durationMinutes: 30 }],
+      8 * 60,
+      18 * 60,
+    );
+
+    expect(result).toEqual({ startMinutes: 8 * 60, durationMinutes: 30 });
+  });
+
+  it("returns no position when 30 minutes do not fit after the latest block", () => {
+    const result = findNewTimelineBlockPosition(
+      [{ startMinutes: 17 * 60 + 30, durationMinutes: 30 }],
+      8 * 60,
+      18 * 60,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("caps a block that extends past the day range before placing the addition", () => {
+    const result = findNewTimelineBlockPosition(
+      [{ startMinutes: 17 * 60 + 45, durationMinutes: 60 }],
+      8 * 60,
+      18 * 60,
+    );
+
+    expect(result).toBeNull();
+  });
+});
 
 describe("constrainTimelinePosition", () => {
   it("keeps adjacent blocks adjacent without shifting the next block", () => {

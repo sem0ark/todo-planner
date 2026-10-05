@@ -3,6 +3,40 @@ export interface TimelinePosition {
   durationMinutes: number;
 }
 
+/** Finds a 30-minute addition point immediately after the latest in-range block. */
+export function findNewTimelineBlockPosition(
+  blocks: TimelinePosition[],
+  dayStartMinutes: number,
+  dayEndMinutes: number,
+): TimelinePosition | null {
+  const latestBlockEndMinutes = blocks.reduce<number | null>(
+    (latestEndMinutes, block) => {
+      const blockEndMinutes = block.startMinutes + block.durationMinutes;
+      if (
+        block.startMinutes >= dayEndMinutes ||
+        blockEndMinutes <= dayStartMinutes
+      ) {
+        return latestEndMinutes;
+      }
+
+      const visibleBlockEndMinutes = Math.min(dayEndMinutes, blockEndMinutes);
+      return latestEndMinutes === null
+        ? visibleBlockEndMinutes
+        : Math.max(latestEndMinutes, visibleBlockEndMinutes);
+    },
+    null,
+  );
+  const startMinutes =
+    latestBlockEndMinutes === null
+      ? dayStartMinutes
+      : latestBlockEndMinutes + 1;
+  const durationMinutes = 30;
+
+  if (startMinutes + durationMinutes > dayEndMinutes) return null;
+
+  return { startMinutes, durationMinutes };
+}
+
 export type TimelineDragMode = "move" | "resize-top" | "resize-bottom";
 
 export interface TimelineItemPosition {

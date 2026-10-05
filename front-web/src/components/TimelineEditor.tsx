@@ -5,7 +5,10 @@ import type { Category } from "../services/categories";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { getContrastTextColor } from "../utils/colors";
 import { createPortal } from "react-dom";
-import { constrainTimelinePosition } from "../utils/timeline";
+import {
+  constrainTimelinePosition,
+  findNewTimelineBlockPosition,
+} from "../utils/timeline";
 
 const GRID_UNIT = 2;
 const SNAP_INTERVAL = 15;
@@ -398,41 +401,14 @@ export default function TimelineEditor<T extends EditableBlock>({
   };
 
   const findNewBlockPosition = () => {
-    const defaultDuration = Math.min(60, dayRangeMinutes);
-    const sortedBlocks = blocks
-      .map((block) => ({
+    return findNewTimelineBlockPosition(
+      blocks.map((block) => ({
         startMinutes: timeToMinutes(block.start_time),
-        endMinutes: timeToMinutes(block.start_time) + block.duration_minutes,
-      }))
-      .sort((left, right) => left.startMinutes - right.startMinutes);
-    let cursorMinutes = dayStartMinutes;
-
-    for (const block of sortedBlocks) {
-      const blockStartMinutes = Math.max(dayStartMinutes, block.startMinutes);
-      const blockEndMinutes = Math.min(dayEndMinutes, block.endMinutes);
-      const snappedStartMinutes =
-        Math.ceil(cursorMinutes / snapInterval) * snapInterval;
-      if (
-        blockEndMinutes > cursorMinutes &&
-        snappedStartMinutes + defaultDuration <= blockStartMinutes
-      ) {
-        return {
-          startMinutes: snappedStartMinutes,
-          durationMinutes: defaultDuration,
-        };
-      }
-      cursorMinutes = Math.max(cursorMinutes, blockEndMinutes);
-    }
-
-    const snappedStartMinutes =
-      Math.ceil(cursorMinutes / snapInterval) * snapInterval;
-    if (snappedStartMinutes + defaultDuration <= dayEndMinutes) {
-      return {
-        startMinutes: snappedStartMinutes,
-        durationMinutes: defaultDuration,
-      };
-    }
-    return null;
+        durationMinutes: block.duration_minutes,
+      })),
+      dayStartMinutes,
+      dayEndMinutes,
+    );
   };
 
   const addBlock = () => {

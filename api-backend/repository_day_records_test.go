@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 )
@@ -634,8 +633,8 @@ func TestComputeActualBlocks_MixedEvents(t *testing.T) {
 	}
 }
 
-func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
-	// Arrange - equal effective transition times are invalid, not silently skipped.
+func TestComputeActualBlocks_EqualTimestampTransitionsKeepLastObservation(t *testing.T) {
+	// Arrange - equal effective transition times are collapsed deterministically.
 	category1 := 5
 
 	events := []DayEvent{
@@ -654,11 +653,14 @@ func TestComputeActualBlocks_ZeroDurationBlocks(t *testing.T) {
 	}
 
 	// Act
-	_, err := computeTimeline(events)
+	blocks, err := computeTimeline(events)
 
 	// Assert
-	if !errors.Is(err, ErrNonMonotonicTransitions) {
-		t.Fatalf("Expected non-monotonic transition error, got %v", err)
+	if err != nil {
+		t.Fatalf("Expected equal timestamps to be accepted, got %v", err)
+	}
+	if len(blocks) != 0 {
+		t.Fatalf("Expected no block without a later observation, got %+v", blocks)
 	}
 }
 
