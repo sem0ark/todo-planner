@@ -43,7 +43,7 @@ func toPublicTemplateBlocks(blocks []SnapshotBlock) []PublicTemplateBlock {
 	for _, block := range blocks {
 		publicBlocks = append(publicBlocks, PublicTemplateBlock{
 			CategoryID:      block.CategoryID,
-			StartTime:       formatScheduleTime(block.StartTime),
+			StartTime:       block.StartTime,
 			DurationMinutes: block.DurationMinutes,
 		})
 	}

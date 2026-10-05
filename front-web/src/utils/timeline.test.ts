@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   constrainTimelineDragDelta,
   constrainTimelinePosition,
+  findNewTimelineBlockPosition,
+  groupTimelineItemsIntoColumns,
 } from "./timeline";
 
 const options = {
@@ -11,6 +13,122 @@ const options = {
   snapToEdges: true,
   edgeSnapThreshold: 8,
 };
+
+describe("groupTimelineItemsIntoColumns", () => {
+  it("keeps second-precise adjacent actual blocks in the same column", () => {
+    const actualBlocks = [
+      { id: "first", offset: 8 * 60 + 19 + 36 / 60, size: 246 },
+      { id: "second", offset: 12 * 60 + 25 + 52 / 60, size: 104 },
+      { id: "third", offset: 14 * 60 + 9 + 52 / 60, size: 30 },
+      { id: "fourth", offset: 14 * 60 + 39 + 52 / 60, size: 162 },
+      { id: "fifth", offset: 17 * 60 + 21 + 52 / 60, size: 30 },
+    ];
+
+    const columns = groupTimelineItemsIntoColumns(actualBlocks);
+
+    expect(columns).toHaveLength(1);
+    expect(columns[0].map((block) => block.id)).toEqual([
+      "first",
+      "second",
+      "third",
+      "fourth",
+      "fifth",
+    ]);
+  });
+
+  it("keeps actual overlaps in separate columns", () => {
+    const overlappingBlocks = [
+      { id: "first", offset: 8 * 60, size: 60 },
+      { id: "overlapping", offset: 8 * 60 + 59, size: 30 },
+    ];
+
+    expect(groupTimelineItemsIntoColumns(overlappingBlocks)).toHaveLength(2);
+  });
+});
+
+describe("findNewTimelineBlockPosition", () => {
+  it("chooses the fitting hole closest to the visible timeline center", () => {
+    const result = findNewTimelineBlockPosition(
+      [
+        { startMinutes: 8 * 60, durationMinutes: 30 },
+        { startMinutes: 10 * 60, durationMinutes: 30 },
+        { startMinutes: 14 * 60, durationMinutes: 30 },
+      ],
+      8 * 60,
+      18 * 60,
+      13 * 60,
+    );
+
+    expect(result).toEqual({ startMinutes: 12 * 60 + 45, durationMinutes: 30 });
+  });
+
+  it("centers a new block in the visible area when there are no blocks", () => {
+    const result = findNewTimelineBlockPosition(
+      [],
+      8 * 60,
+      18 * 60,
+      13 * 60,
+    );
+
+    expect(result).toEqual({ startMinutes: 12 * 60 + 45, durationMinutes: 30 });
+  });
+
+  it("returns no position when no hole can fit 30 minutes", () => {
+    const result = findNewTimelineBlockPosition(
+      [{ startMinutes: 8 * 60, durationMinutes: 10 * 60 }],
+      8 * 60,
+      18 * 60,
+      13 * 60,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("ignores blocks outside the day range", () => {
+    const result = findNewTimelineBlockPosition(
+      [{ startMinutes: 7 * 60, durationMinutes: 30 }],
+      8 * 60,
+      18 * 60,
+      13 * 60,
+    );
+
+    expect(result).toEqual({ startMinutes: 12 * 60 + 45, durationMinutes: 30 });
+  });
+
+  it("uses the visible center to select a hole and snaps to the configured interval", () => {
+    const result = findNewTimelineBlockPosition(
+      [
+        { startMinutes: 8 * 60 + 30, durationMinutes: 30 },
+        { startMinutes: 10 * 60, durationMinutes: 2 * 60 + 37 },
+        { startMinutes: 14 * 60 + 7, durationMinutes: 3 * 60 },
+      ],
+      8 * 60,
+      18 * 60,
+      13 * 60 + 50,
+      15,
+    );
+
+    expect(result).toEqual({ startMinutes: 13 * 60 + 30, durationMinutes: 30 });
+  });
+
+  it("rounds second-precise gap edges up to a minute without overlapping", () => {
+    const previousBlockEnd = 13 * 60 + 7 + 52 / 60;
+    const result = findNewTimelineBlockPosition(
+      [
+        { startMinutes: 8 * 60, durationMinutes: 30 },
+        { startMinutes: previousBlockEnd - 60, durationMinutes: 60 },
+        { startMinutes: 15 * 60, durationMinutes: 180 },
+      ],
+      8 * 60,
+      18 * 60,
+      13 * 60 + 23,
+      1,
+    );
+
+    expect(result).toEqual({ startMinutes: 13 * 60 + 8, durationMinutes: 30 });
+    expect(result!.startMinutes).toBeGreaterThanOrEqual(previousBlockEnd);
+  });
+});
 
 describe("constrainTimelinePosition", () => {
   it("keeps adjacent blocks adjacent without shifting the next block", () => {

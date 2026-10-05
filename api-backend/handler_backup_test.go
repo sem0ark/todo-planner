@@ -48,11 +48,13 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 		t.Fatalf("unexpected backup payload: %+v", backup)
 	}
 
+	timezoneOffsetMinutes := 120
+	backupClientEventID := "backup-event-2"
 	postPayload := BackupData{
 		Version: 1,
 		Days: []BackupDay{{
 			CalendarDate:          calendarDate,
-			TimezoneOffsetMinutes: intPointer(120),
+			TimezoneOffsetMinutes: &timezoneOffsetMinutes,
 			TimezoneOffsetLocked:  true,
 			Actual: []BackupActualBlock{{
 				CategoryID:      &category.ID,
@@ -63,7 +65,7 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 		}},
 		Events: []BackupEvent{{
 			CalendarDate:    calendarDate,
-			ClientEventID:   backupStringPointer("backup-event-2"),
+			ClientEventID:   &backupClientEventID,
 			EventType:       "transition",
 			CategoryID:      &category.ID,
 			OccurredAt:      time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC),
@@ -115,10 +117,6 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 		t.Fatalf("expected one imported actual block, got %d", actualBlockCount)
 	}
 }
-
-func backupStringPointer(value string) *string { return &value }
-
-func intPointer(value int) *int { return &value }
 
 func TestBackupRouterRejectsInvalidBackup(t *testing.T) {
 	database := setupTestDB(t)

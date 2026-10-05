@@ -5,7 +5,10 @@ import type { Category } from "../services/categories";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { getContrastTextColor } from "../utils/colors";
 import { createPortal } from "react-dom";
-import { constrainTimelinePosition } from "../utils/timeline";
+import {
+  constrainTimelinePosition,
+  findNewTimelineBlockPosition,
+} from "../utils/timeline";
 
 const GRID_UNIT = 2;
 const SNAP_INTERVAL = 15;
@@ -398,41 +401,46 @@ export default function TimelineEditor<T extends EditableBlock>({
   };
 
   const findNewBlockPosition = () => {
-    const defaultDuration = Math.min(60, dayRangeMinutes);
-    const sortedBlocks = blocks
-      .map((block) => ({
+    const timelineContainer = containerRef.current;
+    const visibleCenterMinutes = timelineContainer
+      ? dayStartMinutes +
+        (timelineContainer.scrollTop + timelineContainer.clientHeight / 2) /
+          GRID_UNIT
+      : (dayStartMinutes + dayEndMinutes) / 2;
+
+    return findNewTimelineBlockPosition(
+      blocks.map((block) => ({
         startMinutes: timeToMinutes(block.start_time),
-        endMinutes: timeToMinutes(block.start_time) + block.duration_minutes,
-      }))
-      .sort((left, right) => left.startMinutes - right.startMinutes);
-    let cursorMinutes = dayStartMinutes;
+        durationMinutes: block.duration_minutes,
+      })),
+      dayStartMinutes,
+      dayEndMinutes,
+      visibleCenterMinutes,
+      snapInterval,
+    );
+  };
 
-    for (const block of sortedBlocks) {
-      const blockStartMinutes = Math.max(dayStartMinutes, block.startMinutes);
-      const blockEndMinutes = Math.min(dayEndMinutes, block.endMinutes);
-      const snappedStartMinutes =
-        Math.ceil(cursorMinutes / snapInterval) * snapInterval;
-      if (
-        blockEndMinutes > cursorMinutes &&
-        snappedStartMinutes + defaultDuration <= blockStartMinutes
-      ) {
-        return {
-          startMinutes: snappedStartMinutes,
-          durationMinutes: defaultDuration,
-        };
-      }
-      cursorMinutes = Math.max(cursorMinutes, blockEndMinutes);
-    }
+  const revealNewBlockPosition = (position: {
+    startMinutes: number;
+    durationMinutes: number;
+  }) => {
+    const timelineContainer = containerRef.current;
+    if (!timelineContainer) return;
 
-    const snappedStartMinutes =
-      Math.ceil(cursorMinutes / snapInterval) * snapInterval;
-    if (snappedStartMinutes + defaultDuration <= dayEndMinutes) {
-      return {
-        startMinutes: snappedStartMinutes,
-        durationMinutes: defaultDuration,
-      };
-    }
-    return null;
+    const blockTop = (position.startMinutes - dayStartMinutes) * GRID_UNIT;
+    const blockBottom = blockTop + position.durationMinutes * GRID_UNIT;
+    const visibleTop = timelineContainer.scrollTop;
+    const visibleBottom = visibleTop + timelineContainer.clientHeight;
+    if (blockTop >= visibleTop && blockBottom <= visibleBottom) return;
+
+    const centeredScrollTop =
+      (blockTop + blockBottom - timelineContainer.clientHeight) / 2;
+    const maximumScrollTop =
+      timelineContainer.scrollHeight - timelineContainer.clientHeight;
+    timelineContainer.scrollTo({
+      top: Math.min(maximumScrollTop, Math.max(0, centeredScrollTop)),
+      behavior: "smooth",
+    });
   };
 
   const addBlock = () => {
@@ -449,6 +457,7 @@ export default function TimelineEditor<T extends EditableBlock>({
           : {}),
       } as T,
     ]);
+    revealNewBlockPosition(newBlockPosition);
   };
 
   const addBlankBlock = () => {
@@ -463,6 +472,7 @@ export default function TimelineEditor<T extends EditableBlock>({
         duration_minutes: newBlockPosition.durationMinutes,
       } as T,
     ]);
+    revealNewBlockPosition(newBlockPosition);
   };
 
   const selectedBlockIndex = useMemo(() => {

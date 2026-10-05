@@ -41,7 +41,7 @@ func toPublicDayRecord(record *DayRecord) PublicDayRecord {
 			startTime = shiftScheduleTime(startTime, *record.TimezoneOffsetMinutes)
 		}
 		actualBlocks = append(actualBlocks, PublicTimelineBlock{CategoryID: block.CategoryID,
-			BlockType: block.BlockType, StartTime: formatScheduleTime(startTime),
+			BlockType: block.BlockType, StartTime: startTime,
 			DurationMinutes: block.DurationMinutes})
 	}
 	return PublicDayRecord{CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,

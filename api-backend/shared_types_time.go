@@ -173,8 +173,6 @@ func parseScheduleTime(value string) (ScheduleTime, error) {
 	return ScheduleTime(parsedTime), nil
 }
 
-func formatScheduleTime(value ScheduleTime) ScheduleTime { return value }
-
 func (date CalendarDate) MarshalJSON() ([]byte, error) {
 	return json.Marshal(time.Time(date).Format(DateFormat))
 }

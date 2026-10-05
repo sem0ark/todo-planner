@@ -415,7 +415,7 @@ func (r *DayRecordRepository) getSnapshotBlocks(ctx context.Context, snapshotID 
 		blocks = append(blocks, block)
 	}
 
-	return blocks, nil
+	return blocks, rows.Err()
 }
 
 // Helper: get actual blocks for a day record
@@ -426,6 +426,10 @@ func (r *DayRecordRepository) getActualBlocks(ctx context.Context, dayRecordID i
 		WHERE day_record_id = $1
 		ORDER BY start_time ASC
 	`, dayRecordID)
+	return getActualBlocksFromQuery(ctx, rows, err)
+}
+
+func getActualBlocksFromQuery(ctx context.Context, rows pgx.Rows, err error) ([]ActualBlock, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -728,18 +732,31 @@ func (r *DayRecordRepository) recomputeActualBlocks(ctx context.Context, transac
 		return nil, err
 	}
 
-	computedBlocks, err := computeTimeline(events)
+	var calendarDate CalendarDate
+	if err := transaction.QueryRow(ctx, `SELECT calendar_date FROM day_records WHERE id = $1`, dayRecordID).Scan(&calendarDate); err != nil {
+		return nil, err
+	}
+	rows, err := transaction.Query(ctx, `
+		SELECT id, day_record_id, category_id, block_type, start_time, duration_minutes, updated_at
+		FROM actual_blocks
+		WHERE day_record_id = $1
+		ORDER BY start_time ASC
+	`, dayRecordID)
+	if err != nil {
+		return nil, err
+	}
+	existingBlocks, err := getActualBlocksFromQuery(ctx, rows, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Resolve before deleting so amendment conflicts roll back the whole request.
-	if _, err = transaction.Exec(ctx, `DELETE FROM actual_blocks WHERE day_record_id = $1`, dayRecordID); err != nil {
+	computedBlocks, err := computeIncrementalTimeline(events, existingBlocks, calendarDate)
+	if err != nil {
 		return nil, err
 	}
 
-	// Persist computed blocks to database
-	blocks := make([]ActualBlock, 0, len(computedBlocks))
+	blocks := make([]ActualBlock, 0, len(existingBlocks)+len(computedBlocks))
+	blocks = append(blocks, existingBlocks...)
 	now := time.Now()
 
 	for _, computed := range computedBlocks {
