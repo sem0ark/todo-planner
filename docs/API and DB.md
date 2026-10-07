@@ -169,6 +169,7 @@ erDiagram
         string client_event_id
         string event_type
         integer category_id FK
+        string text "nullable; required for note; max 512 characters"
         timestamp occurred_at
         string occurred_at_local
         string target_client_event_id
@@ -784,7 +785,7 @@ Creates or replaces the schedule override for a specific calendar date. The requ
 ```json
 {
   "id": "integer",
-  "calendar_date": "string (YYYY-MM-DD)",
+  "calendar_date": "2026-10-30",
   "day_template_id": "integer",
   "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
 }
@@ -815,27 +816,43 @@ Day records are the primary data surface for both the live widget and the review
 
 ```json
 {
-  "calendar_date": "string (YYYY-MM-DD)",
+  "calendar_date": "2026-10-30",
   "day_template_id": 5,
   "timezone_offset_minutes": 120,
   "timezone_offset_locked": true,
   "plan": [
     {
       "category_id": 3,
-      "start_time": "string (HH:MM:SS)",
+      "start_time": "09:00:00",
       "duration_minutes": 60
     }
   ],
-  "actual": [
+      "actual": [
     {
       "category_id": 3,
       "block_type": "actual",
-      "start_time": "string (HH:MM:SS)",
+      "start_time": "09:05:00",
       "duration_minutes": 55
     }
   ],
-  "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
-  "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
+  "events": [
+    {
+      "event_type": "transition",
+      "category_id": 3,
+      "text": null,
+      "occurred_at": "2026-10-30T10:00:00Z",
+      "occurred_at_local": "2026-10-30T12:00:00+02:00"
+    },
+    {
+      "event_type": "note",
+      "category_id": 3,
+      "text": "Some note...",
+      "occurred_at": "2026-10-30T10:00:00Z",
+      "occurred_at_local": "2026-10-30T12:00:00+02:00"
+    }
+  ],
+  "created_at": "2026-10-30T08:00:00Z",
+  "updated_at": "2026-10-30T10:00:00Z"
 }
 ```
 
@@ -851,27 +868,43 @@ Returns existing day records within the specified inclusive date range. Dates wi
 {
   "days": [
     {
-      "calendar_date": "string (YYYY-MM-DD)",
-      "day_template_id": "integer | null",
-      "timezone_offset_minutes": "integer | null",
-      "timezone_offset_locked": "boolean",
+      "calendar_date": "2026-10-30",
+      "day_template_id": 5,
+      "timezone_offset_minutes": 120,
+      "timezone_offset_locked": true,
       "plan": [
         {
-          "category_id": "integer",
-          "start_time": "string (HH:MM:SS)",
-          "duration_minutes": "integer"
+          "category_id": 3,
+          "start_time": "09:00:00",
+          "duration_minutes": 60
         }
       ],
       "actual": [
         {
-          "category_id": "integer | null",
-          "block_type": "actual | blank | untracked",
-          "start_time": "string (HH:MM:SS)",
-          "duration_minutes": "integer"
+          "category_id": 3,
+          "block_type": "actual",
+          "start_time": "09:05:00",
+          "duration_minutes": 55
         }
       ],
-      "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
-      "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
+      "events": [
+        {
+          "event_type": "transition",
+          "category_id": 3,
+          "text": null,
+          "occurred_at": "2026-10-30T10:00:00Z",
+          "occurred_at_local": "2026-10-30T12:00:00+02:00"
+        },
+        {
+          "event_type": "note",
+          "category_id": 3,
+          "text": "Some note...",
+          "occurred_at": "2026-10-30T10:00:00Z",
+          "occurred_at_local": "2026-10-30T12:00:00+02:00"
+        }
+      ],
+      "created_at": "2026-10-30T08:00:00Z",
+      "updated_at": "2026-10-30T10:00:00Z"
     }
   ]
 }
@@ -935,6 +968,7 @@ Native clients may persist events locally and submit them in batches during star
 |---|---|---|
 | `transition` | Category change | Closes previous block, opens new block at this event's effective time |
 | `confirmation` | Liveness/state marker | Does not change the boundary when its category matches the current block; a different category creates a boundary like a transition |
+| `note` | Timed note | Stores text with the current category and behaves like a confirmation for timeline derivation; does not independently create a boundary |
 | `amendment` | Correct an event's timestamp | Rewrites `occurred_at` of the target event; not included in output |
 
 **Input:**
@@ -944,8 +978,9 @@ Native clients may persist events locally and submit them in batches during star
   "events": [
     {
       "client_event_id": "uuid",
-      "event_type": "transition | confirmation | amendment",
+      "event_type": "transition | confirmation | note | amendment",
       "category_id": 4,
+      "text": "string, required for note events, maximum 512 characters, otherwise null",
       "occurred_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
       "occurred_at_local": "string (YYYY-MM-DDTHH:MM:SS±HH:MM)",
       "target_client_event_id": "uuid | null",
@@ -960,7 +995,7 @@ Native clients may persist events locally and submit them in batches during star
 1. **Apply amendments** — For each amendment, update the target event's effective time to `corrected_at`; amendments themselves are not stored as blocks.
 2. **Sort by effective time** — Deterministic order: `(effective_at, server_id)`, never client timestamp alone, to guarantee repeatable results across recomputation.
 3. **Clamp to day boundary** — Events outside the day's 24-hour window are excluded (retained for audit).
-4. **Extract boundaries** — Transitions always drive actual block computation. A confirmation with the same category as the current block is attached to that block; a confirmation with a different category creates a boundary like a transition.
+4. **Extract boundaries** — Transitions always drive actual block computation. A confirmation or note with the same category as the current block is attached to that block; a confirmation or note with a different category creates a boundary like a transition.
 5. **Compute blocks** — If zero boundaries exist, the entire day is `untracked`. Otherwise, each boundary closes the prior block and opens a new one. When no later boundary exists, the latest attached confirmation closes the materialized duration of the final block; without one, the open block is not materialized. Time before the first boundary is `untracked`.
 
 **Block Computation Rules:**
@@ -986,6 +1021,7 @@ Native clients may persist events locally and submit them in batches during star
       "client_event_id": "uuid",
       "event_type": "transition",
       "category_id": 4,
+      "text": null,
       "occurred_at": "2026-09-06T14:26:37Z",
       "occurred_at_local": "2026-09-06T16:26:37+02:00"
     }
@@ -1000,6 +1036,15 @@ Native clients may persist events locally and submit them in batches during star
       "start_time": "14:26:00",
       "duration_minutes": 0,
       "is_open": true
+    }
+  ],
+  "events": [
+    {
+      "event_type": "note",
+      "category_id": 4,
+      "text": "Some note...",
+      "occurred_at": "2026-09-06T14:26:37Z",
+      "occurred_at_local": "2026-09-06T16:26:37+02:00"
     }
   ],
   "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",

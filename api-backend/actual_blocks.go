@@ -83,7 +83,7 @@ func resolveTimeline(events []DayEvent) []resolvedDayEvent {
 func observationsFromEvents(events []resolvedDayEvent) []timelineObservation {
 	observations := make([]timelineObservation, 0, len(events))
 	for _, event := range events {
-		if event.event.EventType != "transition" && event.event.EventType != "confirmation" {
+		if event.event.EventType != "transition" && event.event.EventType != "confirmation" && event.event.EventType != "note" {
 			continue
 		}
 		if event.event.CategoryID == nil {

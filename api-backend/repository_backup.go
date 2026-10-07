@@ -16,6 +16,7 @@ type BackupEvent struct {
 	ClientEventID       *string      `json:"client_event_id,omitempty"`
 	EventType           string       `json:"event_type"`
 	CategoryID          *int         `json:"category_id"`
+	Text                *string      `json:"text,omitempty"`
 	OccurredAt          time.Time    `json:"occurred_at"`
 	OccurredAtLocal     string       `json:"occurred_at_local"`
 	TargetClientEventID *string      `json:"target_client_event_id,omitempty"`
@@ -180,7 +181,7 @@ func backupScheduleTime(value ScheduleTime) string {
 func (repository *BackupRepository) findEvents(ctx context.Context, userID int) ([]BackupEvent, error) {
 	rows, err := repository.db.Query(ctx, `
 		SELECT events.id, records.calendar_date, events.device_id, events.client_event_id,
-		       events.event_type, events.category_id, events.occurred_at,
+		       events.event_type, events.category_id, events.text, events.occurred_at,
 		       COALESCE(events.occurred_at_local, ''), events.target_client_event_id,
 		       events.corrected_at, events.corrected_at_local
 		FROM day_events events
@@ -194,7 +195,7 @@ func (repository *BackupRepository) findEvents(ctx context.Context, userID int) 
 	events := make([]BackupEvent, 0)
 	for rows.Next() {
 		var event BackupEvent
-		if err := rows.Scan(&event.ID, &event.CalendarDate, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.OccurredAt, &event.OccurredAtLocal, &event.TargetClientEventID, &event.CorrectedAt, &event.CorrectedAtLocal); err != nil {
+		if err := rows.Scan(&event.ID, &event.CalendarDate, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.Text, &event.OccurredAt, &event.OccurredAtLocal, &event.TargetClientEventID, &event.CorrectedAt, &event.CorrectedAtLocal); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -365,12 +366,12 @@ func (repository *BackupRepository) Import(ctx context.Context, userID int, back
 		commandTag, insertError := transaction.Exec(ctx, `
 			INSERT INTO day_events
 			(day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, occurred_at_local,
-			 target_client_event_id, corrected_at, corrected_at_local)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			 target_client_event_id, corrected_at, corrected_at_local, text)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 			ON CONFLICT DO NOTHING
 		`, dayRecordID, nil, event.ClientEventID, event.EventType,
 			mappedEventCategoryID(categoryIDs, event.CategoryID), event.OccurredAt, event.OccurredAtLocal,
-			event.TargetClientEventID, event.CorrectedAt, event.CorrectedAtLocal)
+			event.TargetClientEventID, event.CorrectedAt, event.CorrectedAtLocal, event.Text)
 		if insertError != nil {
 			return 0, insertError
 		}

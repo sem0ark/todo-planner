@@ -10,6 +10,7 @@ type publicAcceptedEvent struct {
 	ClientEventID   string       `json:"client_event_id"`
 	EventType       string       `json:"event_type"`
 	CategoryID      *int         `json:"category_id"`
+	Text            *string      `json:"text"`
 	OccurredAt      APITimestamp `json:"occurred_at"`
 	OccurredAtLocal string       `json:"occurred_at_local"`
 }
@@ -29,6 +30,7 @@ type dayEventRequest struct {
 	TargetClientEventID *string       `json:"target_client_event_id"`
 	CorrectedAt         *APITimestamp `json:"corrected_at"`
 	CorrectedAtLocal    *string       `json:"corrected_at_local"`
+	Text                *string       `json:"text"`
 }
 
 type dayEventsRequest struct {
@@ -51,6 +53,7 @@ func toInternalDayEventsRequest(request dayEventsRequest) DayEventsInput {
 		events = append(events, DayEventInput{
 			ClientEventID: event.ClientEventID, EventType: event.EventType,
 			CategoryID: event.CategoryID, OccurredAt: time.Time(event.OccurredAt),
+			Text:                event.Text,
 			TargetClientEventID: targetClientEventID, CorrectedAt: correctedAt, OccurredAtLocal: event.OccurredAtLocal, CorrectedAtLocal: event.CorrectedAtLocal,
 		})
 	}
@@ -175,7 +178,7 @@ func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http
 		if event.ClientEventID != nil {
 			clientEventID = *event.ClientEventID
 		}
-		acceptedEvents = append(acceptedEvents, publicAcceptedEvent{clientEventID, event.EventType, event.CategoryID, APITimestamp(event.OccurredAt), event.OccurredAtLocal})
+		acceptedEvents = append(acceptedEvents, publicAcceptedEvent{clientEventID, event.EventType, event.CategoryID, event.Text, APITimestamp(event.OccurredAt), event.OccurredAtLocal})
 	}
 	api.logger.Info("Building day events response", map[string]interface{}{
 		"accepted_events":  len(acceptedEvents),

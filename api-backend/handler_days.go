@@ -12,6 +12,14 @@ type PublicTimelineBlock struct {
 	DurationMinutes int          `json:"duration_minutes"`
 }
 
+type PublicDayEvent struct {
+	EventType       string       `json:"event_type"`
+	CategoryID      *int         `json:"category_id"`
+	Text            *string      `json:"text"`
+	OccurredAt      APITimestamp `json:"occurred_at"`
+	OccurredAtLocal string       `json:"occurred_at_local"`
+}
+
 type PublicDayRecord struct {
 	CalendarDate          CalendarDate          `json:"calendar_date"`
 	DayTemplateID         *int                  `json:"day_template_id"`
@@ -19,6 +27,7 @@ type PublicDayRecord struct {
 	TimezoneOffsetLocked  bool                  `json:"timezone_offset_locked"`
 	Plan                  []PublicTemplateBlock `json:"plan"`
 	Actual                []PublicTimelineBlock `json:"actual"`
+	Events                []PublicDayEvent      `json:"events"`
 	CreatedAt             APITimestamp          `json:"created_at"`
 	UpdatedAt             APITimestamp          `json:"updated_at"`
 }
@@ -44,9 +53,16 @@ func toPublicDayRecord(record *DayRecord) PublicDayRecord {
 			BlockType: block.BlockType, StartTime: startTime,
 			DurationMinutes: block.DurationMinutes})
 	}
+	events := make([]PublicDayEvent, 0, len(record.Events))
+	for _, event := range record.Events {
+		events = append(events, PublicDayEvent{
+			EventType: event.EventType, CategoryID: event.CategoryID, Text: event.Text,
+			OccurredAt: APITimestamp(event.OccurredAt), OccurredAtLocal: event.OccurredAtLocal,
+		})
+	}
 	return PublicDayRecord{CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
 		TimezoneOffsetMinutes: record.TimezoneOffsetMinutes, TimezoneOffsetLocked: record.TimezoneOffsetLocked,
-		Plan: plan, Actual: actualBlocks, CreatedAt: APITimestamp(record.CreatedAt),
+		Plan: plan, Actual: actualBlocks, Events: events, CreatedAt: APITimestamp(record.CreatedAt),
 		UpdatedAt: APITimestamp(record.UpdatedAt)}
 }
 
