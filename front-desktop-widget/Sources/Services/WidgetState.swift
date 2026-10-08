@@ -70,6 +70,7 @@ enum DayEventType: String {
   case confirmation
   case transition
   case amendment
+  case note
 }
 
 enum WidgetEffect {
@@ -203,20 +204,25 @@ func tickPomodoro(_ context: inout WidgetContext) -> PomodoroTickOutcome {
       "crossedWorkLimit": String(crossedWorkLimit),
     ])
 
-  if context.pomodoroPhase == .rest && context.pomodoroElapsed >= autoSkipLimit {
+  if context.pomodoroElapsed >= autoSkipLimit {
     WidgetLogger.debug(
-      "Pomodoro rest auto-skipped",
+      "Pomodoro phase auto-skipped",
       context: [
         "categoryId": String(category.id), "elapsedSeconds": String(context.pomodoroElapsed),
         "autoSkipSeconds": String(autoSkipLimit),
       ])
 
-    context.pomodoroPhase = .work
+    let completedPhase = context.pomodoroPhase
+    context.pomodoroPhase = completedPhase == .work ? .rest : .work
     context.pomodoroElapsed = 0
-    return .restCompleted
+    return completedPhase == .work ? .workCompleted : .restCompleted
   }
 
-  return crossedWorkLimit ? .workCompleted : .none
+  if crossedWorkLimit {
+    return .workCompleted
+  }
+
+  return .none
 }
 
 func togglePomodoro(_ context: inout WidgetContext) {
@@ -293,6 +299,7 @@ func confirmationResult(context: WidgetContext, nextState: WidgetStateLogic) -> 
 func logEvent(
   type: DayEventType,
   category: Category?,
+  text: String? = nil,
   occurredAt: Date?,
   calendarDate: String?,
   repo: TodoPlannerRepository,
@@ -325,6 +332,7 @@ func logEvent(
   let event = DayEvent(
     eventType: type.rawValue,
     categoryId: type == .amendment ? nil : categoryId,
+    text: type == .note ? text : nil,
     occurredAt: eventOccurredAt,
     targetClientEventId: targetClientEventId,
     correctedAt: correctedAt,
@@ -777,6 +785,28 @@ class WidgetStateStore {
   }
   func handlePrimaryAction() async { await dispatch(.primaryAction) }
   func adjustOffset(minutes: Int) async { await dispatch(.adjustOffset(minutes)) }
+
+  func addNote(text: String) async {
+    guard !text.isEmpty, text.count <= 512, let category = context.currentCategory else {
+      lastError = "A current category and note text are required"
+      return
+    }
+    do {
+      let eventResult = try await logEvent(
+        type: .note,
+        category: category,
+        text: text,
+        occurredAt: nil,
+        calendarDate: context.currentDayRecord?.calendarDate,
+        repo: repository
+      )
+      context.eventLocalTimestamps[eventResult.event.clientEventId] = eventResult.event.occurredAtLocal
+      context.lastEventClientId = eventResult.clientEventId
+    } catch {
+      lastError = String(describing: error)
+      WidgetLogger.error("Failed to log note", context: ["error": lastError!])
+    }
+  }
 
   func synchronize() async {
     WidgetLogger.debug("Widget synchronization requested")

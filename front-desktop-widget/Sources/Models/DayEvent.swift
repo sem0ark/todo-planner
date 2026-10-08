@@ -2,8 +2,9 @@ import Foundation
 
 struct DayEvent: Codable {
   let clientEventId: String
-  let eventType: String  // "confirmation" | "transition"
+  let eventType: String  // "confirmation" | "transition" | "note"
   let categoryId: Int?
+  let text: String?
   let occurredAt: Date
   let occurredAtLocal: String
   let targetClientEventId: String?
@@ -14,6 +15,7 @@ struct DayEvent: Codable {
     case clientEventId = "client_event_id"
     case eventType = "event_type"
     case categoryId = "category_id"
+    case text
     case occurredAt = "occurred_at"
     case occurredAtLocal = "occurred_at_local"
     case targetClientEventId = "target_client_event_id"
@@ -26,6 +28,7 @@ struct DayEvent: Codable {
     clientEventId = try container.decode(String.self, forKey: .clientEventId)
     eventType = try container.decode(String.self, forKey: .eventType)
     categoryId = try container.decodeIfPresent(Int.self, forKey: .categoryId)
+    text = try container.decodeIfPresent(String.self, forKey: .text)
     occurredAt = try container.decode(Date.self, forKey: .occurredAt)
     targetClientEventId = try container.decodeIfPresent(String.self, forKey: .targetClientEventId)
     correctedAt = try container.decodeIfPresent(Date.self, forKey: .correctedAt)
@@ -44,6 +47,7 @@ struct DayEvent: Codable {
     clientEventId: String = UUID().uuidString,
     eventType: String,
     categoryId: Int?,
+    text: String? = nil,
     occurredAt: Date,
     occurredAtLocal: String? = nil,
     targetClientEventId: String? = nil,
@@ -53,6 +57,7 @@ struct DayEvent: Codable {
     self.clientEventId = clientEventId
     self.eventType = eventType
     self.categoryId = categoryId
+    self.text = text
     self.occurredAt = occurredAt
     self.occurredAtLocal = occurredAtLocal ?? TimeFormats.localTimestamp(for: occurredAt)
     self.targetClientEventId = targetClientEventId
@@ -111,12 +116,14 @@ struct AcceptedEvent: Codable {
   let clientEventId: String
   let eventType: String
   let categoryId: Int?
+  let text: String? = nil
   let occurredAt: Date
   let occurredAtLocal: String?
   enum CodingKeys: String, CodingKey {
     case clientEventId = "client_event_id"
     case eventType = "event_type"
     case categoryId = "category_id"
+    case text
     case occurredAt = "occurred_at"
     case occurredAtLocal = "occurred_at_local"
   }
