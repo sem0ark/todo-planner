@@ -65,6 +65,7 @@ instruction file when one is added for a subdirectory.
 - Prefer one current code path over compatibility fallbacks or legacy branches.
   - When a contract changes, update its consumers and tests together.
   - Do not preserve obsolete shapes through projections, aliases, or alternate decoding paths unless explicitly required.
+  - Code should be clean from any "compatibility" code that exists just for the sake of old tests.
 - **Explain algorithms**: Document the approach, time/space complexity, and non-obvious design choices.
 - **Explicit error handling**: Handle edge cases and failures cleanly according to language idioms:
   - **Python**: Focused `try/except` blocks with specific exception types.

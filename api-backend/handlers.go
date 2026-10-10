@@ -9,18 +9,19 @@ import (
 )
 
 type API struct {
-	db                *pgxpool.Pool
-	jwtSecret         string
-	logger            *Logger
-	userRepo          *UserRepository
-	settingsRepo      *UserSettingsRepository
-	deviceRepo        *DeviceRepository
-	categoryRepo      *CategoryRepository
-	templateGroupRepo *TemplateGroupRepository
-	dayTemplateRepo   *DayTemplateRepository
-	scheduleRepo      *ScheduleRepository
-	dayRecordRepo     *DayRecordRepository
-	backupRepo        *BackupRepository
+	db                 *pgxpool.Pool
+	jwtSecret          string
+	logger             *Logger
+	userRepo           *UserRepository
+	settingsRepo       *UserSettingsRepository
+	deviceRepo         *DeviceRepository
+	categoryRepo       *CategoryRepository
+	templateGroupRepo  *TemplateGroupRepository
+	dayTemplateRepo    *DayTemplateRepository
+	scheduleRepo       *ScheduleRepository
+	dayRecordRepo      *DayRecordRepository
+	dayTrackingService *DayTrackingService
+	backupRepo         *BackupRepository
 }
 
 func NewAPI(db *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
@@ -38,6 +39,14 @@ func NewAPI(db *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
 		dayRecordRepo:     NewDayRecordRepository(db),
 		backupRepo:        NewBackupRepository(db),
 	}
+	api.dayTrackingService = NewDayTrackingService(
+		db,
+		api.dayRecordRepo,
+		NewDayEventRepository(db),
+		NewActualBlockRepository(db),
+		api.dayTemplateRepo,
+		api.scheduleRepo,
+	)
 	return api
 }
 

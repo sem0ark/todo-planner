@@ -16,6 +16,8 @@ auth.go           authentication middleware for protected routes
     v
 handler_*.go      decode, validate, call application code, encode response
     |
+    v
+service_*.go       coordinate operations across repositories, store business logic
     +--> repository_*.go -> SQL and PostgreSQL mapping
                                |
                                v
@@ -35,6 +37,7 @@ Use the existing prefixes and place a new file beside the code it extends:
 | `handler_<feature>.go` | Feature request/response types, validation, and handlers |
 | `router_<feature>.go` | Feature route registration and path parameter parsing |
 | `repository_<resource>.go` | Persistence models, SQL queries, and repository methods |
+| `service_<domain>.go` | Coordinate operations across repositories, store business logic |
 | `shared_*.go` | Cross-feature infrastructure and shared types |
 | `*_test.go` | Focused handler, repository, or domain tests |
 | `migrations.go` | Versioned PostgreSQL schema changes |
@@ -72,29 +75,36 @@ func (repository *CategoryRepository) FindByUser(
 
 ## API Composition
 
-Construct dependencies once in `NewAPI`. Keep dependency wiring visible and avoid package-level mutable state:
+Construct dependencies once in `NewAPI`. Keep dependency wiring visible and avoid package-level mutable state. Simple handlers may call a repository directly; cross-repository workflows go through a service. Repositories never depend on or call services.
 
 ```go
 type API struct {
-    db                *pgxpool.Pool
-    jwtSecret         string
-    logger            *Logger
-    userRepo          *UserRepository
-    categoryRepo      *CategoryRepository
-    dayRecordRepo     *DayRecordRepository
-    dayService        *DayService
+    db                  *pgxpool.Pool
+    jwtSecret           string
+    logger              *Logger
+    userRepo            *UserRepository
+    categoryRepo        *CategoryRepository
+    dayRecordRepo       *DayRecordRepository
+    dayTrackingService  *DayTrackingService
 }
 
 func NewAPI(database *pgxpool.Pool, jwtSecret string, logger *Logger) *API {
     api := &API{
-        db:            database,
-        jwtSecret:     jwtSecret,
-        logger:        logger,
-        userRepo:      NewUserRepository(database),
-        categoryRepo:  NewCategoryRepository(database),
-        dayRecordRepo: NewDayRecordRepository(database),
+        db:              database,
+        jwtSecret:       jwtSecret,
+        logger:          logger,
+        userRepo:        NewUserRepository(database),
+        categoryRepo:    NewCategoryRepository(database),
+        dayRecordRepo:   NewDayRecordRepository(database),
     }
-    api.dayService = NewDayService(api.dayRecordRepo, api.categoryRepo)
+    api.dayTrackingService = NewDayTrackingService(
+        database,
+        api.dayRecordRepo,
+        NewDayEventRepository(database),
+        NewActualBlockRepository(database),
+        api.dayTemplateRepo,
+        api.scheduleRepo,
+    )
     return api
 }
 ```

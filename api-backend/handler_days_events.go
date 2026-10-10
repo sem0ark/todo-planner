@@ -157,7 +157,7 @@ func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http
 		"device_id":     input.DeviceID,
 		"event_count":   len(input.Events),
 	})
-	result, err := api.dayRecordRepo.CreateEventsByDate(request.Context(), userID, parsedDate, input.DeviceID, input.Events)
+	result, err := api.dayTrackingService.CreateEventsByDate(request.Context(), userID, parsedDate, input.DeviceID, input.Events)
 	if err != nil {
 		if writeAppError(responseWriter, err) {
 			api.logger.Error("Returning day events application error", err, nil)

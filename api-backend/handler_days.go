@@ -77,7 +77,7 @@ func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Reques
 		http.Error(responseWriter, ErrInvalidDayDateRange.Error(), http.StatusBadRequest)
 		return
 	}
-	records, err := api.dayRecordRepo.FindDateRange(request.Context(), userID, fromDate, toDate)
+	records, err := api.dayTrackingService.FindDateRange(request.Context(), userID, fromDate, toDate)
 	if err != nil {
 		HTTPError(responseWriter, request, api.logger, 500, "failed to fetch days", err, nil)
 		return
@@ -103,7 +103,7 @@ func (api *API) getDay(responseWriter http.ResponseWriter, request *http.Request
 		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
 		return
 	}
-	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
+	record, err := api.dayTrackingService.FindByDate(request.Context(), userID, parsedDate)
 	if err != nil {
 		if writeAppError(responseWriter, err) {
 			return

@@ -406,6 +406,15 @@ func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID in
 	return templateID, err
 }
 
+func (repository *ScheduleRepository) ResolveTemplateForDateTx(
+	ctx context.Context,
+	transaction pgx.Tx,
+	userID int,
+	calendarDate CalendarDate,
+) (*int, error) {
+	return resolveTemplateForDateTx(ctx, transaction, userID, calendarDate)
+}
+
 // GetOverride retrieves a specific override by date
 func (r *ScheduleRepository) GetOverride(ctx context.Context, userID int, calendarDate CalendarDate) (*ScheduleOverride, error) {
 	var so ScheduleOverride

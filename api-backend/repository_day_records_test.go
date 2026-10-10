@@ -2,1001 +2,319 @@ package main
 
 import (
 	"context"
-	"sync"
+	"errors"
 	"testing"
-	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func computeActualTimelineForTest(t *testing.T, events []DayEvent, referenceTime time.Time) []ComputedBlock {
-	t.Helper()
-	blocks, err := computeTimeline(events)
-	if err != nil {
-		t.Fatalf("computeTimeline failed: %v", err)
-	}
-	actualBlocks := make([]ComputedBlock, 0, len(blocks))
-	for _, block := range blocks {
-		if block.BlockType == "actual" {
-			actualBlocks = append(actualBlocks, block)
-		}
-	}
-	return actualBlocks
-}
-
-func TestDayRecordRepository_Create(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	scheduleRepo := NewScheduleRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	template := createTestDayTemplate(t, db, user.ID, "Workday", nil)
-	ctx := context.Background()
-
-	// Set up weekly schedule
-	entries := make([]WeeklyScheduleEntry, 7)
-	for i := 0; i < 7; i++ {
-		entries[i] = WeeklyScheduleEntry{DayOfWeek: i, DayTemplateID: &template.ID}
-	}
-	_, err := scheduleRepo.ReplaceWeeklySchedule(ctx, user.ID, entries)
-	if err != nil {
-		t.Fatalf("Failed to set up schedule: %v", err)
-	}
-
-	calendarDate := mustCalendarDate("2026-07-07")
-
-	// Act
-	record, err := repo.Create(ctx, user.ID, calendarDate)
-
-	// Assert
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if record.ID == 0 {
-		t.Error("Expected non-zero ID")
-	}
-	if record.CalendarDate != calendarDate {
-		t.Errorf("Expected calendar_date '%s', got '%s'", calendarDate, record.CalendarDate)
-	}
-	// Note: snapshot_id may be nil if no snapshot was created for the template
-	// This is expected behavior when a template has no planned blocks
-	if len(record.ActualBlocks) != 0 {
-		t.Errorf("Expected 0 actual blocks, got %d", len(record.ActualBlocks))
-	}
-}
-
-func TestDayRecordRepository_Create_NoTemplate(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	calendarDate := mustCalendarDate("2026-07-07")
-
-	// Act
-	record, err := repo.Create(ctx, user.ID, calendarDate)
-
-	// Assert
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if record.SnapshotID != nil {
-		t.Error("Expected snapshot_id to be nil when no template assigned")
-	}
-	if len(record.SnapshotBlocks) != 0 {
-		t.Errorf("Expected 0 snapshot blocks, got %d", len(record.SnapshotBlocks))
-	}
-}
-
-func TestDayRecordRepository_CreateEventsByDate_ConcurrentDateCreation(t *testing.T) {
-	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "concurrent-event-user", "password123")
-	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
-	if err != nil {
-		t.Fatalf("failed to create device: %v", err)
-	}
-
-	start := make(chan struct{})
-	results := make(chan error, 2)
-	var waitGroup sync.WaitGroup
-	waitGroup.Add(2)
-	for range 2 {
-		go func() {
-			defer waitGroup.Done()
-			<-start
-			_, createError := repository.CreateEventsByDate(
-				context.Background(),
-				user.ID,
-				mustCalendarDate("2026-09-06"),
-				device.ID,
-				nil,
-			)
-			results <- createError
-		}()
-	}
-	close(start)
-	waitGroup.Wait()
-	close(results)
-
-	for createError := range results {
-		if createError != nil {
-			t.Fatalf("concurrent event creation failed: %v", createError)
-		}
-	}
-
-	var recordCount int
-	if err := database.QueryRow(context.Background(), `
-		SELECT COUNT(*) FROM day_records WHERE user_id = $1 AND calendar_date = $2
-	`, user.ID, mustCalendarDate("2026-09-06")).Scan(&recordCount); err != nil {
-		t.Fatalf("failed to count created records: %v", err)
-	}
-	if recordCount != 1 {
-		t.Fatalf("expected one day record, got %d", recordCount)
-	}
-}
-
-func TestDayRecordRepository_CreateStartsWithUnlockedOffset(t *testing.T) {
-	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "unlocked-offset-user", "password123")
-
-	record, err := repository.Create(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if record.TimezoneOffsetMinutes != nil {
-		t.Fatalf("expected nil timezone offset, got %v", *record.TimezoneOffsetMinutes)
-	}
-	if record.TimezoneOffsetLocked {
-		t.Fatal("expected newly created day to have an unlocked timezone offset")
-	}
-}
-
-func TestDayRecordRepositoryLocksFirstEligibleEventOffset(t *testing.T) {
-	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "first-offset-user", "password123")
-	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
-	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
-	if err != nil {
-		t.Fatalf("failed to create device: %v", err)
-	}
-
-	events := []DayEventInput{
-		{
-			ClientEventID:   "transition-first",
-			EventType:       "transition",
-			CategoryID:      &category.ID,
-			OccurredAt:      parseTime("2026-09-06T08:00:00Z"),
-			OccurredAtLocal: "2026-09-06T10:00:00+02:00",
-		},
-		{
-			ClientEventID:   "transition-second",
-			EventType:       "transition",
-			CategoryID:      &category.ID,
-			OccurredAt:      parseTime("2026-09-06T09:00:00Z"),
-			OccurredAtLocal: "2026-09-06T04:00:00-05:00",
-		},
-	}
-	_, err = repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, events)
-	if err != nil {
-		t.Fatalf("CreateEventsByDate failed: %v", err)
-	}
-
-	record, err := repository.FindByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
-	if err != nil {
-		t.Fatalf("FindByDate failed: %v", err)
-	}
-	if record.TimezoneOffsetMinutes == nil || *record.TimezoneOffsetMinutes != 120 {
-		t.Fatalf("expected first event offset 120, got %v", record.TimezoneOffsetMinutes)
-	}
-	if !record.TimezoneOffsetLocked {
-		t.Fatal("expected timezone offset to be locked")
-	}
-}
-
-func TestDayRecordRepositoryAmendmentOffsetValidation(t *testing.T) {
-	testCases := []struct {
-		name        string
-		correctedAt string
-		expectedErr error
-	}{
-		{name: "matching offset", correctedAt: "2026-09-06T11:00:00+02:00"},
-		{name: "mismatched offset", correctedAt: "2026-09-06T04:00:00-05:00", expectedErr: ErrAmendmentOffsetMismatch},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			database := setupTestDB(t)
-			repository := NewDayRecordRepository(database)
-			user := createTestUser(t, database, "amendment-offset-"+testCase.name, "password123")
-			category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
-			correctedAt := parseTime("2026-09-06T09:00:00Z")
-			device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
-			if err != nil {
-				t.Fatalf("failed to create device: %v", err)
-			}
-			_, err = repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, []DayEventInput{{
-				ClientEventID:   "target-transition",
-				EventType:       "transition",
-				CategoryID:      &category.ID,
-				OccurredAt:      parseTime("2026-09-06T08:00:00Z"),
-				OccurredAtLocal: "2026-09-06T10:00:00+02:00",
-			}})
-			if err != nil {
-				t.Fatalf("failed to create target event: %v", err)
-			}
-
-			_, err = repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, []DayEventInput{{
-				ClientEventID:       "amendment-event",
-				EventType:           "amendment",
-				CategoryID:          &category.ID,
-				OccurredAt:          parseTime("2026-09-06T12:00:00Z"),
-				OccurredAtLocal:     "2026-09-06T14:00:00+02:00",
-				TargetClientEventID: "target-transition",
-				CorrectedAt:         &correctedAt,
-				CorrectedAtLocal:    &testCase.correctedAt,
-			}})
-			if err != testCase.expectedErr {
-				t.Fatalf("expected error %v, got %v", testCase.expectedErr, err)
-			}
-		})
-	}
-}
-
-func TestDayRecordRepositoryManualBlocksLockOffsetOnlyOnce(t *testing.T) {
-	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "manual-offset-user", "password123")
-	record, err := repository.Create(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	blocks := []ActualBlockInput{{BlockType: "blank", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 30}}
-	initialOffsetMinutes := 120
-	secondOffsetMinutes := -300
-
-	_, err = repository.ReplaceActualBlocks(context.Background(), record.ID, user.ID, blocks, &initialOffsetMinutes)
-	if err != nil {
-		t.Fatalf("initial ReplaceActualBlocks failed: %v", err)
-	}
-	_, err = repository.ReplaceActualBlocks(context.Background(), record.ID, user.ID, blocks, &secondOffsetMinutes)
-	if err != nil {
-		t.Fatalf("locked ReplaceActualBlocks failed: %v", err)
-	}
-
-	reloaded, err := repository.FindByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
-	if err != nil {
-		t.Fatalf("FindByDate failed: %v", err)
-	}
-	if reloaded.TimezoneOffsetMinutes == nil || *reloaded.TimezoneOffsetMinutes != 120 {
-		t.Fatalf("expected original offset 120 to remain locked, got %v", reloaded.TimezoneOffsetMinutes)
-	}
-}
-
-func TestDayRecordRepository_Create_DuplicateDate(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	calendarDate := mustCalendarDate("2026-07-07")
-	_, err := repo.Create(ctx, user.ID, calendarDate)
-	if err != nil {
-		t.Fatalf("First create failed: %v", err)
-	}
-
-	// Act
-	_, err = repo.Create(ctx, user.ID, calendarDate)
-
-	// Assert
-	if err == nil {
-		t.Error("Expected error for duplicate calendar_date")
-	}
-}
-
 func TestDayRecordRepository_FindByID(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "day-record-find-by-id", "password123")
+	repository := NewDayRecordRepository(database)
+	createdRecord := createDayRecordForRepositoryTest(
+		t,
+		database,
+		repository,
+		user.ID,
+		mustCalendarDate("2026-09-06"),
+	)
 
-	calendarDate := mustCalendarDate("2026-07-07")
-	created, err := repo.Create(ctx, user.ID, calendarDate)
+	foundRecord, err := repository.FindByID(context.Background(), createdRecord.ID, user.ID)
 	if err != nil {
-		t.Fatalf("Create failed: %v", err)
+		t.Fatalf("failed to find day record: %v", err)
 	}
-
-	// Act
-	found, err := repo.FindByID(ctx, created.ID, user.ID)
-
-	// Assert
-	if err != nil {
-		t.Fatalf("FindByID failed: %v", err)
-	}
-	if found.ID != created.ID {
-		t.Errorf("Expected ID %d, got %d", created.ID, found.ID)
-	}
-	if found.CalendarDate != calendarDate {
-		t.Errorf("Expected calendar_date '%s', got '%s'", calendarDate, found.CalendarDate)
+	if foundRecord.ID != createdRecord.ID || foundRecord.CalendarDate != createdRecord.CalendarDate {
+		t.Fatalf("unexpected day record: %+v", foundRecord)
 	}
 }
 
-func TestDayRecordRepository_FindByID_NotFound(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
+func TestDayRecordRepository_FindByDate(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "day-record-find-by-date", "password123")
+	repository := NewDayRecordRepository(database)
+	calendarDate := mustCalendarDate("2026-09-06")
+	createdRecord := createDayRecordForRepositoryTest(t, database, repository, user.ID, calendarDate)
 
-	// Act
-	_, err := repo.FindByID(ctx, 9999, user.ID)
+	foundRecord, err := repository.FindByDate(context.Background(), user.ID, calendarDate)
+	if err != nil {
+		t.Fatalf("failed to find day record: %v", err)
+	}
+	if foundRecord.ID != createdRecord.ID || foundRecord.CalendarDate != calendarDate {
+		t.Fatalf("unexpected day record: %+v", foundRecord)
+	}
+	if foundRecord.ActualBlocks != nil || foundRecord.Events != nil || foundRecord.SnapshotBlocks != nil {
+		t.Fatalf("repository returned composed data: %+v", foundRecord)
+	}
+}
 
-	// Assert
-	if err == nil {
-		t.Error("Expected error for non-existent record")
+func TestDayRecordRepository_FindersReturnNotFoundForMissingRecords(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "day-record-not-found", "password123")
+	repository := NewDayRecordRepository(database)
+	calendarDate := mustCalendarDate("2026-09-06")
+
+	_, findByDateError := repository.FindByDate(context.Background(), user.ID, calendarDate)
+	_, findByIDError := repository.FindByID(context.Background(), 9999, user.ID)
+	if !errors.Is(findByDateError, ErrDayRecordNotFound) {
+		t.Fatalf("expected date lookup to return ErrDayRecordNotFound, got %v", findByDateError)
+	}
+	if !errors.Is(findByIDError, ErrDayRecordNotFound) {
+		t.Fatalf("expected ID lookup to return ErrDayRecordNotFound, got %v", findByIDError)
 	}
 }
 
 func TestDayRecordRepository_FindByDateRange(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	// Create multiple records
-	dates := []CalendarDate{mustCalendarDate("2026-07-01"), mustCalendarDate("2026-07-05"), mustCalendarDate("2026-07-10"), mustCalendarDate("2026-07-15")}
-	for _, date := range dates {
-		_, err := repo.Create(ctx, user.ID, date)
-		if err != nil {
-			t.Fatalf("Create failed for date %s: %v", date, err)
-		}
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "day-record-date-range", "password123")
+	repository := NewDayRecordRepository(database)
+	dateList := []CalendarDate{
+		mustCalendarDate("2026-09-01"),
+		mustCalendarDate("2026-09-05"),
+		mustCalendarDate("2026-09-10"),
+		mustCalendarDate("2026-09-15"),
+	}
+	for _, calendarDate := range dateList {
+		createDayRecordForRepositoryTest(t, database, repository, user.ID, calendarDate)
 	}
 
-	// Act
-	records, err := repo.FindByDateRange(ctx, user.ID, mustCalendarDate("2026-07-05"), mustCalendarDate("2026-07-10"))
-
-	// Assert
+	foundRecords, err := repository.FindByDateRange(
+		context.Background(),
+		user.ID,
+		mustCalendarDate("2026-09-05"),
+		mustCalendarDate("2026-09-10"),
+	)
 	if err != nil {
-		t.Fatalf("FindByDateRange failed: %v", err)
+		t.Fatalf("failed to find day records: %v", err)
 	}
-	if len(records) != 2 {
-		t.Errorf("Expected 2 records, got %d", len(records))
+	if len(foundRecords) != 2 {
+		t.Fatalf("expected two day records, got %d", len(foundRecords))
 	}
-	if records[0].CalendarDate != mustCalendarDate("2026-07-05") {
-		t.Errorf("Expected first record date '2026-07-05', got '%s'", records[0].CalendarDate)
-	}
-	if records[1].CalendarDate != mustCalendarDate("2026-07-10") {
-		t.Errorf("Expected second record date '2026-07-10', got '%s'", records[1].CalendarDate)
+	if foundRecords[0].CalendarDate != dateList[1] || foundRecords[1].CalendarDate != dateList[2] {
+		t.Fatalf("unexpected date ordering: %s, %s", foundRecords[0].CalendarDate, foundRecords[1].CalendarDate)
 	}
 }
 
-func TestDayRecordRepository_FindByDateRange_Empty(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	ctx := context.Background()
-
-	// Act
-	records, err := repo.FindByDateRange(ctx, user.ID, mustCalendarDate("2026-07-01"), mustCalendarDate("2026-07-31"))
-
-	// Assert
+func TestDayRecordRepository_FindByDateRangeReturnsEmptySlice(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "day-record-empty-range", "password123")
+	foundRecords, err := NewDayRecordRepository(database).FindByDateRange(
+		context.Background(),
+		user.ID,
+		mustCalendarDate("2026-09-01"),
+		mustCalendarDate("2026-09-30"),
+	)
 	if err != nil {
-		t.Fatalf("FindByDateRange failed: %v", err)
+		t.Fatalf("failed to find day records: %v", err)
 	}
-	if len(records) != 0 {
-		t.Errorf("Expected 0 records, got %d", len(records))
+	if len(foundRecords) != 0 {
+		t.Fatalf("expected no day records, got %d", len(foundRecords))
 	}
 }
 
-func TestDayRecordRepository_ResolveTemplateForDate_WithOverride(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	scheduleRepo := NewScheduleRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	weekdayTemplate := createTestDayTemplate(t, db, user.ID, "Workday", nil)
-	overrideTemplate := createTestDayTemplate(t, db, user.ID, "Special", nil)
-	ctx := context.Background()
+func TestDayRecordRepository_FindByIDDoesNotCrossUsers(t *testing.T) {
+	database := setupTestDB(t)
+	owner := createTestUser(t, database, "day-record-owner", "password123")
+	otherUser := createTestUser(t, database, "day-record-other-user", "password123")
+	repository := NewDayRecordRepository(database)
+	createdRecord := createDayRecordForRepositoryTest(
+		t,
+		database,
+		repository,
+		owner.ID,
+		mustCalendarDate("2026-09-06"),
+	)
 
-	// Set up weekly schedule
-	entries := make([]WeeklyScheduleEntry, 7)
-	for i := 0; i < 7; i++ {
-		entries[i] = WeeklyScheduleEntry{DayOfWeek: i, DayTemplateID: &weekdayTemplate.ID}
+	_, err := repository.FindByID(context.Background(), createdRecord.ID, otherUser.ID)
+	if !errors.Is(err, ErrDayRecordNotFound) {
+		t.Fatalf("expected a user-scoped lookup to return ErrDayRecordNotFound, got %v", err)
 	}
-	_, err := scheduleRepo.ReplaceWeeklySchedule(ctx, user.ID, entries)
+}
+
+func TestDayRecordRepository_UpdateTemplateTx(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "day-record-update-template", "password123")
+	repository := NewDayRecordRepository(database)
+	calendarDate := calendarDateRelativeToToday(t, database, 1)
+	createdRecord := createDayRecordForRepositoryTest(
+		t,
+		database,
+		repository,
+		user.ID,
+		calendarDate,
+	)
+	template := createTestDayTemplate(t, database, user.ID, "Assigned template", nil)
+	requestedTemplateID := template.ID
+	requestedSnapshotID := template.CurrentSnapshot.ID
+
+	transaction, err := database.Begin(context.Background())
 	if err != nil {
-		t.Fatalf("Failed to set up schedule: %v", err)
+		t.Fatalf("failed to begin template-update transaction: %v", err)
 	}
+	defer transaction.Rollback(context.Background())
 
-	// Set up override
-	date := mustCalendarDate("2026-07-07")
-	override, err := scheduleRepo.SetOverride(ctx, user.ID, date, &overrideTemplate.ID)
+	updatedRecordID, err := repository.UpdateTemplateTx(
+		context.Background(),
+		transaction,
+		user.ID,
+		calendarDate,
+		&requestedTemplateID,
+		&requestedSnapshotID,
+	)
 	if err != nil {
-		t.Fatalf("Failed to set up override: %v", err)
+		t.Fatalf("failed to assign template to day record: %v", err)
 	}
-	t.Logf("Created override: %+v", override)
+	if updatedRecordID != createdRecord.ID {
+		t.Fatalf("expected updated record ID %d, got %d", createdRecord.ID, updatedRecordID)
+	}
+	if err := transaction.Commit(context.Background()); err != nil {
+		t.Fatalf("failed to commit template-update transaction: %v", err)
+	}
 
-	// Verify override was created
-	var storedTemplateID *int
-	err = db.QueryRow(ctx, "SELECT day_template_id FROM schedule_overrides WHERE user_id=$1 AND calendar_date=$2", user.ID, date).Scan(&storedTemplateID)
+	updatedRecord, err := repository.FindByID(context.Background(), createdRecord.ID, user.ID)
 	if err != nil {
-		t.Fatalf("Failed to query override: %v", err)
+		t.Fatalf("failed to reload updated day record: %v", err)
 	}
-	t.Logf("Stored override template_id: %v", storedTemplateID)
+	if updatedRecord.DayTemplateID == nil || *updatedRecord.DayTemplateID != requestedTemplateID {
+		t.Fatalf("expected template ID %d, got %v", requestedTemplateID, updatedRecord.DayTemplateID)
+	}
+	if updatedRecord.SnapshotID == nil || *updatedRecord.SnapshotID != requestedSnapshotID {
+		t.Fatalf("expected snapshot ID %d, got %v", requestedSnapshotID, updatedRecord.SnapshotID)
+	}
+}
 
-	// Act
-	templateID, err := repo.resolveTemplateForDate(ctx, user.ID, date)
+func TestDayRecordRepository_UpdateTemplateTxClearsTemplate(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "day-record-clear-template", "password123")
+	repository := NewDayRecordRepository(database)
+	calendarDate := calendarDateRelativeToToday(t, database, 1)
+	createdRecord := createDayRecordForRepositoryTest(
+		t,
+		database,
+		repository,
+		user.ID,
+		calendarDate,
+	)
+	template := createTestDayTemplate(t, database, user.ID, "Template to clear", nil)
 
-	// Assert
+	assignmentTransaction, err := database.Begin(context.Background())
 	if err != nil {
-		t.Fatalf("resolveTemplateForDate failed: %v", err)
+		t.Fatalf("failed to begin template-assignment transaction: %v", err)
 	}
-	if templateID == nil {
-		t.Fatal("Expected non-nil template ID")
+	if _, err := repository.UpdateTemplateTx(
+		context.Background(),
+		assignmentTransaction,
+		user.ID,
+		calendarDate,
+		&template.ID,
+		&template.CurrentSnapshot.ID,
+	); err != nil {
+		assignmentTransaction.Rollback(context.Background())
+		t.Fatalf("failed to assign template before clearing it: %v", err)
 	}
-	t.Logf("weekdayTemplate.ID=%d, overrideTemplate.ID=%d, resolved=%d", weekdayTemplate.ID, overrideTemplate.ID, *templateID)
-	if *templateID != overrideTemplate.ID {
-		t.Errorf("Expected template ID %d (override), got %d", overrideTemplate.ID, *templateID)
+	if err := assignmentTransaction.Commit(context.Background()); err != nil {
+		t.Fatalf("failed to commit template-assignment transaction: %v", err)
 	}
-}
 
-func TestDayRecordRepository_ResolveTemplateForDate_WithoutOverride(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	scheduleRepo := NewScheduleRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	template := createTestDayTemplate(t, db, user.ID, "Workday", nil)
-	ctx := context.Background()
-
-	// Set up weekly schedule
-	entries := make([]WeeklyScheduleEntry, 7)
-	for i := 0; i < 7; i++ {
-		entries[i] = WeeklyScheduleEntry{DayOfWeek: i, DayTemplateID: &template.ID}
-	}
-	_, err := scheduleRepo.ReplaceWeeklySchedule(ctx, user.ID, entries)
+	transaction, err := database.Begin(context.Background())
 	if err != nil {
-		t.Fatalf("Failed to set up schedule: %v", err)
+		t.Fatalf("failed to begin template-clear transaction: %v", err)
 	}
+	defer transaction.Rollback(context.Background())
 
-	// Act
-	date := mustCalendarDate("2026-07-07") // Monday
-	templateID, err := repo.resolveTemplateForDate(ctx, user.ID, date)
-
-	// Assert
+	updatedRecordID, err := repository.UpdateTemplateTx(
+		context.Background(), transaction, user.ID, calendarDate, nil, nil,
+	)
 	if err != nil {
-		t.Fatalf("resolveTemplateForDate failed: %v", err)
+		t.Fatalf("failed to clear day-record template: %v", err)
 	}
-	if templateID == nil {
-		t.Fatal("Expected non-nil template ID")
+	if updatedRecordID != createdRecord.ID {
+		t.Fatalf("expected updated record ID %d, got %d", createdRecord.ID, updatedRecordID)
 	}
-	if *templateID != template.ID {
-		t.Errorf("Expected template ID %d, got %d", template.ID, *templateID)
+	if err := transaction.Commit(context.Background()); err != nil {
+		t.Fatalf("failed to commit template-clear transaction: %v", err)
 	}
-}
-
-func TestDayRecordRepository_MultipleUsers(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user1 := createTestUser(t, db, "user1", "password123")
-	user2 := createTestUser(t, db, "user2", "password123")
-	ctx := context.Background()
-
-	calendarDate := mustCalendarDate("2026-07-07")
-	record1, err := repo.Create(ctx, user1.ID, calendarDate)
+	clearedRecord, err := repository.FindByID(context.Background(), createdRecord.ID, user.ID)
 	if err != nil {
-		t.Fatalf("Create for user1 failed: %v", err)
+		t.Fatalf("failed to reload cleared day record: %v", err)
 	}
-	record2, err := repo.Create(ctx, user2.ID, calendarDate)
-	if err != nil {
-		t.Fatalf("Create for user2 failed: %v", err)
-	}
-
-	// Act - user1 should only see their record
-	found, err := repo.FindByID(ctx, record1.ID, user1.ID)
-	if err != nil {
-		t.Fatalf("FindByID for user1 failed: %v", err)
-	}
-	if found.ID != record1.ID {
-		t.Errorf("Expected user1 to find record %d, got %d", record1.ID, found.ID)
-	}
-
-	// Act - user1 should not find user2's record
-	_, err = repo.FindByID(ctx, record2.ID, user1.ID)
-
-	// Assert
-	if err == nil {
-		t.Error("Expected error when user1 tries to access user2's record")
+	if clearedRecord.DayTemplateID != nil || clearedRecord.SnapshotID != nil {
+		t.Fatalf("expected template and snapshot references to be cleared, got %+v", clearedRecord)
 	}
 }
 
-func TestComputeActualBlocks_Empty(t *testing.T) {
-	// Arrange
-	events := []DayEvent{}
-	referenceTime := parseTime("2026-07-20T17:00:00Z")
-
-	// Act
-	blocks := computeActualTimelineForTest(t, events, referenceTime)
-
-	// Assert
-	if len(blocks) != 0 {
-		t.Errorf("Expected 0 blocks, got %d", len(blocks))
-	}
-}
-
-func TestComputeActualBlocks_OnlyConfirmations(t *testing.T) {
-	// Arrange
-	events := []DayEvent{
-		{
-			ID:         1,
-			EventType:  "confirmation",
-			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
-		},
-		{
-			ID:         2,
-			EventType:  "confirmation",
-			OccurredAt: parseTime("2026-07-20T10:00:00Z"),
-		},
-	}
-	referenceTime := parseTime("2026-07-20T17:00:00Z")
-
-	// Act
-	blocks := computeActualTimelineForTest(t, events, referenceTime)
-
-	// Assert - confirmations should be skipped
-	if len(blocks) != 0 {
-		t.Errorf("Expected 0 blocks for confirmation-only events, got %d", len(blocks))
-	}
-}
-
-func TestComputeActualBlocks_SingleTransition(t *testing.T) {
-	// Arrange
-	categoryID := 5
-	startTime := parseTime("2026-07-20T09:00:00Z")
-	referenceTime := parseTime("2026-07-20T17:00:00Z")
-
-	events := []DayEvent{
-		{
-			ID:         1,
-			EventType:  "transition",
-			OccurredAt: startTime,
-			CategoryID: &categoryID,
-		},
-	}
-
-	// Act
-	blocks := computeActualTimelineForTest(t, events, referenceTime)
-
-	// Assert
-	if len(blocks) != 0 {
-		t.Errorf("Expected no materialized blocks, got %d", len(blocks))
-	}
-}
-
-func TestComputeActualBlocks_MultipleTransitions(t *testing.T) {
-	// Arrange
-	category1 := 5
-	category2 := 10
-	referenceTime := parseTime("2026-07-20T17:00:00Z")
-
-	events := []DayEvent{
-		{
-			ID:         1,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
-			CategoryID: &category1,
-		},
-		{
-			ID:         2,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T12:00:00Z"),
-			CategoryID: &category2,
-		},
-		{
-			ID:         3,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T13:00:00Z"),
-			CategoryID: &category1,
-		},
-	}
-
-	// Act
-	blocks := computeActualTimelineForTest(t, events, referenceTime)
-
-	// Assert
-	if len(blocks) != 2 {
-		t.Fatalf("Expected 2 blocks, got %d", len(blocks))
-	}
-
-	// First block: 9:00 to 12:00 (180 minutes)
-	if *blocks[0].CategoryID != category1 {
-		t.Errorf("Block 0: Expected category %d, got %d", category1, *blocks[0].CategoryID)
-	}
-	if blocks[0].DurationMinutes != 180 {
-		t.Errorf("Block 0: Expected 180 minutes, got %d", blocks[0].DurationMinutes)
-	}
-
-	// Second block: 12:00 to 13:00 (60 minutes)
-	if *blocks[1].CategoryID != category2 {
-		t.Errorf("Block 1: Expected category %d, got %d", category2, *blocks[1].CategoryID)
-	}
-	if blocks[1].DurationMinutes != 60 {
-		t.Errorf("Block 1: Expected 60 minutes, got %d", blocks[1].DurationMinutes)
-	}
-
-}
-
-func TestComputeActualBlocks_MixedEvents(t *testing.T) {
-	// Arrange - transitions interspersed with confirmations
-	category1 := 5
-	category2 := 10
-	referenceTime := parseTime("2026-07-20T17:00:00Z")
-	events := []DayEvent{
-		{
-			ID:         1,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
-			CategoryID: &category1,
-		},
-		{
-			ID:         2,
-			EventType:  "confirmation",
-			OccurredAt: parseTime("2026-07-20T10:30:00Z"),
-		},
-		{
-			ID:         3,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T12:00:00Z"),
-			CategoryID: &category2,
-		},
-		{
-			ID:         4,
-			EventType:  "confirmation",
-			CategoryID: &category2,
-			OccurredAt: parseTime("2026-07-20T14:00:00Z"),
-		},
-	}
-
-	// Act
-	blocks := computeActualTimelineForTest(t, events, referenceTime)
-
-	// Assert
-	if len(blocks) != 2 {
-		t.Fatalf("Expected 2 blocks (confirmations skipped), got %d", len(blocks))
-	}
-
-	// First block: 9:00 to 12:00 (180 minutes)
-	if blocks[0].DurationMinutes != 180 {
-		t.Errorf("Block 0: Expected 180 minutes, got %d", blocks[0].DurationMinutes)
-	}
-
-	// Second block ends at the latest confirmation.
-	if blocks[1].DurationMinutes != 120 {
-		t.Errorf("Block 1: Expected 120 minutes, got %d", blocks[1].DurationMinutes)
-	}
-}
-
-func TestComputeActualBlocks_EqualTimestampTransitionsKeepLastObservation(t *testing.T) {
-	// Arrange - equal effective transition times are collapsed deterministically.
-	category1 := 5
-
-	events := []DayEvent{
-		{
-			ID:         1,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
-			CategoryID: &category1,
-		},
-		{
-			ID:         2,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
-			CategoryID: &category1,
-		},
-	}
-
-	// Act
-	blocks, err := computeTimeline(events)
-
-	// Assert
-	if err != nil {
-		t.Fatalf("Expected equal timestamps to be accepted, got %v", err)
-	}
-	if len(blocks) != 0 {
-		t.Fatalf("Expected no block without a later observation, got %+v", blocks)
-	}
-}
-
-func TestComputeActualBlocks_CategoryID(t *testing.T) {
-	referenceTime := parseTime("2026-07-20T17:00:00Z")
-	category1 := 1
-	category2 := 2
-
-	events := []DayEvent{
-		{
-			ID:         1,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T09:00:00Z"),
-			CategoryID: &category1,
-		},
-		{
-			ID:         2,
-			EventType:  "transition",
-			OccurredAt: parseTime("2026-07-20T12:00:00Z"),
-			CategoryID: &category2,
-		},
-	}
-
-	// Act
-	blocks := computeActualTimelineForTest(t, events, referenceTime)
-
-	// Assert
-	if len(blocks) != 1 {
-		t.Fatalf("Expected 1 block, got %d", len(blocks))
-	}
-	if blocks[0].CategoryID == nil {
-		t.Errorf("Expected category_id, got nil")
-	}
-}
-
-func TestComputeActualBlocks_ExcludesSubMinuteOngoingBlock(t *testing.T) {
-	// Arrange
-	categoryID := 1
-	startTime := parseTime("2026-07-20T09:00:00Z")
-	events := []DayEvent{{
-		EventType:  "transition",
-		CategoryID: &categoryID,
-		OccurredAt: startTime,
-	}}
-
-	// Act
-	blocks := computeActualTimelineForTest(t, events, startTime.Add(59*time.Second))
-
-	// Assert: a transition without a later confirmation produces no actual block.
-	if len(blocks) != 0 {
-		t.Fatalf("Expected no actual blocks, got %+v", blocks)
-	}
-}
-
-func TestDayRecordRepository_CreateEvents_RollsBackPartialBatch(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
-	record, _ := repo.Create(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
-	invalidCategoryID := 99999
-	inputs := []DayEventInput{
-		{EventType: "transition", CategoryID: &category.ID, OccurredAt: parseTime("2026-07-07T09:00:00Z")},
-		{EventType: "transition", CategoryID: &invalidCategoryID, OccurredAt: parseTime("2026-07-07T10:00:00Z")},
-	}
-
-	// Act
-	_, _, err := repo.CreateEvents(context.Background(), record.ID, user.ID, inputs)
-
-	// Assert
-	if err == nil {
-		t.Fatal("Expected CreateEvents to fail")
-	}
-	var eventCount int
-	if err := db.QueryRow(context.Background(), "SELECT COUNT(*) FROM day_events WHERE day_record_id = $1", record.ID).Scan(&eventCount); err != nil {
-		t.Fatalf("Failed to count day events: %v", err)
-	}
-	if eventCount != 0 {
-		t.Errorf("Expected no events after rollback, got %d", eventCount)
-	}
-}
-
-func TestDayRecordRepository_CreateEventsByDate_AmendmentOrdering(t *testing.T) {
+func TestDayRecordRepository_UpdateTemplateTxRejectsPastOrMissingRecords(t *testing.T) {
 	testCases := []struct {
-		name             string
-		targetOccurredAt string
-		amendmentAt      string
+		name          string
+		dayOffset     int
+		createRecord  bool
+		expectedError error
 	}{
-		{name: "target before amendment", targetOccurredAt: "09:00:00", amendmentAt: "10:00:00"},
-		{name: "amendment before target", targetOccurredAt: "10:00:00", amendmentAt: "09:00:00"},
+		{
+			name:          "past record",
+			dayOffset:     -1,
+			createRecord:  true,
+			expectedError: ErrDayRecordPast,
+		},
+		{
+			name:          "missing record",
+			dayOffset:     1,
+			expectedError: ErrDayRecordNotFound,
+		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			database := setupTestDB(t)
-			repository := NewDayRecordRepository(database)
-			user := createTestUser(t, database, "amendment-order-"+testCase.name, "password123")
-			category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
-			device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
-			if err != nil {
-				t.Fatalf("failed to create device: %v", err)
-			}
-			targetOccurredAt := parseTime("2026-09-06T" + testCase.targetOccurredAt + "Z")
-			amendmentOccurredAt := parseTime("2026-09-06T" + testCase.amendmentAt + "Z")
-			correctedAtLocal := "2026-09-06T08:30:00+00:00"
-			correctedAt := parseTime("2026-09-06T08:30:00Z")
-			inputs := []DayEventInput{
-				{
-					ClientEventID:   "target-event",
-					EventType:       "transition",
-					CategoryID:      &category.ID,
-					OccurredAt:      targetOccurredAt,
-					OccurredAtLocal: "2026-09-06T10:00:00+00:00",
-				},
-				{
-					ClientEventID:       "amendment-event",
-					EventType:           "amendment",
-					OccurredAt:          amendmentOccurredAt,
-					OccurredAtLocal:     "2026-09-06T11:00:00+00:00",
-					TargetClientEventID: "target-event",
-					CorrectedAt:         &correctedAt,
-					CorrectedAtLocal:    &correctedAtLocal,
-				},
-			}
-			if amendmentOccurredAt.Before(targetOccurredAt) {
-				inputs[0], inputs[1] = inputs[1], inputs[0]
+			user := createTestUser(t, database, "day-record-update-"+testCase.name, "password123")
+			calendarDate := calendarDateRelativeToToday(t, database, testCase.dayOffset)
+			if testCase.createRecord {
+				createDayRecordForRepositoryTest(
+					t,
+					database,
+					NewDayRecordRepository(database),
+					user.ID,
+					calendarDate,
+				)
 			}
 
-			result, err := repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, inputs)
+			transaction, err := database.Begin(context.Background())
 			if err != nil {
-				t.Fatalf("CreateEventsByDate failed: %v", err)
+				t.Fatalf("failed to begin template-update transaction: %v", err)
 			}
-			if len(result.AcceptedEvents) != 2 {
-				t.Fatalf("expected both events to be accepted, got %+v", result.AcceptedEvents)
+			defer transaction.Rollback(context.Background())
+
+			_, updateError := NewDayRecordRepository(database).UpdateTemplateTx(
+				context.Background(), transaction, user.ID, calendarDate, nil, nil,
+			)
+			if !errors.Is(updateError, testCase.expectedError) {
+				t.Fatalf("expected error %v, got %v", testCase.expectedError, updateError)
 			}
 		})
 	}
 }
 
-func TestDayRecordRepository_CreateEventsByDate_ConcurrentDuplicate(t *testing.T) {
-	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "concurrent-duplicate-user", "password123")
-	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
-	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
+func createDayRecordForRepositoryTest(
+	t *testing.T,
+	database *pgxpool.Pool,
+	repository *DayRecordRepository,
+	userID int,
+	calendarDate CalendarDate,
+) *DayRecord {
+	t.Helper()
+	transaction, err := database.Begin(context.Background())
 	if err != nil {
-		t.Fatalf("failed to create device: %v", err)
+		t.Fatalf("failed to begin day-record transaction: %v", err)
 	}
-	input := []DayEventInput{{
-		ClientEventID:   "concurrent-event",
-		EventType:       "transition",
-		CategoryID:      &category.ID,
-		OccurredAt:      parseTime("2026-09-06T09:00:00Z"),
-		OccurredAtLocal: "2026-09-06T09:00:00+00:00",
-	}}
-
-	start := make(chan struct{})
-	results := make(chan *DateEventResult, 2)
-	errors := make(chan error, 2)
-	var waitGroup sync.WaitGroup
-	waitGroup.Add(2)
-	for range 2 {
-		go func() {
-			defer waitGroup.Done()
-			<-start
-			result, createError := repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, input)
-			results <- result
-			errors <- createError
-		}()
-	}
-	close(start)
-	waitGroup.Wait()
-	close(results)
-	close(errors)
-
-	acceptedCount := 0
-	duplicateCount := 0
-	for result := range results {
-		acceptedCount += len(result.AcceptedEvents)
-		duplicateCount += len(result.DuplicateEventIDs)
-	}
-	for createError := range errors {
-		if createError != nil {
-			t.Fatalf("concurrent duplicate submission failed: %v", createError)
-		}
-	}
-	if acceptedCount != 1 || duplicateCount != 1 {
-		t.Fatalf("expected one accepted and one duplicate event, got accepted=%d duplicate=%d", acceptedCount, duplicateCount)
-	}
-}
-
-func TestDayRecordRepository_CreateEvents_AppendsAfterSavedActualBlocks(t *testing.T) {
-	// Arrange
-	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "incremental-blocks", "password123")
-	firstCategory, _ := NewCategoryRepository(database).Create(context.Background(), CategoryInput{Name: "First", Color: "#FF5733"}, user.ID)
-	secondCategory, _ := NewCategoryRepository(database).Create(context.Background(), CategoryInput{Name: "Second", Color: "#3357FF"}, user.ID)
-	record, err := repository.Create(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
+	defer transaction.Rollback(context.Background())
+	createdRecord, err := repository.CreateTx(
+		context.Background(), transaction, userID, calendarDate, nil, nil,
+	)
 	if err != nil {
 		t.Fatalf("failed to create day record: %v", err)
 	}
-	_, err = repository.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{{
-		CategoryID:      &firstCategory.ID,
-		BlockType:       "actual",
-		StartTime:       mustScheduleTime("09:00:00"),
-		DurationMinutes: 60,
-	}}, nil)
-	if err != nil {
-		t.Fatalf("failed to seed actual block: %v", err)
+	if err := transaction.Commit(context.Background()); err != nil {
+		t.Fatalf("failed to commit day-record transaction: %v", err)
 	}
-
-	// Act
-	_, _, err = repository.CreateEvents(context.Background(), record.ID, user.ID, []DayEventInput{
-		{EventType: "transition", CategoryID: &secondCategory.ID, OccurredAt: parseTime("2026-07-07T10:05:00Z")},
-		{EventType: "confirmation", CategoryID: &secondCategory.ID, OccurredAt: parseTime("2026-07-07T10:15:00Z")},
-	})
-
-	// Assert
-	if err != nil {
-		t.Fatalf("CreateEvents failed: %v", err)
-	}
-	updatedRecord, err := repository.FindByID(context.Background(), record.ID, user.ID)
-	if err != nil {
-		t.Fatalf("failed to reload day record: %v", err)
-	}
-	if len(updatedRecord.ActualBlocks) != 2 {
-		t.Fatalf("expected saved block and one appended block, got %d", len(updatedRecord.ActualBlocks))
-	}
-	if updatedRecord.ActualBlocks[0].StartTime.Hour() != 9 || updatedRecord.ActualBlocks[0].StartTime.Minute() != 0 {
-		t.Errorf("expected saved block to remain at 09:00:00, got %v", updatedRecord.ActualBlocks[0].StartTime)
-	}
-	if updatedRecord.ActualBlocks[1].DurationMinutes != 10 {
-		t.Errorf("expected ten-minute appended block, got %d", updatedRecord.ActualBlocks[1].DurationMinutes)
-	}
-	if updatedRecord.ActualBlocks[1].CategoryID == nil || *updatedRecord.ActualBlocks[1].CategoryID != secondCategory.ID {
-		t.Errorf("expected appended block to use category %d, got %v", secondCategory.ID, updatedRecord.ActualBlocks[1].CategoryID)
-	}
-}
-
-func TestDayRecordRepository_ReplaceActualBlocks_RollsBackPartialBatch(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	repo := NewDayRecordRepository(db)
-	user := createTestUser(t, db, "testuser", "password123")
-	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
-	record, _ := repo.Create(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
-	_, err := repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
-		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 60},
-	}, nil)
-	if err != nil {
-		t.Fatalf("Failed to create initial actual block: %v", err)
-	}
-	invalidCategoryID := 99999
-
-	// Act
-	_, err = repo.ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
-		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 60},
-		{CategoryID: &invalidCategoryID, BlockType: "actual", StartTime: mustScheduleTime("11:00:00"), DurationMinutes: 60},
-	}, nil)
-
-	// Assert
-	if err == nil {
-		t.Fatal("Expected ReplaceActualBlocks to fail")
-	}
-	var blockCount int
-	if err := db.QueryRow(context.Background(), "SELECT COUNT(*) FROM actual_blocks WHERE day_record_id = $1", record.ID).Scan(&blockCount); err != nil {
-		t.Fatalf("Failed to count actual blocks: %v", err)
-	}
-	if blockCount != 1 {
-		t.Errorf("Expected original block to remain after rollback, got %d blocks", blockCount)
-	}
-	var startTime string
-	if err := db.QueryRow(context.Background(), "SELECT start_time::text FROM actual_blocks WHERE day_record_id = $1", record.ID).Scan(&startTime); err != nil {
-		t.Fatalf("Failed to load original actual block: %v", err)
-	}
-	if startTime != "09:00:00" {
-		t.Errorf("Expected original block at 09:00:00, got %s", startTime)
-	}
-}
-
-// Helper function to parse time strings for tests
-func parseTime(timeStr string) time.Time {
-	t, err := time.Parse(time.RFC3339, timeStr)
-	if err != nil {
-		panic(err)
-	}
-	return t
+	return createdRecord
 }

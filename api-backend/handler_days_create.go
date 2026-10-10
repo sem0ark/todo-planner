@@ -10,7 +10,7 @@ func (api *API) createDay(responseWriter http.ResponseWriter, request *http.Requ
 		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
 		return
 	}
-	record, err := api.dayRecordRepo.Create(request.Context(), userID, parsedDate)
+	record, err := api.dayTrackingService.CreateDayRecord(request.Context(), userID, parsedDate)
 	if err != nil {
 		if writeAppError(responseWriter, err) {
 			return

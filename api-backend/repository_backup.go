@@ -127,18 +127,31 @@ func (repository *BackupRepository) Export(ctx context.Context, userID int) (*Ba
 		UpdatedAt:         settings.UpdatedAt,
 	}
 	backupDays := make([]BackupDay, 0, len(records))
+	dayTemplateRepository := NewDayTemplateRepository(repository.db)
+	actualBlockRepository := NewActualBlockRepository(repository.db)
 	for _, record := range records {
+		var snapshotBlocks []SnapshotBlock
+		if record.SnapshotID != nil {
+			snapshotBlocks, err = dayTemplateRepository.FindSnapshotBlocks(ctx, *record.SnapshotID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		actualBlocks, err := actualBlockRepository.FindByRecordID(ctx, record.ID)
+		if err != nil {
+			return nil, err
+		}
 		backupDay := BackupDay{
 			CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
 			SnapshotID: record.SnapshotID, TimezoneOffsetMinutes: record.TimezoneOffsetMinutes,
 			TimezoneOffsetLocked: record.TimezoneOffsetLocked, CreatedAt: record.CreatedAt,
-			UpdatedAt: record.UpdatedAt, Plan: make([]BackupPlanBlock, 0, len(record.SnapshotBlocks)),
-			Actual: make([]BackupActualBlock, 0, len(record.ActualBlocks)),
+			UpdatedAt: record.UpdatedAt, Plan: make([]BackupPlanBlock, 0, len(snapshotBlocks)),
+			Actual: make([]BackupActualBlock, 0, len(actualBlocks)),
 		}
-		for _, block := range record.SnapshotBlocks {
+		for _, block := range snapshotBlocks {
 			backupDay.Plan = append(backupDay.Plan, BackupPlanBlock{CategoryID: block.CategoryID, StartTime: time.Time(block.StartTime).Format(ScheduleTimeFormat), DurationMinutes: block.DurationMinutes})
 		}
-		for _, block := range record.ActualBlocks {
+		for _, block := range actualBlocks {
 			backupDay.Actual = append(backupDay.Actual, BackupActualBlock{CategoryID: block.CategoryID, BlockType: block.BlockType, StartTime: time.Time(block.StartTime).Format(ScheduleTimeFormat), DurationMinutes: block.DurationMinutes})
 		}
 		backupDays = append(backupDays, backupDay)

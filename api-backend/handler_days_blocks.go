@@ -37,7 +37,7 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 	}
 	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
 	if errors.Is(err, ErrDayRecordNotFound) {
-		record, err = api.dayRecordRepo.Create(request.Context(), userID, parsedDate)
+		record, err = api.dayTrackingService.CreateDayRecord(request.Context(), userID, parsedDate)
 	}
 	if err != nil {
 		if writeAppError(responseWriter, err) {
@@ -80,9 +80,9 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 		return
 	}
 	if err == nil {
-		_, err = api.dayRecordRepo.ReplaceActualBlocks(request.Context(), record.ID, userID, actualBlocks, publicInput.ClientOffsetMinutes)
+		_, err = api.dayTrackingService.ReplaceActualBlocks(request.Context(), record.ID, userID, actualBlocks, publicInput.ClientOffsetMinutes)
 		if err == nil {
-			record, err = api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
+			record, err = api.dayTrackingService.FindByDate(request.Context(), userID, parsedDate)
 		}
 	}
 	if err != nil {
