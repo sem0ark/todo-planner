@@ -60,7 +60,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 	dayRecordIDs := make([]int, 0, initPlanDays)
 	for dayIndex := 0; dayIndex < initPlanDays; dayIndex++ {
 		dayRecordDate := calendarDate.AddDate(0, 0, dayIndex)
-		dayRecordID, findError := findOrCreateDayRecord(request.Context(), transaction, userID, dayRecordDate)
+		dayRecordID, findError := findOrCreateDayRecord(request.Context(), transaction, userID, dayRecordDate, 0)
 		if findError != nil {
 			http.Error(responseWriter, "failed to load days", http.StatusInternalServerError)
 			return

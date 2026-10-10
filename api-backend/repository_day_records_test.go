@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -83,6 +84,54 @@ func TestDayRecordRepository_Create_NoTemplate(t *testing.T) {
 	}
 	if len(record.SnapshotBlocks) != 0 {
 		t.Errorf("Expected 0 snapshot blocks, got %d", len(record.SnapshotBlocks))
+	}
+}
+
+func TestDayRecordRepository_CreateEventsByDate_ConcurrentDateCreation(t *testing.T) {
+	database := setupTestDB(t)
+	repository := NewDayRecordRepository(database)
+	user := createTestUser(t, database, "concurrent-event-user", "password123")
+	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
+	if err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(2)
+	for range 2 {
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			_, createError := repository.CreateEventsByDate(
+				context.Background(),
+				user.ID,
+				mustCalendarDate("2026-09-06"),
+				device.ID,
+				nil,
+			)
+			results <- createError
+		}()
+	}
+	close(start)
+	waitGroup.Wait()
+	close(results)
+
+	for createError := range results {
+		if createError != nil {
+			t.Fatalf("concurrent event creation failed: %v", createError)
+		}
+	}
+
+	var recordCount int
+	if err := database.QueryRow(context.Background(), `
+		SELECT COUNT(*) FROM day_records WHERE user_id = $1 AND calendar_date = $2
+	`, user.ID, mustCalendarDate("2026-09-06")).Scan(&recordCount); err != nil {
+		t.Fatalf("failed to count created records: %v", err)
+	}
+	if recordCount != 1 {
+		t.Fatalf("expected one day record, got %d", recordCount)
 	}
 }
 
@@ -741,6 +790,115 @@ func TestDayRecordRepository_CreateEvents_RollsBackPartialBatch(t *testing.T) {
 	}
 	if eventCount != 0 {
 		t.Errorf("Expected no events after rollback, got %d", eventCount)
+	}
+}
+
+func TestDayRecordRepository_CreateEventsByDate_AmendmentOrdering(t *testing.T) {
+	testCases := []struct {
+		name             string
+		targetOccurredAt string
+		amendmentAt      string
+	}{
+		{name: "target before amendment", targetOccurredAt: "09:00:00", amendmentAt: "10:00:00"},
+		{name: "amendment before target", targetOccurredAt: "10:00:00", amendmentAt: "09:00:00"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			database := setupTestDB(t)
+			repository := NewDayRecordRepository(database)
+			user := createTestUser(t, database, "amendment-order-"+testCase.name, "password123")
+			category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
+			device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
+			if err != nil {
+				t.Fatalf("failed to create device: %v", err)
+			}
+			targetOccurredAt := parseTime("2026-09-06T" + testCase.targetOccurredAt + "Z")
+			amendmentOccurredAt := parseTime("2026-09-06T" + testCase.amendmentAt + "Z")
+			correctedAtLocal := "2026-09-06T08:30:00+00:00"
+			correctedAt := parseTime("2026-09-06T08:30:00Z")
+			inputs := []DayEventInput{
+				{
+					ClientEventID:   "target-event",
+					EventType:       "transition",
+					CategoryID:      &category.ID,
+					OccurredAt:      targetOccurredAt,
+					OccurredAtLocal: "2026-09-06T10:00:00+00:00",
+				},
+				{
+					ClientEventID:       "amendment-event",
+					EventType:           "amendment",
+					OccurredAt:          amendmentOccurredAt,
+					OccurredAtLocal:     "2026-09-06T11:00:00+00:00",
+					TargetClientEventID: "target-event",
+					CorrectedAt:         &correctedAt,
+					CorrectedAtLocal:    &correctedAtLocal,
+				},
+			}
+			if amendmentOccurredAt.Before(targetOccurredAt) {
+				inputs[0], inputs[1] = inputs[1], inputs[0]
+			}
+
+			result, err := repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, inputs)
+			if err != nil {
+				t.Fatalf("CreateEventsByDate failed: %v", err)
+			}
+			if len(result.AcceptedEvents) != 2 {
+				t.Fatalf("expected both events to be accepted, got %+v", result.AcceptedEvents)
+			}
+		})
+	}
+}
+
+func TestDayRecordRepository_CreateEventsByDate_ConcurrentDuplicate(t *testing.T) {
+	database := setupTestDB(t)
+	repository := NewDayRecordRepository(database)
+	user := createTestUser(t, database, "concurrent-duplicate-user", "password123")
+	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
+	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
+	if err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+	input := []DayEventInput{{
+		ClientEventID:   "concurrent-event",
+		EventType:       "transition",
+		CategoryID:      &category.ID,
+		OccurredAt:      parseTime("2026-09-06T09:00:00Z"),
+		OccurredAtLocal: "2026-09-06T09:00:00+00:00",
+	}}
+
+	start := make(chan struct{})
+	results := make(chan *DateEventResult, 2)
+	errors := make(chan error, 2)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(2)
+	for range 2 {
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			result, createError := repository.CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, input)
+			results <- result
+			errors <- createError
+		}()
+	}
+	close(start)
+	waitGroup.Wait()
+	close(results)
+	close(errors)
+
+	acceptedCount := 0
+	duplicateCount := 0
+	for result := range results {
+		acceptedCount += len(result.AcceptedEvents)
+		duplicateCount += len(result.DuplicateEventIDs)
+	}
+	for createError := range errors {
+		if createError != nil {
+			t.Fatalf("concurrent duplicate submission failed: %v", createError)
+		}
+	}
+	if acceptedCount != 1 || duplicateCount != 1 {
+		t.Fatalf("expected one accepted and one duplicate event, got accepted=%d duplicate=%d", acceptedCount, duplicateCount)
 	}
 }
 
