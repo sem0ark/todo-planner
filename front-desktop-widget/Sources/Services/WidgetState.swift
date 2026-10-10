@@ -800,7 +800,8 @@ class WidgetStateStore {
         calendarDate: context.currentDayRecord?.calendarDate,
         repo: repository
       )
-      context.eventLocalTimestamps[eventResult.event.clientEventId] = eventResult.event.occurredAtLocal
+      context.eventLocalTimestamps[eventResult.event.clientEventId] =
+        eventResult.event.occurredAtLocal
       context.lastEventClientId = eventResult.clientEventId
     } catch {
       lastError = String(describing: error)

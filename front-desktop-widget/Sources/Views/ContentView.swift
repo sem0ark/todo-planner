@@ -113,33 +113,33 @@ struct ContentView: View {
       case .widget:
         HStack(spacing: 0) {
           // Left Panel (65%)
-           Group {
-             if isNoteEntryActive {
-               NoteEntryView(
-                 text: $noteText,
-                 isFocused: $isNoteFieldFocused,
-                 onCancel: cancelNote,
-                 onSubmit: submitNote
-               )
-             } else {
-               LeftPanelView(widgetState: widgetState)
-             }
-           }
-            .frame(width: 208)
-            .overlay(
-              Rectangle()
-                .fill(StyleTokens.structuralBorder.opacity(Palette.overlayOpacity))
-                .frame(width: 1),
-              alignment: .trailing
-            )
+          Group {
+            if isNoteEntryActive {
+              NoteEntryView(
+                text: $noteText,
+                isFocused: $isNoteFieldFocused,
+                onCancel: cancelNote,
+                onSubmit: submitNote
+              )
+            } else {
+              LeftPanelView(widgetState: widgetState)
+            }
+          }
+          .frame(width: 208)
+          .overlay(
+            Rectangle()
+              .fill(StyleTokens.structuralBorder.opacity(Palette.overlayOpacity))
+              .frame(width: 1),
+            alignment: .trailing
+          )
 
           // Right Rail (35%)
-           RightRailView(
-             widgetState: widgetState,
-             authController: authController,
-             onAddNote: beginNote
-           )
-            .frame(width: 112)
+          RightRailView(
+            widgetState: widgetState,
+            authController: authController,
+            onAddNote: beginNote
+          )
+          .frame(width: 112)
         }
         .onReceive(NotificationCenter.default.publisher(for: .keyPressed)) { notification in
           if let event = notification.object as? NSEvent {
@@ -505,7 +505,7 @@ struct ActiveView: View {
                 )
                 .scaleEffect(widgetState.pomodoroPulsing ? pomoPulseScale : 1.0)
                 .opacity(widgetState.pomodoroPulsing ? pomoPulseOpacity : 1.0)
-                 .onChange(of: widgetState.pomodoroPulsing) { _, isPulsing in
+                .onChange(of: widgetState.pomodoroPulsing) { _, isPulsing in
                   if isPulsing {
                     withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
                       pomoPulseScale = 1.06
@@ -514,14 +514,14 @@ struct ActiveView: View {
                   } else {
                     pomoPulseScale = 1.0
                     pomoPulseOpacity = 1.0
-                   }
-                 }
+                  }
+                }
 
-                 Text(pomoState.phase == .work ? "FOCUS" : "REST")
-                   .font(.system(size: Typography.labelBold, weight: .bold))
-                   .foregroundColor(textColor.opacity(Palette.labelOpacity))
+                Text(pomoState.phase == .work ? "FOCUS" : "REST")
+                  .font(.system(size: Typography.labelBold, weight: .bold))
+                  .foregroundColor(textColor.opacity(Palette.labelOpacity))
 
-                 Spacer()
+                Spacer()
               }
 
               Spacer()

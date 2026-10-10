@@ -63,12 +63,7 @@ describe("findNewTimelineBlockPosition", () => {
   });
 
   it("centers a new block in the visible area when there are no blocks", () => {
-    const result = findNewTimelineBlockPosition(
-      [],
-      8 * 60,
-      18 * 60,
-      13 * 60,
-    );
+    const result = findNewTimelineBlockPosition([], 8 * 60, 18 * 60, 13 * 60);
 
     expect(result).toEqual({ startMinutes: 12 * 60 + 45, durationMinutes: 30 });
   });
