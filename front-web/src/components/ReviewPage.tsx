@@ -3,10 +3,15 @@ import { Link } from "wouter";
 import { useAuthStore } from "../store/authStore";
 import { useCategoryStore } from "../store/categoryStore";
 import { useTemplateStore } from "../store/templateStore";
-import { getCategories } from "../services/categories";
+import { getCategories, type Category } from "../services/categories";
 import { getSchedule, type Schedule } from "../services/schedule";
 import { getTemplates } from "../services/templates";
-import { getDayRecords, type DayRecord } from "../services/dayRecords";
+import {
+  getDayRecords,
+  type ActualBlock,
+  type DayEvent,
+  type DayRecord,
+} from "../services/dayRecords";
 import { useSettingsStore } from "../store/settingsStore";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { downloadBackup, importBackup } from "../services/backup";
@@ -60,6 +65,80 @@ interface ReviewDay {
   actual: DayRecord["actual"];
 }
 
+type CopyableBlock = {
+  category_id: number;
+  start_time: string;
+  duration_minutes: number;
+};
+
+type DayCopySource = {
+  actual: ActualBlock[];
+  events: DayEvent[];
+  plan: DayRecord["plan"];
+};
+
+function timeToMinutes(time: string) {
+  const [hours, minutes, seconds = 0] = time.split(":").map(Number);
+  return hours * 60 + minutes + seconds / 60;
+}
+
+function formatMinutes(totalMinutes: number) {
+  const boundedMinutes = Math.min(24 * 60, Math.max(0, totalMinutes));
+  const hours = Math.floor(boundedMinutes / 60);
+  const minutes = Math.floor(boundedMinutes % 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function eventTime(event: DayEvent) {
+  return timeToMinutes(
+    (event.occurred_at_local || event.occurred_at).slice(11, 19),
+  );
+}
+
+function copyableActualBlocks(source: DayCopySource): CopyableBlock[] {
+  return source.actual
+    .filter(
+      (block): block is ActualBlock & { category_id: number } =>
+        block.block_type === "actual" && block.category_id !== null,
+    )
+    .map(({ category_id, start_time, duration_minutes }) => ({
+      category_id,
+      start_time,
+      duration_minutes,
+    }));
+}
+
+function hasCopyableBlocks(source: DayCopySource) {
+  return copyableActualBlocks(source).length > 0 || source.plan.length > 0;
+}
+
+function formatDayCopyContent(source: DayCopySource, categories: Category[]) {
+  const actualBlocks = copyableActualBlocks(source);
+  const blocks = actualBlocks.length > 0 ? actualBlocks : source.plan;
+  const entries = blocks.map((block, index) => ({
+    time: timeToMinutes(block.start_time),
+    order: index,
+    text: `${formatMinutes(timeToMinutes(block.start_time))} - ${formatMinutes(
+      timeToMinutes(block.start_time) + block.duration_minutes,
+    )} ${categories.find((category) => category.id === block.category_id)?.name ?? "Unknown"}`,
+  }));
+
+  source.events
+    .filter((event) => event.event_type === "note" && event.text?.trim())
+    .forEach((event, index) => {
+      entries.push({
+        time: eventTime(event),
+        order: blocks.length + index,
+        text: event.text!.trim(),
+      });
+    });
+
+  return entries
+    .sort((left, right) => left.time - right.time || left.order - right.order)
+    .map((entry) => entry.text)
+    .join("\n");
+}
+
 export default function ReviewPage() {
   const { token } = useAuthStore();
   const { categories, setCategories } = useCategoryStore();
@@ -71,7 +150,7 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
-  const [copiedNotesDate, setCopiedNotesDate] = useState<string | null>(null);
+  const [copiedDate, setCopiedDate] = useState<string | null>(null);
   const [dataRevision, setDataRevision] = useState(0);
   const fileInputReference = useRef<HTMLInputElement>(null);
 
@@ -122,30 +201,21 @@ export default function ReviewPage() {
     }
   };
 
-  const copyNotes = async (day: ReviewDay) => {
-    const record = day.record;
-    if (!record) return;
-
-    const notes = record.events
-      .filter((event) => event.event_type === "note" && event.text)
-      .sort((left, right) => left.occurred_at.localeCompare(right.occurred_at))
-      .map((event) => {
-        const category = categories.find(
-          (item) => item.id === event.category_id,
-        );
-        const localTimestamp = event.occurred_at_local || event.occurred_at;
-        const timestamp = localTimestamp.slice(0, 16).replace("T", " ");
-        return `${day.date} ${timestamp.slice(11)} ${category?.name ?? "Unknown"}\n${event.text}`;
-      })
-      .join("\n\n");
-
-    if (!notes) return;
+  const copyDay = async (day: ReviewDay) => {
+    const source = {
+      actual: day.record?.actual ?? [],
+      events: day.record?.events ?? [],
+      plan: day.plan,
+    };
+    if (!hasCopyableBlocks(source)) return;
+    const content = formatDayCopyContent(source, categories);
+    if (!content) return;
     try {
-      await navigator.clipboard.writeText(notes);
-      setCopiedNotesDate(day.date);
-      window.setTimeout(() => setCopiedNotesDate(null), 1500);
+      await navigator.clipboard.writeText(content);
+      setCopiedDate(day.date);
+      window.setTimeout(() => setCopiedDate(null), 1500);
     } catch {
-      setError("Failed to copy notes");
+      setError("Failed to copy day");
     }
   };
 
@@ -350,15 +420,17 @@ export default function ReviewPage() {
             >
               Edit
             </Link>
-            {day.record?.events.some(
-              (event) => event.event_type === "note" && event.text,
-            ) && (
+            {hasCopyableBlocks({
+              actual: day.record?.actual ?? [],
+              events: day.record?.events ?? [],
+              plan: day.plan,
+            }) && (
               <button
                 type="button"
-                onClick={() => void copyNotes(day)}
+                onClick={() => void copyDay(day)}
                 className="ml-2 text-xs text-slate-blue hover:text-cloud"
               >
-                {copiedNotesDate === day.date ? "Copied" : "Copy notes"}
+                {copiedDate === day.date ? "Copied" : "Copy"}
               </button>
             )}
           </div>
