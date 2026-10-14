@@ -28,31 +28,37 @@ final class RepositorySyncTests: WidgetTestCase {
     let (eventStore, directory) = try makeTemporaryEventStore()
     defer { try? FileManager.default.removeItem(at: directory) }
     let api = SynchronizationAPI()
-    let earlierEvent = Fixtures.event(id: "earlier", occurredAt: Fixtures.now.addingTimeInterval(-60))
+    let earlierEvent = Fixtures.event(
+      id: "earlier", occurredAt: Fixtures.now.addingTimeInterval(-60))
     let laterEvent = Fixtures.event(id: "later", occurredAt: Fixtures.now)
-    api.results = [.success(DayEventsResponse(
-      acceptedEvents: [
-        AcceptedEvent(
-          clientEventId: earlierEvent.clientEventId,
-          eventType: earlierEvent.eventType,
-          categoryId: earlierEvent.categoryId,
-          occurredAt: earlierEvent.occurredAt,
-          occurredAtLocal: earlierEvent.occurredAtLocal),
-        AcceptedEvent(
-          clientEventId: laterEvent.clientEventId,
-          eventType: laterEvent.eventType,
-          categoryId: laterEvent.categoryId,
-          occurredAt: laterEvent.occurredAt,
-          occurredAtLocal: laterEvent.occurredAtLocal),
-      ],
-      calendarDate: Fixtures.today))]
+    api.results = [
+      .success(
+        DayEventsResponse(
+          acceptedEvents: [
+            AcceptedEvent(
+              clientEventId: earlierEvent.clientEventId,
+              eventType: earlierEvent.eventType,
+              categoryId: earlierEvent.categoryId,
+              occurredAt: earlierEvent.occurredAt,
+              occurredAtLocal: earlierEvent.occurredAtLocal),
+            AcceptedEvent(
+              clientEventId: laterEvent.clientEventId,
+              eventType: laterEvent.eventType,
+              categoryId: laterEvent.categoryId,
+              occurredAt: laterEvent.occurredAt,
+              occurredAtLocal: laterEvent.occurredAtLocal),
+          ],
+          calendarDate: Fixtures.today))
+    ]
     try eventStore.append(calendarDate: Fixtures.today, event: laterEvent)
     try eventStore.append(calendarDate: Fixtures.today, event: earlierEvent)
 
     try await RemoteTodoPlannerRepository(api: api, eventStore: eventStore).synchronize()
 
     try assertEqual(api.postedEvents.count, 1)
-    try assertEqual(api.postedEvents[0].map(\.clientEventId), [earlierEvent.clientEventId, laterEvent.clientEventId])
+    try assertEqual(
+      api.postedEvents[0].map(\.clientEventId),
+      [earlierEvent.clientEventId, laterEvent.clientEventId])
     try assert(eventStore.pendingEvents().isEmpty, "Acknowledged events should leave the queue")
     try assertEqual(eventStore.backupEvents().count, 2)
   }
@@ -71,13 +77,19 @@ final class RepositorySyncTests: WidgetTestCase {
     }
     api.results = [
       .failure(.serverError(400, "batch rejected")),
-      .success(DayEventsResponse(acceptedEvents: [AcceptedEvent(
-        clientEventId: events[0].clientEventId,
-        eventType: events[0].eventType,
-        categoryId: events[0].categoryId,
-        occurredAt: events[0].occurredAt,
-        occurredAtLocal: events[0].occurredAtLocal)], calendarDate: Fixtures.today)),
-      .success(DayEventsResponse(duplicateClientEventIds: [events[1].clientEventId], calendarDate: Fixtures.today)),
+      .success(
+        DayEventsResponse(
+          acceptedEvents: [
+            AcceptedEvent(
+              clientEventId: events[0].clientEventId,
+              eventType: events[0].eventType,
+              categoryId: events[0].categoryId,
+              occurredAt: events[0].occurredAt,
+              occurredAtLocal: events[0].occurredAtLocal)
+          ], calendarDate: Fixtures.today)),
+      .success(
+        DayEventsResponse(
+          duplicateClientEventIds: [events[1].clientEventId], calendarDate: Fixtures.today)),
       .failure(.serverError(400, "event rejected")),
     ]
 
@@ -85,10 +97,12 @@ final class RepositorySyncTests: WidgetTestCase {
 
     try assertEqual(api.postedEvents.count, 4)
     try assertEqual(api.postedEvents[0].count, 3)
-    try assertEqual(api.postedEvents.dropFirst().map { $0[0].clientEventId },
+    try assertEqual(
+      api.postedEvents.dropFirst().map { $0[0].clientEventId },
       events.map(\.clientEventId))
     try assert(eventStore.pendingEvents().isEmpty, "Fallback events should no longer block sync")
-    try assertEqual(eventStore.backupEvents().map(\.event.clientEventId), events.map(\.clientEventId))
+    try assertEqual(
+      eventStore.backupEvents().map(\.event.clientEventId), events.map(\.clientEventId))
   }
 
   func test_synchronizeNon400ErrorPreservesQueue() async throws {
@@ -145,19 +159,41 @@ final class RepositorySyncTests: WidgetTestCase {
     await harness.store.synchronize()
 
     try assertEqual(harness.store.screenState, .login)
-    try assert(harness.store.lastError == "unauthorized", "Missing authentication should be exposed")
+    try assert(
+      harness.store.lastError == "unauthorized", "Missing authentication should be exposed")
   }
 
   static func testMethods() -> [TestCase] {
     let tests = RepositorySyncTests()
     return [
-      ("test_apiClientDoesNotPersistAuthenticationToken", { try tests.test_apiClientDoesNotPersistAuthenticationToken() }),
-      ("test_apiClientPreservesDeviceRegistrationWhenAuthenticationChanges", { try tests.test_apiClientPreservesDeviceRegistrationWhenAuthenticationChanges() }),
-      ("test_synchronizeSendsSortedEventsAsSingleBatch", { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }),
-      ("test_synchronize400FallsBackToIndividualEvents", { try await tests.test_synchronize400FallsBackToIndividualEvents() }),
-      ("test_synchronizeNon400ErrorPreservesQueue", { try await tests.test_synchronizeNon400ErrorPreservesQueue() }),
-      ("test_synchronizeFailurePreservesExistingBootstrapCache", { try await tests.test_synchronizeFailurePreservesExistingBootstrapCache() }),
-      ("test_synchronizeWithoutAuthenticationRequestsLogin", { try await tests.test_synchronizeWithoutAuthenticationRequestsLogin() }),
+      (
+        "test_apiClientDoesNotPersistAuthenticationToken",
+        { try tests.test_apiClientDoesNotPersistAuthenticationToken() }
+      ),
+      (
+        "test_apiClientPreservesDeviceRegistrationWhenAuthenticationChanges",
+        { try tests.test_apiClientPreservesDeviceRegistrationWhenAuthenticationChanges() }
+      ),
+      (
+        "test_synchronizeSendsSortedEventsAsSingleBatch",
+        { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }
+      ),
+      (
+        "test_synchronize400FallsBackToIndividualEvents",
+        { try await tests.test_synchronize400FallsBackToIndividualEvents() }
+      ),
+      (
+        "test_synchronizeNon400ErrorPreservesQueue",
+        { try await tests.test_synchronizeNon400ErrorPreservesQueue() }
+      ),
+      (
+        "test_synchronizeFailurePreservesExistingBootstrapCache",
+        { try await tests.test_synchronizeFailurePreservesExistingBootstrapCache() }
+      ),
+      (
+        "test_synchronizeWithoutAuthenticationRequestsLogin",
+        { try await tests.test_synchronizeWithoutAuthenticationRequestsLogin() }
+      ),
     ]
   }
 }

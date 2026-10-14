@@ -5,65 +5,66 @@ final class ModelsAndInitializationTests: WidgetTestCase {
 
   func test_initResponse_decodesCurrentAPIShape() throws {
     let json = """
-    {
-      "settings": {
-        "day_range_start_time": "04:00:00",
-        "updated_at": "2026-09-06T14:30:00Z"
-      },
-      "categories": [],
-      "day_records": [{
-        "calendar_date": "2026-09-06",
-        "day_template_id": 5,
-        "plan": [
+      {
+        "settings": {
+          "day_range_start_time": "04:00:00",
+          "updated_at": "2026-09-06T14:30:00Z"
+        },
+        "categories": [],
+        "day_records": [{
+          "calendar_date": "2026-09-06",
+          "day_template_id": 5,
+          "plan": [
+              {
+                "category_id": 3,
+                "start_time": "08:00:00",
+                "duration_minutes": 60
+              }
+            ],
+          "actual": [
             {
               "category_id": 3,
-              "start_time": "08:00:00",
-              "duration_minutes": 60
+              "block_type": "actual",
+                "start_time": "08:05:00",
+              "duration_minutes": 55
             }
           ],
-        "actual": [
-          {
-            "category_id": 3,
-            "block_type": "actual",
-              "start_time": "08:05:00",
-            "duration_minutes": 55
-          }
-        ],
-        "created_at": "2026-09-06T07:55:00Z",
-        "updated_at": "2026-09-06T14:30:00Z"
-      }]
-    }
-    """.data(using: .utf8)!
+          "created_at": "2026-09-06T07:55:00Z",
+          "updated_at": "2026-09-06T14:30:00Z"
+        }]
+      }
+      """.data(using: .utf8)!
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
 
     let response = try decoder.decode(InitResponse.self, from: json)
 
-    try assert(response.settings.updatedAt.timeIntervalSince1970 > 0, "settings timestamp should decode")
+    try assert(
+      response.settings.updatedAt.timeIntervalSince1970 > 0, "settings timestamp should decode")
     try assertEqual(response.dayRecords[0].calendarDate, "2026-09-06")
     try assertEqual(response.dayRecords[0].plan[0].startTime, "08:00:00")
   }
 
   func test_dayEventsResponse_decodesNullAcceptedEventCategory() throws {
     let json = """
-    {
-      "calendar_date": "2026-09-07",
-      "day_template_id": null,
-      "plan": [],
-      "actual": [],
-      "accepted_events": [
-        {
-          "client_event_id": "event-1",
-          "event_type": "amendment",
-          "category_id": null,
-          "occurred_at": "2026-09-07T10:55:04Z"
-        }
-      ],
-      "duplicate_client_event_ids": [],
-      "created_at": "2026-09-07T10:00:00Z",
-      "updated_at": "2026-09-07T10:55:04Z"
-    }
-    """.data(using: .utf8)!
+      {
+        "calendar_date": "2026-09-07",
+        "day_template_id": null,
+        "plan": [],
+        "actual": [],
+        "accepted_events": [
+          {
+            "client_event_id": "event-1",
+            "event_type": "amendment",
+            "category_id": null,
+            "occurred_at": "2026-09-07T10:55:04Z"
+          }
+        ],
+        "duplicate_client_event_ids": [],
+        "created_at": "2026-09-07T10:00:00Z",
+        "updated_at": "2026-09-07T10:55:04Z"
+      }
+      """.data(using: .utf8)!
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
 
@@ -74,19 +75,21 @@ final class ModelsAndInitializationTests: WidgetTestCase {
 
   func test_dayEventsResponse_missingRequiredArrayFailsDecoding() throws {
     let json = """
-    {"calendar_date":"2026-09-07","plan":[],"actual":[],
-      "created_at":"2026-09-07T10:00:00Z","updated_at":"2026-09-07T10:00:00Z"}
-    """.data(using: .utf8)!
+      {"calendar_date":"2026-09-07","plan":[],"actual":[],
+        "created_at":"2026-09-07T10:00:00Z","updated_at":"2026-09-07T10:00:00Z"}
+      """.data(using: .utf8)!
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
 
-    try assert((try? decoder.decode(DayEventsResponse.self, from: json)) == nil,
+    try assert(
+      (try? decoder.decode(DayEventsResponse.self, from: json)) == nil,
       "Missing accepted_events and duplicate_client_event_ids must fail decoding")
   }
 
   func test_dayRecordsResponse_missingContainerFailsDecoding() throws {
     let json = "{}".data(using: .utf8)!
-    try assert((try? JSONDecoder().decode(DayRecordsResponse.self, from: json)) == nil,
+    try assert(
+      (try? JSONDecoder().decode(DayRecordsResponse.self, from: json)) == nil,
       "Missing day_records and days must fail decoding")
   }
 
@@ -108,14 +111,17 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assertEqual(object?["client_event_id"] as? String, "event-1")
     try assertEqual(object?["event_type"] as? String, "amendment")
     try assertEqual(object?["target_client_event_id"] as? String, "event-0")
-      try assert(object?["occurred_at_local"] != nil, "occurred_at_local should be encoded")
+    try assert(object?["occurred_at_local"] != nil, "occurred_at_local should be encoded")
   }
 
   func test_init_freshDay_createsRecord() async throws {
     let newRecord = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: nil, createdRecord: newRecord)
     await h.initialize()
-    try h.assertContainsCall { if case .initialize = $0 { return true }; return false }
+    try h.assertContainsCall {
+      if case .initialize = $0 { return true }
+      return false
+    }
     try h.assertNoSubmitEvents()
   }
 
@@ -145,7 +151,8 @@ final class ModelsAndInitializationTests: WidgetTestCase {
 
   func test_invalidScheduleTime_doesNotSelectBlock() throws {
     let block = PlannedBlock(categoryId: 1, startTime: "not-a-time", durationMinutes: 60)
-    try assert(TimeLogic.getCurrentPlannedBlock(at: Date(), from: [block]) == nil,
+    try assert(
+      TimeLogic.getCurrentPlannedBlock(at: Date(), from: [block]) == nil,
       "Malformed schedule times must not be interpreted as midnight")
   }
 
@@ -156,7 +163,8 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     )
     let h = WidgetTestHarness(existingRecord: invalidRecord)
     await h.initialize()
-    try assert(h.store.displayState == .initializing,
+    try assert(
+      h.store.displayState == .initializing,
       "A contract-breaking bootstrap must not activate the widget")
     try assert(h.store.lastError != nil, "Bootstrap failure must be exposed")
   }
@@ -165,7 +173,8 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     let record = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: record)
     await h.initialize()
-    try assert(h.store.displayState == .active,
+    try assert(
+      h.store.displayState == .active,
       "The widget should initialize from the plan without actual blocks")
   }
 
@@ -249,10 +258,11 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assertEqual(harness.store.screenState, .widget)
     try assertEqual(harness.store.displayState, .active)
     try assertEqual(harness.mock.calls.count, 1)
-    try assertEqual(harness.mock.calls.compactMap { call -> String? in
-      guard case .initialize(let date) = call else { return nil }
-      return date
-    }, [Fixtures.today])
+    try assertEqual(
+      harness.mock.calls.compactMap { call -> String? in
+        guard case .initialize(let date) = call else { return nil }
+        return date
+      }, [Fixtures.today])
   }
 
   func test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache() async throws {
@@ -313,30 +323,93 @@ final class ModelsAndInitializationTests: WidgetTestCase {
   static func testMethods() -> [TestCase] {
     let tests = ModelsAndInitializationTests()
     return [
-      ("test_initResponse_decodesCurrentAPIShape", { try tests.test_initResponse_decodesCurrentAPIShape() }),
-      ("test_dayEventsResponse_decodesNullAcceptedEventCategory", { try tests.test_dayEventsResponse_decodesNullAcceptedEventCategory() }),
-      ("test_dayEventsResponse_missingRequiredArrayFailsDecoding", { try tests.test_dayEventsResponse_missingRequiredArrayFailsDecoding() }),
-      ("test_dayRecordsResponse_missingContainerFailsDecoding", { try tests.test_dayRecordsResponse_missingContainerFailsDecoding() }),
-      ("test_dayEventEncodesIdempotencyAndAmendmentFields", { try tests.test_dayEventEncodesIdempotencyAndAmendmentFields() }),
+      (
+        "test_initResponse_decodesCurrentAPIShape",
+        { try tests.test_initResponse_decodesCurrentAPIShape() }
+      ),
+      (
+        "test_dayEventsResponse_decodesNullAcceptedEventCategory",
+        { try tests.test_dayEventsResponse_decodesNullAcceptedEventCategory() }
+      ),
+      (
+        "test_dayEventsResponse_missingRequiredArrayFailsDecoding",
+        { try tests.test_dayEventsResponse_missingRequiredArrayFailsDecoding() }
+      ),
+      (
+        "test_dayRecordsResponse_missingContainerFailsDecoding",
+        { try tests.test_dayRecordsResponse_missingContainerFailsDecoding() }
+      ),
+      (
+        "test_dayEventEncodesIdempotencyAndAmendmentFields",
+        { try tests.test_dayEventEncodesIdempotencyAndAmendmentFields() }
+      ),
       ("test_init_freshDay_createsRecord", { try await tests.test_init_freshDay_createsRecord() }),
-      ("test_init_withPlannedCategory_picksCategoryAndLogsTransition", { try await tests.test_init_withPlannedCategory_picksCategoryAndLogsTransition() }),
-      ("test_init_existingRecord_doesNotCreate", { try await tests.test_init_existingRecord_doesNotCreate() }),
-      ("test_invalidScheduleTime_doesNotSelectBlock", { try tests.test_invalidScheduleTime_doesNotSelectBlock() }),
-      ("test_invalidBootstrap_keepsStoreInitializing", { try await tests.test_invalidBootstrap_keepsStoreInitializing() }),
-      ("test_actualBlocksAreNotPartOfWidgetPlanModel", { try await tests.test_actualBlocksAreNotPartOfWidgetPlanModel() }),
+      (
+        "test_init_withPlannedCategory_picksCategoryAndLogsTransition",
+        { try await tests.test_init_withPlannedCategory_picksCategoryAndLogsTransition() }
+      ),
+      (
+        "test_init_existingRecord_doesNotCreate",
+        { try await tests.test_init_existingRecord_doesNotCreate() }
+      ),
+      (
+        "test_invalidScheduleTime_doesNotSelectBlock",
+        { try tests.test_invalidScheduleTime_doesNotSelectBlock() }
+      ),
+      (
+        "test_invalidBootstrap_keepsStoreInitializing",
+        { try await tests.test_invalidBootstrap_keepsStoreInitializing() }
+      ),
+      (
+        "test_actualBlocksAreNotPartOfWidgetPlanModel",
+        { try await tests.test_actualBlocksAreNotPartOfWidgetPlanModel() }
+      ),
       ("test_initialState_isInitializing", { try tests.test_initialState_isInitializing() }),
       ("test_afterInitialize_isActive", { try await tests.test_afterInitialize_isActive() }),
-      ("test_cachedBootstrap_startsWidgetWithoutLoggingTransition", { try await tests.test_cachedBootstrap_startsWidgetWithoutLoggingTransition() }),
-      ("test_reload_fetchesRemoteDataAndReturnsToActive", { try await tests.test_reload_fetchesRemoteDataAndReturnsToActive() }),
-      ("test_missingScheduleData_isNotOnSchedule", { try await tests.test_missingScheduleData_isNotOnSchedule() }),
-      ("test_stateTransition_initialToActive", { try await tests.test_stateTransition_initialToActive() }),
-      ("test_startWithoutCacheOrAuthenticationShowsLogin", { try await tests.test_startWithoutCacheOrAuthenticationShowsLogin() }),
-      ("test_startWithCachedBootstrapWithoutAuthenticationShowsWidget", { try await tests.test_startWithCachedBootstrapWithoutAuthenticationShowsWidget() }),
-      ("test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget", { try await tests.test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget() }),
-      ("test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache", { try await tests.test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache() }),
-      ("test_authenticationSucceededWithNoAPIDataShowsError", { try await tests.test_authenticationSucceededWithNoAPIDataShowsError() }),
-      ("test_startWithAuthenticationIgnoresCachedBootstrap", { try await tests.test_startWithAuthenticationIgnoresCachedBootstrap() }),
-      ("test_startWithAuthenticationFailureShowsError", { try await tests.test_startWithAuthenticationFailureShowsError() }),
+      (
+        "test_cachedBootstrap_startsWidgetWithoutLoggingTransition",
+        { try await tests.test_cachedBootstrap_startsWidgetWithoutLoggingTransition() }
+      ),
+      (
+        "test_reload_fetchesRemoteDataAndReturnsToActive",
+        { try await tests.test_reload_fetchesRemoteDataAndReturnsToActive() }
+      ),
+      (
+        "test_missingScheduleData_isNotOnSchedule",
+        { try await tests.test_missingScheduleData_isNotOnSchedule() }
+      ),
+      (
+        "test_stateTransition_initialToActive",
+        { try await tests.test_stateTransition_initialToActive() }
+      ),
+      (
+        "test_startWithoutCacheOrAuthenticationShowsLogin",
+        { try await tests.test_startWithoutCacheOrAuthenticationShowsLogin() }
+      ),
+      (
+        "test_startWithCachedBootstrapWithoutAuthenticationShowsWidget",
+        { try await tests.test_startWithCachedBootstrapWithoutAuthenticationShowsWidget() }
+      ),
+      (
+        "test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget",
+        { try await tests.test_startWithAuthenticationWithoutCacheLoadsAPIAndShowsWidget() }
+      ),
+      (
+        "test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache",
+        { try await tests.test_authenticationSucceededLoadsFreshAPIDataWithoutUsingCache() }
+      ),
+      (
+        "test_authenticationSucceededWithNoAPIDataShowsError",
+        { try await tests.test_authenticationSucceededWithNoAPIDataShowsError() }
+      ),
+      (
+        "test_startWithAuthenticationIgnoresCachedBootstrap",
+        { try await tests.test_startWithAuthenticationIgnoresCachedBootstrap() }
+      ),
+      (
+        "test_startWithAuthenticationFailureShowsError",
+        { try await tests.test_startWithAuthenticationFailureShowsError() }
+      ),
     ]
   }
 }

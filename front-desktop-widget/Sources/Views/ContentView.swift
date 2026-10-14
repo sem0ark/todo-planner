@@ -34,8 +34,7 @@ struct Typography {
   static let categoryNameMedium: CGFloat = 14  // Category name in secondary blocks
   static let bodyMedium: CGFloat = 14  // Body text
   static let labelBold: CGFloat = 10  // Small labels (ACTUAL, PLANNED)
-  static let smallMono: CGFloat = 10  // Small monospaced text (times, numbers)
-  static let tinyMono: CGFloat = 10  // Tiny monospaced text (was 9, now 10 minimum)
+  static let smallMono: CGFloat = 12  // Small monospaced text (times, numbers)
   static let categoryRowName: CGFloat = 10  // Right rail category names
 }
 
@@ -86,8 +85,6 @@ struct StyleTokens {
 struct ContentView: View {
   private let authController: AuthController
   private let widgetState: WidgetStateStore
-  @State private var isNoteEntryActive = false
-  @State private var noteText = ""
   @FocusState private var isNoteFieldFocused: Bool
 
   init(widgetState: WidgetStateStore, authController: AuthController) {
@@ -113,31 +110,20 @@ struct ContentView: View {
       case .widget:
         HStack(spacing: 0) {
           // Left Panel (65%)
-          Group {
-            if isNoteEntryActive {
-              NoteEntryView(
-                text: $noteText,
-                isFocused: $isNoteFieldFocused,
-                onCancel: cancelNote,
-                onSubmit: submitNote
-              )
-            } else {
-              LeftPanelView(widgetState: widgetState)
-            }
-          }
-          .frame(width: 208)
-          .overlay(
-            Rectangle()
-              .fill(StyleTokens.structuralBorder.opacity(Palette.overlayOpacity))
-              .frame(width: 1),
-            alignment: .trailing
-          )
+          LeftPanelView(widgetState: widgetState)
+            .frame(width: 208)
+            .overlay(
+              Rectangle()
+                .fill(StyleTokens.structuralBorder.opacity(Palette.overlayOpacity))
+                .frame(width: 1),
+              alignment: .trailing
+            )
 
           // Right Rail (35%)
           RightRailView(
             widgetState: widgetState,
             authController: authController,
-            onAddNote: beginNote
+            onAddNote: { widgetState.beginNote() }
           )
           .frame(width: 112)
         }
@@ -146,6 +132,13 @@ struct ContentView: View {
             handleKeyPress(event)
           }
         }
+      case .noteEntry:
+        NoteEntryView(
+          widgetState: widgetState,
+          isFocused: $isNoteFieldFocused,
+          onCancel: { widgetState.cancelNote() },
+          onSubmit: { Task { await widgetState.submitNote() } }
+        )
       case .login:
         LoginView(authController: authController, widgetState: widgetState)
       case .error(let message):
@@ -184,14 +177,8 @@ struct ContentView: View {
     Task {
       switch key {
       case "t" where event.modifierFlags.contains(.command):
-        beginNote()
-      case "\u{1b}" where isNoteEntryActive:
-        cancelNote()
+        widgetState.beginNote()
       case "\r":  // Primary action key
-        if isNoteEntryActive {
-          submitNote()
-          return
-        }
         WidgetLogger.debug("Primary action key pressed")
         await widgetState.handlePrimaryAction()
       case "1", "2", "3", "4", "5", "6", "7", "8", "9":
@@ -214,79 +201,106 @@ struct ContentView: View {
     }
   }
 
-  private func beginNote() {
-    isNoteEntryActive = true
-    noteText = ""
-    DispatchQueue.main.async {
-      isNoteFieldFocused = true
-    }
-  }
-
-  private func cancelNote() {
-    isNoteEntryActive = false
-    noteText = ""
-    isNoteFieldFocused = false
-  }
-
-  private func submitNote() {
-    let trimmedText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedText.isEmpty, trimmedText.count <= 512 else { return }
-    Task {
-      await widgetState.addNote(text: trimmedText)
-      cancelNote()
-    }
-  }
 }
 
 struct NoteEntryView: View {
-  @Binding var text: String
+  var widgetState: WidgetStateStore
   var isFocused: FocusState<Bool>.Binding
   let onCancel: () -> Void
   let onSubmit: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Text("ADD NOTE")
-          .font(.system(size: Typography.categoryNameMedium, weight: .bold))
-          .foregroundColor(StyleTokens.primaryText)
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .center, spacing: 4) {
+        Text("\(widgetState.noteText.count)/512")
+          .font(.system(size: Typography.smallMono, weight: .bold, design: .monospaced))
+          .monospacedDigit()
+          .foregroundColor(StyleTokens.offsetGreen)
         Spacer()
-        Text("\(text.count)/512")
-          .font(.system(size: Typography.tinyMono, design: .monospaced))
-          .foregroundColor(StyleTokens.secondaryText)
-      }
-
-      TextField("Write a note...", text: $text, axis: .vertical)
-        .focused(isFocused)
-        .lineLimit(5...8)
-        .textFieldStyle(.plain)
-        .foregroundColor(StyleTokens.primaryText)
-        .padding(8)
-        .background(StyleTokens.deepVoid.opacity(Palette.hoverOpacity))
-        .cornerRadius(StyleTokens.radiusInner)
-        .onChange(of: text) { _, value in
-          if value.count > 512 {
-            text = String(value.prefix(512))
-          }
+        Button(action: onCancel) {
+          Text("Cancel")
+            .font(.system(size: Typography.smallMono, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(StyleTokens.baseVoid)
+            .overlay(
+              RoundedRectangle(cornerRadius: 2)
+                .stroke(StyleTokens.offsetGreen.opacity(Palette.iconOpacity), lineWidth: 1)
+            )
+            .cornerRadius(2)
         }
+        .buttonStyle(PlainButtonStyle())
+        Button(action: onSubmit) {
+          Text("Submit")
+            .font(.system(size: Typography.smallMono, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(StyleTokens.baseVoid)
+            .overlay(
+              RoundedRectangle(cornerRadius: 2)
+                .stroke(StyleTokens.offsetGreen.opacity(Palette.iconOpacity), lineWidth: 1)
+            )
+            .cornerRadius(2)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(widgetState.noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+      .padding(.horizontal, 8)
+      .frame(height: 28)
+      .background(StyleTokens.baseVoid.opacity(Palette.overlayOpacity))
+      .overlay(
+        Rectangle()
+          .fill(StyleTokens.structuralBorder.opacity(Palette.subtleLineOpacity))
+          .frame(height: 1),
+        alignment: .bottom
+      )
 
-      Spacer()
-
-      HStack {
-        Text("Enter to save")
-          .font(.system(size: Typography.tinyMono, design: .monospaced))
-          .foregroundColor(StyleTokens.secondaryText)
-        Spacer()
-        Button("Cancel", action: onCancel)
-          .buttonStyle(.plain)
-          .foregroundColor(StyleTokens.secondaryText)
-        Button("Save", action: onSubmit)
-          .buttonStyle(.borderedProminent)
-          .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      TextEditor(
+        text: Binding(
+          get: { widgetState.noteText },
+          set: { text in
+            widgetState.updateNoteText(text)
+          }
+        )
+      )
+      .focused(isFocused)
+      .font(.system(size: 16))
+      .foregroundColor(StyleTokens.primaryText)
+      .padding(8)
+      .background(StyleTokens.baseVoid)
+      .cornerRadius(StyleTokens.radiusInner)
+      .scrollContentBackground(.hidden)
+      .overlay(alignment: .topLeading) {
+        if widgetState.noteText.isEmpty {
+          Text("Write a note...")
+            .foregroundColor(StyleTokens.secondaryText)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .allowsHitTesting(false)
+        }
       }
     }
-    .padding(12)
     .background(StyleTokens.baseVoid)
+    .onAppear {
+      isFocused.wrappedValue = true
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .keyPressed)) { notification in
+      guard let event = notification.object as? NSEvent else { return }
+      handleNoteKeyPress(event)
+    }
+  }
+
+  private func handleNoteKeyPress(_ event: NSEvent) {
+    let key = event.charactersIgnoringModifiers ?? ""
+    if event.keyCode == 51 && event.modifierFlags.contains(.command) {
+      widgetState.deleteLastNoteWord()
+    } else if key == "\u{1b}" {
+      onCancel()
+    } else if key == "\r" {
+      onSubmit()
+    }
   }
 }
 
@@ -411,6 +425,15 @@ struct ActiveView: View {
   @State private var pomoPulseOpacity: Double = 1.0
   @State private var returnPulseOpacity: Double = 1.0
 
+  private func pomodoroRingColor(for phase: PomodoroPhase, categoryColor: String) -> Color {
+    switch phase {
+    case .work, .awaitingWorkConfirmation:
+      return .white
+    case .rest:
+      return Color(hex: categoryColor).complementary()
+    }
+  }
+
   var body: some View {
     if let category = widgetState.currentCategory {
       let textColor = Color.white  // Always use white for text (matching React)
@@ -418,7 +441,7 @@ struct ActiveView: View {
       VStack(spacing: 0) {
         HStack(spacing: 4) {
           Text("START \(formatStartTime(widgetState.lastEventTime))")
-            .font(.system(size: Typography.tinyMono, weight: .bold, design: .monospaced))
+            .font(.system(size: Typography.smallMono, weight: .bold, design: .monospaced))
             .monospacedDigit()
             .foregroundColor(StyleTokens.offsetGreen)
 
@@ -432,7 +455,7 @@ struct ActiveView: View {
               WidgetLogger.debug("Return to plan requested from unplanned category")
               Task { await widgetState.dispatch(.returnToPlan) }
             }
-            .font(.system(size: Typography.tinyMono, design: .monospaced))
+            .font(.system(size: Typography.smallMono, design: .monospaced))
             .foregroundColor(.white.opacity(returnPulseOpacity))
             .padding(.horizontal, 5)
             .padding(.vertical, 3)
@@ -493,13 +516,9 @@ struct ActiveView: View {
               HStack {
                 Spacer()
 
-                let ringColor =
-                  pomoState.phase == .work
-                  ? Color.white : Color(hex: category.color).complementary()
-
                 CircularTimer(
                   progress: widgetState.pomodoroProgress,
-                  color: ringColor,
+                  color: pomodoroRingColor(for: pomoState.phase, categoryColor: category.color),
                   size: 60,
                   strokeWidth: 5
                 )
@@ -516,10 +535,6 @@ struct ActiveView: View {
                     pomoPulseOpacity = 1.0
                   }
                 }
-
-                Text(pomoState.phase == .work ? "FOCUS" : "REST")
-                  .font(.system(size: Typography.labelBold, weight: .bold))
-                  .foregroundColor(textColor.opacity(Palette.labelOpacity))
 
                 Spacer()
               }
@@ -547,7 +562,7 @@ struct ActiveView: View {
 
                 // Remaining planned time
                 Text(formatDuration(minutes: widgetState.remainingPlannedMinutes))
-                  .font(.system(size: Typography.tinyMono, design: .monospaced))
+                  .font(.system(size: Typography.smallMono, design: .monospaced))
                   .monospacedDigit()
                   .lineLimit(1)
                   .minimumScaleFactor(0.8)
@@ -597,7 +612,7 @@ struct OffsetButton: View {
       Task { await widgetState.adjustOffset(minutes: minutes) }
     }) {
       Text(label)
-        .font(.system(size: Typography.tinyMono, design: .monospaced))
+        .font(.system(size: Typography.smallMono, design: .monospaced))
         .foregroundColor(.white)
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
@@ -763,7 +778,7 @@ struct CategoryRow: View {
 
         // Index number
         Text("\(index)")
-          .font(.system(size: Typography.tinyMono, design: .monospaced))
+          .font(.system(size: Typography.smallMono, design: .monospaced))
           .monospacedDigit()
           .foregroundColor(StyleTokens.structuralBorder.opacity(Palette.iconOpacity))
       }

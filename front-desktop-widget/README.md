@@ -10,8 +10,9 @@ See [Design documenation](../docs/style%20system%20v1.md) and [requirements](../
 | `1 - 9` | **Category Jump** | Transitions to the category at index $N$ in the right rail. |
 | `[` / `]` | **Offset Nudge** | In State 3, shifts the last transition timestamp back by 5m increments. |
 | `Cmd + Z` | **Undo** | Reverts the last transition or offset adjustment. |
-| `Cmd + T` | **Add note** | Opens timed note entry for the current category. |
-| `Enter` (note entry) | **Save note** | Queues the note with the current timestamp. |
+| `Cmd + T` | **Add note** | Opens a full-widget note screen for the current category. |
+| `Enter` (note screen) | **Save note** | Saves the note with the current timestamp. |
+| `Escape` (note screen) | **Cancel note** | Returns to the widget without submitting. |
 
 ## Spatial Layout
 The widget uses a fixed **200px x 320px** footprint. It is divided into a **Dynamic Left Panel** (Current Reality) and a **Static Right Rail** (Category List).

@@ -49,18 +49,30 @@ final class AuthControllerTests: WidgetTestCase {
   static func testMethods() -> [TestCase] {
     let tests = AuthControllerTests()
     return [
-      ("test_workingAuthenticationToken_hasFutureExpiration", {
-        try tests.test_workingAuthenticationToken_hasFutureExpiration()
-      }),
-      ("test_expiredAuthenticationToken_isNotWorking", {
-        try tests.test_expiredAuthenticationToken_isNotWorking()
-      }),
-      ("test_malformedJwt_isNotWorking", {
-        try tests.test_malformedJwt_isNotWorking()
-      }),
-      ("test_nonJwtToken_isSupported", {
-        try tests.test_nonJwtToken_isSupported()
-      }),
+      (
+        "test_workingAuthenticationToken_hasFutureExpiration",
+        {
+          try tests.test_workingAuthenticationToken_hasFutureExpiration()
+        }
+      ),
+      (
+        "test_expiredAuthenticationToken_isNotWorking",
+        {
+          try tests.test_expiredAuthenticationToken_isNotWorking()
+        }
+      ),
+      (
+        "test_malformedJwt_isNotWorking",
+        {
+          try tests.test_malformedJwt_isNotWorking()
+        }
+      ),
+      (
+        "test_nonJwtToken_isSupported",
+        {
+          try tests.test_nonJwtToken_isSupported()
+        }
+      ),
     ]
   }
 }

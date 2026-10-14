@@ -73,8 +73,10 @@ final class PersistenceTests: WidgetTestCase {
       calendarDate: Fixtures.today,
       event: Fixtures.event(id: "new-event", occurredAt: Fixtures.now.addingTimeInterval(60)))
 
-    let migratedData = try Data(contentsOf: directory.appendingPathComponent("pending-events.jsonl"))
-    try assert(migratedData.first == 0x7B,
+    let migratedData = try Data(
+      contentsOf: directory.appendingPathComponent("pending-events.jsonl"))
+    try assert(
+      migratedData.first == 0x7B,
       "Migrated queue should use JSON Lines rather than a JSON array")
     try assertEqual(eventStore.pendingEvents().count, 2)
   }
@@ -83,8 +85,8 @@ final class PersistenceTests: WidgetTestCase {
     let (eventStore, directory) = try makeTemporaryEventStore()
     defer { try? FileManager.default.removeItem(at: directory) }
     let queueJSON = """
-    {"calendarDate":"2026-09-27","event":{"client_event_id":"legacy-event","event_type":"amendment","category_id":null,"occurred_at":"2026-09-27T10:00:00Z","corrected_at":"2026-09-27T09:45:00Z","target_client_event_id":"target-event"}}
-    """.data(using: .utf8)!
+      {"calendarDate":"2026-09-27","event":{"client_event_id":"legacy-event","event_type":"amendment","category_id":null,"occurred_at":"2026-09-27T10:00:00Z","corrected_at":"2026-09-27T09:45:00Z","target_client_event_id":"target-event"}}
+      """.data(using: .utf8)!
     try queueJSON.write(to: directory.appendingPathComponent("pending-events.jsonl"))
 
     let event = try eventStore.pendingEvents()[0].event
@@ -106,10 +108,13 @@ final class PersistenceTests: WidgetTestCase {
       appendFile: { _, _ in throw StorageError.databaseError("append stopped") })
 
     let failedEvent = Fixtures.event(id: "failed", occurredAt: Fixtures.now.addingTimeInterval(60))
-    try assert((try? failingStore.append(calendarDate: Fixtures.today, event: failedEvent)) == nil,
+    try assert(
+      (try? failingStore.append(calendarDate: Fixtures.today, event: failedEvent)) == nil,
       "Append failures should be reported")
-    try assertEqual(eventStore.pendingEvents().map(\.event.clientEventId), [existingEvent.clientEventId])
-    try assertEqual(eventStore.backupEvents().map(\.event.clientEventId), [existingEvent.clientEventId])
+    try assertEqual(
+      eventStore.pendingEvents().map(\.event.clientEventId), [existingEvent.clientEventId])
+    try assertEqual(
+      eventStore.backupEvents().map(\.event.clientEventId), [existingEvent.clientEventId])
   }
 
   func test_atomicQueueRewriteFailurePreservesContents() throws {
@@ -123,9 +128,11 @@ final class PersistenceTests: WidgetTestCase {
       storageDirectory: directory,
       atomicWriteFile: { _, _ in throw StorageError.databaseError("atomic write stopped") })
 
-    try assert((try? failingStore.remove(clientEventIds: [firstEvent.clientEventId])) == nil,
+    try assert(
+      (try? failingStore.remove(clientEventIds: [firstEvent.clientEventId])) == nil,
       "Queue rewrite failures should be reported")
-    try assertEqual(eventStore.pendingEvents().map(\.event.clientEventId),
+    try assertEqual(
+      eventStore.pendingEvents().map(\.event.clientEventId),
       [firstEvent.clientEventId, secondEvent.clientEventId])
   }
 
@@ -146,21 +153,49 @@ final class PersistenceTests: WidgetTestCase {
 
     try assert(eventStore.pendingEvents().isEmpty, "Logout should clear pending events")
     try assert(eventStore.backupEvents().isEmpty, "Logout should clear backup events")
-    try assert(cache.load(calendarDate: Fixtures.today) == nil, "Logout should clear bootstrap cache")
+    try assert(
+      cache.load(calendarDate: Fixtures.today) == nil, "Logout should clear bootstrap cache")
   }
 
   static func testMethods() -> [TestCase] {
     let tests = PersistenceTests()
     return [
-      ("test_bootstrapCache_roundTripsAndRejectsOtherDates", { try tests.test_bootstrapCache_roundTripsAndRejectsOtherDates() }),
-      ("test_bootstrapCache_rejectsMismatchedResponseDate", { try tests.test_bootstrapCache_rejectsMismatchedResponseDate() }),
-      ("test_bootstrapCache_returnsNilWhenTodayIsMissing", { try tests.test_bootstrapCache_returnsNilWhenTodayIsMissing() }),
-      ("test_localEventStoreBackupSurvivesQueueRemoval", { try tests.test_localEventStoreBackupSurvivesQueueRemoval() }),
-      ("test_localEventStoreMigratesLegacyJSONQueueToJSONLines", { try tests.test_localEventStoreMigratesLegacyJSONQueueToJSONLines() }),
-      ("test_localEventStoreBackfillsMissingLocalTimestamps", { try tests.test_localEventStoreBackfillsMissingLocalTimestamps() }),
-      ("test_appendFailurePreservesQueueAndBackup", { try tests.test_appendFailurePreservesQueueAndBackup() }),
-      ("test_atomicQueueRewriteFailurePreservesContents", { try tests.test_atomicQueueRewriteFailurePreservesContents() }),
-      ("test_clearLocalDataRemovesEventsAndBootstrapCache", { try tests.test_clearLocalDataRemovesEventsAndBootstrapCache() }),
+      (
+        "test_bootstrapCache_roundTripsAndRejectsOtherDates",
+        { try tests.test_bootstrapCache_roundTripsAndRejectsOtherDates() }
+      ),
+      (
+        "test_bootstrapCache_rejectsMismatchedResponseDate",
+        { try tests.test_bootstrapCache_rejectsMismatchedResponseDate() }
+      ),
+      (
+        "test_bootstrapCache_returnsNilWhenTodayIsMissing",
+        { try tests.test_bootstrapCache_returnsNilWhenTodayIsMissing() }
+      ),
+      (
+        "test_localEventStoreBackupSurvivesQueueRemoval",
+        { try tests.test_localEventStoreBackupSurvivesQueueRemoval() }
+      ),
+      (
+        "test_localEventStoreMigratesLegacyJSONQueueToJSONLines",
+        { try tests.test_localEventStoreMigratesLegacyJSONQueueToJSONLines() }
+      ),
+      (
+        "test_localEventStoreBackfillsMissingLocalTimestamps",
+        { try tests.test_localEventStoreBackfillsMissingLocalTimestamps() }
+      ),
+      (
+        "test_appendFailurePreservesQueueAndBackup",
+        { try tests.test_appendFailurePreservesQueueAndBackup() }
+      ),
+      (
+        "test_atomicQueueRewriteFailurePreservesContents",
+        { try tests.test_atomicQueueRewriteFailurePreservesContents() }
+      ),
+      (
+        "test_clearLocalDataRemovesEventsAndBootstrapCache",
+        { try tests.test_clearLocalDataRemovesEventsAndBootstrapCache() }
+      ),
     ]
   }
 }

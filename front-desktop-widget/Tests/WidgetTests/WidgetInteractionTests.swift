@@ -2,32 +2,37 @@ import Foundation
 
 @MainActor
 final class WidgetInteractionTests: WidgetTestCase {
-func test_selectCategory_logsTransition() async throws {
+
+  func test_selectCategory_logsTransition() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     try h.assertSubmitEventsCount(1)
     try h.assertSubmitEventDetails(
       index: 0,
-       expectedType: "transition",
-       expectedIncomingId: Fixtures.categoryA.id,
+      expectedType: "transition",
+      expectedIncomingId: Fixtures.categoryA.id,
     )
   }
-func test_afterConfirmation_returnsToActive() async throws {
+
+  func test_afterConfirmation_returnsToActive() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: 1))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.primaryAction)
     try assert(h.store.displayState == .active, "Should return to active after dispatch")
   }
-func test_multipleSelectCategories() async throws {
+
+  func test_multipleSelectCategories() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     await h.store.dispatch(.selectCategory(Fixtures.categoryB))
     try h.assertSubmitEventsCount(2)
   }
-func test_adjustOffset_backward() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+
+  func test_adjustOffset_backward() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     h.mock.resetCalls()
@@ -38,14 +43,18 @@ func test_adjustOffset_backward() async throws {
     try h.assertSubmitEventsCount(1)
     try h.assertSubmitEventDetails(
       index: 0,
-       expectedType: "amendment",
-       expectedIncomingId: nil,
+      expectedType: "amendment",
+      expectedIncomingId: nil,
     )
     let expectedTime = beforeAdjust.addingTimeInterval(-5 * 60)
-    try assert(abs(h.store.lastEventTime.timeIntervalSince(expectedTime)) < 2, "Offset time should be retroactive")
+    try assert(
+      abs(h.store.lastEventTime.timeIntervalSince(expectedTime)) < 2,
+      "Offset time should be retroactive")
   }
-func test_adjustOffset_negativeIsBlocked() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+
+  func test_adjustOffset_negativeIsBlocked() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     h.mock.resetCalls()
@@ -55,8 +64,10 @@ func test_adjustOffset_negativeIsBlocked() async throws {
     try h.assertNoSubmitEvents()
     try assert(h.store.offsetMinutes == 0, "Offset must not become negative")
   }
-func test_adjustOffset_multipleAccumulate() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+
+  func test_adjustOffset_multipleAccumulate() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     h.mock.resetCalls()
@@ -80,15 +91,17 @@ func test_adjustOffset_multipleAccumulate() async throws {
     )
     try assert(h.store.offsetMinutes == 10, "Offset should accumulate to 10")
   }
-func test_adjustOffset_noCurrentCategory_noSubmit() async throws {
-     let h = WidgetTestHarness(existingRecord: Fixtures.record())
+
+  func test_adjustOffset_noCurrentCategory_noSubmit() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.record())
     await h.initializeAndResetCalls()
 
     await h.store.dispatch(.adjustOffset(5))
 
     try h.assertNoSubmitEvents()
   }
-func test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() async throws {
+
+  func test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.record())
     await h.initializeAndResetCalls()
     let originalTime = h.store.lastEventTime
@@ -96,8 +109,10 @@ func test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() async throws
     try assertEqual(h.store.offsetMinutes, 0)
     try assertEqual(h.store.lastEventTime, originalTime)
   }
-func test_returnToPlan_whenOffSchedule() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+
+  func test_returnToPlan_whenOffSchedule() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryB))
     h.mock.resetCalls()
@@ -113,8 +128,10 @@ func test_returnToPlan_whenOffSchedule() async throws {
       )
     }
   }
-func test_returnToPlan_whenOnSchedule_noSubmit() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+
+  func test_returnToPlan_whenOnSchedule_noSubmit() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     h.mock.resetCalls()
@@ -123,15 +140,17 @@ func test_returnToPlan_whenOnSchedule_noSubmit() async throws {
 
     try h.assertNoSubmitEvents()
   }
-func test_returnToPlan_noPlannedCategory_noSubmit() async throws {
-     let h = WidgetTestHarness(existingRecord: Fixtures.record())
+
+  func test_returnToPlan_noPlannedCategory_noSubmit() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.record())
     await h.initializeAndResetCalls()
 
     await h.store.dispatch(.returnToPlan)
 
     try h.assertNoSubmitEvents()
   }
-func test_flow_selectMultipleCategoriesInSequence() async throws {
+
+  func test_flow_selectMultipleCategoriesInSequence() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initializeAndResetCalls()
 
@@ -140,12 +159,17 @@ func test_flow_selectMultipleCategoriesInSequence() async throws {
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
 
     try h.assertSubmitEventsCount(3)
-     try h.assertSubmitEventDetails(index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
-    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
-    try h.assertSubmitEventDetails(index: 2, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(
+      index: 0, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
+    try h.assertSubmitEventDetails(
+      index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
+    try h.assertSubmitEventDetails(
+      index: 2, expectedType: "transition", expectedIncomingId: Fixtures.categoryA.id)
   }
-func test_flow_offsetThenSelectCategory() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+
+  func test_flow_offsetThenSelectCategory() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
     await h.store.dispatch(.selectCategory(Fixtures.categoryA))
     h.mock.resetCalls()
@@ -154,10 +178,12 @@ func test_flow_offsetThenSelectCategory() async throws {
     await h.store.dispatch(.selectCategory(Fixtures.categoryB))
 
     try h.assertSubmitEventsCount(2)
-     try h.assertSubmitEventDetails(index: 0, expectedType: "amendment", expectedIncomingId: nil)
-    try h.assertSubmitEventDetails(index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
+    try h.assertSubmitEventDetails(index: 0, expectedType: "amendment", expectedIncomingId: nil)
+    try h.assertSubmitEventDetails(
+      index: 1, expectedType: "transition", expectedIncomingId: Fixtures.categoryB.id)
   }
-func test_submitEventsThrows_doesNotCrash() async throws {
+
+  func test_submitEventsThrows_doesNotCrash() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initializeAndResetCalls()
     h.mock.shouldThrowOnSubmitEvents = true
@@ -167,7 +193,8 @@ func test_submitEventsThrows_doesNotCrash() async throws {
     try h.assertSubmitEventsCount(1)
     // Store should handle error gracefully
   }
-func test_submitEventsThrows_rollsBackOptimisticTransition() async throws {
+
+  func test_submitEventsThrows_rollsBackOptimisticTransition() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initializeAndResetCalls()
     let originalCategory = h.store.currentCategory
@@ -178,7 +205,8 @@ func test_submitEventsThrows_rollsBackOptimisticTransition() async throws {
     try assertEqual(h.store.currentCategory?.id, originalCategory?.id)
     try assert(h.store.lastError != nil, "Submission failure must be exposed")
   }
-func test_selectCategory_inActive_staysActive() async throws {
+
+  func test_selectCategory_inActive_staysActive() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
     await h.initializeAndResetCalls()
     try assert(h.store.displayState == .active, "Should start in active")
@@ -187,7 +215,8 @@ func test_selectCategory_inActive_staysActive() async throws {
 
     try assert(h.store.displayState == .active, "Should remain active after selection")
   }
-func test_submitEvents_useCorrectCalendarDate() async throws {
+
+  func test_submitEvents_useCorrectCalendarDate() async throws {
     let record = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
@@ -198,9 +227,11 @@ func test_submitEvents_useCorrectCalendarDate() async throws {
     try assert(calls.count > 0, "Should have submitEvents calls")
     try assertEqual(calls.first?.calendarDate, record.calendarDate)
   }
-func test_transitionEvent_populatesEventFields() async throws {
+
+  func test_transitionEvent_populatesEventFields() async throws {
     // Verify that transition events contain category IDs (both incoming and outgoing are the same)
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
 
     await h.store.dispatch(.selectCategory(Fixtures.categoryB))
@@ -211,8 +242,9 @@ func test_transitionEvent_populatesEventFields() async throws {
     try assertEqual(event.eventType, "transition")
     try assertEqual(event.categoryId, Fixtures.categoryB.id)
   }
- func test_confirmationEvent_populatesEventFields() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+  func test_confirmationEvent_populatesEventFields() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
 
     await h.store.dispatch(.primaryAction)
@@ -225,19 +257,120 @@ func test_transitionEvent_populatesEventFields() async throws {
     )
     try assert(h.store.displayState == .active, "Should remain active when no boundary")
   }
- func test_addNote_populatesCategoryAndText() async throws {
-    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+  func test_addNote_populatesCategoryAndText() async throws {
+    let h = WidgetTestHarness(
+      existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
 
-    await h.store.addNote(text: "Remember this")
+    h.store.beginNote()
+    try assertEqual(h.store.screenState, .noteEntry)
+    try assert(h.store.displayState == .active, "Note entry must not replace widget state")
+    h.store.updateNoteText("Remember this")
+    await h.store.submitNote()
 
     try h.assertSubmitEventsCount(1)
     let event = h.mock.submitEventsCalls[0].events[0]
     try assertEqual(event.eventType, "note")
     try assertEqual(event.categoryId, Fixtures.categoryA.id)
     try assertEqual(event.text, "Remember this")
+    try assertEqual(h.store.screenState, .widget)
+    try assert(h.store.displayState == .active, "Submitting a note should preserve widget state")
   }
-func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
+
+  func test_cancelNote_returnsToPreviousStateWithoutSubmitting() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+
+    h.store.beginNote()
+    h.store.updateNoteText("Discard this")
+    h.store.cancelNote()
+
+    try assertEqual(h.store.screenState, .widget)
+    try assert(h.store.displayState == .active, "Cancel should return to the previous state")
+    try assertEqual(h.store.noteText, "")
+    try h.assertNoSubmitEvents()
+  }
+
+  func test_failedNoteSubmission_keepsEditorAndDraft() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+    h.mock.shouldThrowOnSubmitEvents = true
+
+    h.store.beginNote()
+    h.store.updateNoteText("Retry this")
+    await h.store.submitNote()
+
+    try assertEqual(h.store.screenState, .noteEntry)
+    try assertEqual(h.store.noteText, "Retry this")
+    try assert(h.store.lastError != nil, "Failed note submission must be exposed")
+  }
+
+  func test_updateNoteText_truncatesTextTo512Characters() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+    h.store.beginNote()
+
+    h.store.updateNoteText(String(repeating: "a", count: 513))
+
+    try assertEqual(h.store.noteText.count, 512)
+  }
+
+  func test_updateNoteText_ignoresTextOutsideNoteEntry() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+
+    h.store.updateNoteText("Ignored draft")
+
+    try assertEqual(h.store.noteText, "")
+  }
+
+  func test_deleteLastNoteWord_removesTrailingWhitespaceAndWord() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+    h.store.beginNote()
+
+    h.store.updateNoteText("123 42s ")
+    h.store.deleteLastNoteWord()
+    try assertEqual(h.store.noteText, "123 ")
+
+    h.store.updateNoteText("123 42s")
+    h.store.deleteLastNoteWord()
+    try assertEqual(h.store.noteText, "123 ")
+
+    h.store.updateNoteText("123    ")
+    h.store.deleteLastNoteWord()
+    try assertEqual(h.store.noteText, "")
+  }
+
+  func test_deleteLastNoteWord_handlesEmptyAndWhitespaceOnlyText() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+    h.store.beginNote()
+
+    h.store.updateNoteText("")
+    h.store.deleteLastNoteWord()
+    try assertEqual(h.store.noteText, "")
+
+    h.store.updateNoteText("   ")
+    h.store.deleteLastNoteWord()
+    try assertEqual(h.store.noteText, "")
+  }
+
+  func test_noteEntry_preservesPromptedWidgetState() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initializeAndResetCalls()
+    h.store.currentState = PromptedState()
+
+    h.store.beginNote()
+    try assertEqual(h.store.screenState, .noteEntry)
+    try assert(h.store.displayState == .prompted, "Note entry must preserve prompted state")
+
+    h.store.cancelNote()
+    try assertEqual(h.store.screenState, .widget)
+    try assert(h.store.displayState == .prompted, "Cancel must restore prompted screen content")
+  }
+
+  func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
     let pomodoroCategory = Category(
       id: 10,
       name: "Pomodoro Task",
@@ -263,16 +396,26 @@ func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
     )
     await h.store.apply(result)
 
-    try h.assertSubmitEventsCount(1)
-     try h.assertSubmitEventDetails(
-       index: 0,
-       expectedType: "confirmation",
-       expectedIncomingId: pomodoroCategory.id
-     )
-     try assert(h.store.context.pomodoroPhase == .work, "Work should remain active until auto-skip")
-     try assertEqual(h.store.context.pomodoroElapsed, 64)
-   }
-@MainActor
+    try h.assertSubmitEventsCount(0)
+    try assert(
+      h.store.context.pomodoroPhase == .awaitingWorkConfirmation,
+      "Work completion should await confirmation or auto-skip"
+    )
+    try assertEqual(h.store.context.pomodoroElapsed, 64)
+    try assert(h.store.pomodoroPulsing, "The completed work ring should pulse for confirmation")
+
+    h.store.context.pomodoroPhase = .rest
+    h.store.context.pomodoroElapsed = 60
+    let restResult = h.store.currentState.onTick(
+      context: h.store.context,
+      currentPlannedBlock: plannedBlock
+    )
+    await h.store.apply(restResult)
+
+    try assert(!h.store.pomodoroPulsing, "The rest phase should not show the completion pulse")
+  }
+
+  @MainActor
   func test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges() async throws {
     var context = WidgetContext()
     context.currentCategory = Fixtures.categoryA
@@ -286,7 +429,8 @@ func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
     }
     try assertEqual(transitionCategoryIds, [Fixtures.categoryB.id])
   }
-@MainActor
+
+  @MainActor
   func test_confirmationWithoutCategoryChange_logsTransition() async throws {
     var context = WidgetContext()
     context.currentCategory = Fixtures.categoryA
@@ -300,7 +444,8 @@ func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
     }
     try assertEqual(transitionCategoryIds, [Fixtures.categoryA.id])
   }
-func test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() async throws {
+
+  func test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() async throws {
     let record = Fixtures.record()
     let h = WidgetTestHarness(existingRecord: record)
     await h.initializeAndResetCalls()
@@ -316,7 +461,8 @@ func test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() async throw
     try assertEqual(date1, record.calendarDate)
     try assertEqual(events1.count, 1)
     try assertEqual(events1[0].categoryId, Fixtures.categoryA.id)
-    try assert(events1[0].occurredAtLocal.count == 25, "Local timestamp should include numeric offset")
+    try assert(
+      events1[0].occurredAtLocal.count == 25, "Local timestamp should include numeric offset")
     try assert(events1[0].occurredAtLocal.last == "0", "Local timestamp should be RFC3339")
 
     // Verify second call
@@ -328,30 +474,123 @@ func test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() async throw
   static func testMethods() -> [TestCase] {
     let tests = WidgetInteractionTests()
     return [
-      ("test_selectCategory_logsTransition", { try await tests.test_selectCategory_logsTransition() }),
-      ("test_afterConfirmation_returnsToActive", { try await tests.test_afterConfirmation_returnsToActive() }),
+      (
+        "test_selectCategory_logsTransition",
+        { try await tests.test_selectCategory_logsTransition() }
+      ),
+      (
+        "test_afterConfirmation_returnsToActive",
+        { try await tests.test_afterConfirmation_returnsToActive() }
+      ),
       ("test_multipleSelectCategories", { try await tests.test_multipleSelectCategories() }),
       ("test_adjustOffset_backward", { try await tests.test_adjustOffset_backward() }),
-      ("test_adjustOffset_negativeIsBlocked", { try await tests.test_adjustOffset_negativeIsBlocked() }),
-      ("test_adjustOffset_multipleAccumulate", { try await tests.test_adjustOffset_multipleAccumulate() }),
-      ("test_adjustOffset_noCurrentCategory_noSubmit", { try await tests.test_adjustOffset_noCurrentCategory_noSubmit() }),
-      ("test_adjustOffset_withoutPersistedEvent_doesNotMutateContext", { try await tests.test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() }),
-      ("test_returnToPlan_whenOffSchedule", { try await tests.test_returnToPlan_whenOffSchedule() }),
-      ("test_returnToPlan_whenOnSchedule_noSubmit", { try await tests.test_returnToPlan_whenOnSchedule_noSubmit() }),
-      ("test_returnToPlan_noPlannedCategory_noSubmit", { try await tests.test_returnToPlan_noPlannedCategory_noSubmit() }),
-      ("test_flow_selectMultipleCategoriesInSequence", { try await tests.test_flow_selectMultipleCategoriesInSequence() }),
-      ("test_flow_offsetThenSelectCategory", { try await tests.test_flow_offsetThenSelectCategory() }),
-      ("test_submitEventsThrows_doesNotCrash", { try await tests.test_submitEventsThrows_doesNotCrash() }),
-      ("test_submitEventsThrows_rollsBackOptimisticTransition", { try await tests.test_submitEventsThrows_rollsBackOptimisticTransition() }),
-      ("test_selectCategory_inActive_staysActive", { try await tests.test_selectCategory_inActive_staysActive() }),
-      ("test_submitEvents_useCorrectCalendarDate", { try await tests.test_submitEvents_useCorrectCalendarDate() }),
-      ("test_transitionEvent_populatesEventFields", { try await tests.test_transitionEvent_populatesEventFields() }),
-      ("test_confirmationEvent_populatesEventFields", { try await tests.test_confirmationEvent_populatesEventFields() }),
-      ("test_addNote_populatesCategoryAndText", { try await tests.test_addNote_populatesCategoryAndText() }),
-      ("test_pomodoroCompleted_sendsConfirmationEvent", { try await tests.test_pomodoroCompleted_sendsConfirmationEvent() }),
-      ("test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges", { try await tests.test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges() }),
-      ("test_confirmationWithoutCategoryChange_logsTransition", { try await tests.test_confirmationWithoutCategoryChange_logsTransition() }),
-      ("test_submitEventsCall_usesCorrectCalendarDateAndEventSequence", { try await tests.test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() }),
+      (
+        "test_adjustOffset_negativeIsBlocked",
+        { try await tests.test_adjustOffset_negativeIsBlocked() }
+      ),
+      (
+        "test_adjustOffset_multipleAccumulate",
+        { try await tests.test_adjustOffset_multipleAccumulate() }
+      ),
+      (
+        "test_adjustOffset_noCurrentCategory_noSubmit",
+        { try await tests.test_adjustOffset_noCurrentCategory_noSubmit() }
+      ),
+      (
+        "test_adjustOffset_withoutPersistedEvent_doesNotMutateContext",
+        { try await tests.test_adjustOffset_withoutPersistedEvent_doesNotMutateContext() }
+      ),
+      (
+        "test_returnToPlan_whenOffSchedule", { try await tests.test_returnToPlan_whenOffSchedule() }
+      ),
+      (
+        "test_returnToPlan_whenOnSchedule_noSubmit",
+        { try await tests.test_returnToPlan_whenOnSchedule_noSubmit() }
+      ),
+      (
+        "test_returnToPlan_noPlannedCategory_noSubmit",
+        { try await tests.test_returnToPlan_noPlannedCategory_noSubmit() }
+      ),
+      (
+        "test_flow_selectMultipleCategoriesInSequence",
+        { try await tests.test_flow_selectMultipleCategoriesInSequence() }
+      ),
+      (
+        "test_flow_offsetThenSelectCategory",
+        { try await tests.test_flow_offsetThenSelectCategory() }
+      ),
+      (
+        "test_submitEventsThrows_doesNotCrash",
+        { try await tests.test_submitEventsThrows_doesNotCrash() }
+      ),
+      (
+        "test_submitEventsThrows_rollsBackOptimisticTransition",
+        { try await tests.test_submitEventsThrows_rollsBackOptimisticTransition() }
+      ),
+      (
+        "test_selectCategory_inActive_staysActive",
+        { try await tests.test_selectCategory_inActive_staysActive() }
+      ),
+      (
+        "test_submitEvents_useCorrectCalendarDate",
+        { try await tests.test_submitEvents_useCorrectCalendarDate() }
+      ),
+      (
+        "test_transitionEvent_populatesEventFields",
+        { try await tests.test_transitionEvent_populatesEventFields() }
+      ),
+      (
+        "test_confirmationEvent_populatesEventFields",
+        { try await tests.test_confirmationEvent_populatesEventFields() }
+      ),
+      (
+        "test_addNote_populatesCategoryAndText",
+        { try await tests.test_addNote_populatesCategoryAndText() }
+      ),
+      (
+        "test_cancelNote_returnsToPreviousStateWithoutSubmitting",
+        { try await tests.test_cancelNote_returnsToPreviousStateWithoutSubmitting() }
+      ),
+      (
+        "test_failedNoteSubmission_keepsEditorAndDraft",
+        { try await tests.test_failedNoteSubmission_keepsEditorAndDraft() }
+      ),
+      (
+        "test_updateNoteText_truncatesTextTo512Characters",
+        { try await tests.test_updateNoteText_truncatesTextTo512Characters() }
+      ),
+      (
+        "test_updateNoteText_ignoresTextOutsideNoteEntry",
+        { try await tests.test_updateNoteText_ignoresTextOutsideNoteEntry() }
+      ),
+      (
+        "test_deleteLastNoteWord_removesTrailingWhitespaceAndWord",
+        { try await tests.test_deleteLastNoteWord_removesTrailingWhitespaceAndWord() }
+      ),
+      (
+        "test_deleteLastNoteWord_handlesEmptyAndWhitespaceOnlyText",
+        { try await tests.test_deleteLastNoteWord_handlesEmptyAndWhitespaceOnlyText() }
+      ),
+      (
+        "test_noteEntry_preservesPromptedWidgetState",
+        { try await tests.test_noteEntry_preservesPromptedWidgetState() }
+      ),
+      (
+        "test_pomodoroCompleted_sendsConfirmationEvent",
+        { try await tests.test_pomodoroCompleted_sendsConfirmationEvent() }
+      ),
+      (
+        "test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges",
+        { try await tests.test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges() }
+      ),
+      (
+        "test_confirmationWithoutCategoryChange_logsTransition",
+        { try await tests.test_confirmationWithoutCategoryChange_logsTransition() }
+      ),
+      (
+        "test_submitEventsCall_usesCorrectCalendarDateAndEventSequence",
+        { try await tests.test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() }
+      ),
     ]
   }
 }

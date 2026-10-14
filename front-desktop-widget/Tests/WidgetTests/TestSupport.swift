@@ -91,8 +91,8 @@ final class MockRepository: TodoPlannerRepository, @unchecked Sendable {
       throw StorageError.notFound
     }
     let response = InitResponse(
-       settings: UserSettings(
-         dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Fixtures.now),
+      settings: UserSettings(
+        dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Fixtures.now),
       categories: stubbedCategories,
       dayRecords: [dayRecord]
     )
@@ -247,7 +247,9 @@ final class WidgetTestHarness {
   }
 
   func assertNoSubmitEvents() throws {
-    try assert(mock.submitEventsCalls.isEmpty, "Expected no submitEvents calls, got \(mock.submitEventsCalls.count)")
+    try assert(
+      mock.submitEventsCalls.isEmpty,
+      "Expected no submitEvents calls, got \(mock.submitEventsCalls.count)")
   }
 
   func assertContainsCall(_ predicate: (RecordedCall) -> Bool) throws {
@@ -262,7 +264,8 @@ final class WidgetTestHarness {
   ) throws {
     let calls = mock.submitEventsCalls
     guard index < calls.count else {
-      throw AssertionError.failed("submitEvents call at index \(index) not found (total: \(calls.count))")
+      throw AssertionError.failed(
+        "submitEvents call at index \(index) not found (total: \(calls.count))")
     }
 
     let (date, events) = calls[index]
@@ -300,13 +303,17 @@ class WidgetTestCase {
       settings: UserSettings(
         dayRangeStartTime: "04:00:00", dayRangeEndTime: "23:00:00", updatedAt: Fixtures.now),
       categories: [Fixtures.categoryA],
-      dayRecords: [DayRecord(
-        calendarDate: calendarDate,
-        plan: [PlannedBlock(categoryId: Fixtures.categoryA.id, startTime: "00:00:00", durationMinutes: 1440)]
-      )]
+      dayRecords: [
+        DayRecord(
+          calendarDate: calendarDate,
+          plan: [
+            PlannedBlock(
+              categoryId: Fixtures.categoryA.id, startTime: "00:00:00", durationMinutes: 1440)
+          ]
+        )
+      ]
     )
   }
 }
-
 
 typealias TestCase = (String, () async throws -> Void)
