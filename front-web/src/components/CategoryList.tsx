@@ -14,7 +14,9 @@ export default function CategoryList() {
   const { token } = useAuthStore();
   const {
     categories,
+    isLoading,
     setCategories,
+    setLoading,
     addCategory,
     updateCategory: updateCategoryStore,
     removeCategory,
@@ -36,6 +38,7 @@ export default function CategoryList() {
 
   const loadCategories = async () => {
     if (!token) return;
+    setLoading(true);
     try {
       const data = await getCategories(token);
       setCategories(data);
@@ -43,6 +46,8 @@ export default function CategoryList() {
       setError(
         err instanceof Error ? err.message : "Failed to load categories",
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -318,7 +323,10 @@ export default function CategoryList() {
             </button>
           </div>
         ))}
-        {categories.length === 0 && !isCreating && (
+        {isLoading && (
+          <p className="text-center text-cloud py-8">Loading categories...</p>
+        )}
+        {!isLoading && categories.length === 0 && !isCreating && (
           <p className="text-center text-cloud py-8">
             No categories yet. Create one to get started.
           </p>

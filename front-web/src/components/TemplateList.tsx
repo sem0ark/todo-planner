@@ -111,7 +111,7 @@ function TemplateListEntry({ template, onEdit }: TemplateListEntryProps) {
 
 export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
   const { token } = useAuthStore();
-  const { templates, setTemplates } = useTemplateStore();
+  const { templates, isLoading, setTemplates, setLoading } = useTemplateStore();
   const { categories, setCategories } = useCategoryStore();
 
   useEffect(() => {
@@ -130,11 +130,14 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
 
   const loadTemplates = async () => {
     if (!token) return;
+    setLoading(true);
     try {
       const data = await getTemplates(token);
       setTemplates(data);
     } catch (err) {
       console.error("Failed to load templates:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -158,7 +161,10 @@ export default function TemplateList({ onEdit, onCreate }: TemplateListProps) {
             onEdit={onEdit}
           />
         ))}
-        {templates.length === 0 && (
+        {isLoading && (
+          <p className="text-center text-cloud py-8">Loading templates...</p>
+        )}
+        {!isLoading && templates.length === 0 && (
           <p className="text-center text-cloud py-8">
             No templates yet. Create one to get started.
           </p>
