@@ -12,6 +12,18 @@ final class RepositorySyncTests: WidgetTestCase {
     APIClient.shared.clearAuthToken()
   }
 
+  func test_apiClientPreservesDeviceRegistrationWhenAuthenticationChanges() throws {
+    let deviceKey = "com.todoplanner.widget.device_id"
+    defer { UserDefaults.standard.removeObject(forKey: deviceKey) }
+    UserDefaults.standard.set(42, forKey: deviceKey)
+
+    APIClient.shared.setAuthToken("replacement-token")
+    try assertEqual(UserDefaults.standard.integer(forKey: deviceKey), 42)
+
+    APIClient.shared.clearAuthToken()
+    try assertEqual(UserDefaults.standard.integer(forKey: deviceKey), 42)
+  }
+
   func test_synchronizeSendsSortedEventsAsSingleBatch() async throws {
     let (eventStore, directory) = try makeTemporaryEventStore()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -140,6 +152,7 @@ final class RepositorySyncTests: WidgetTestCase {
     let tests = RepositorySyncTests()
     return [
       ("test_apiClientDoesNotPersistAuthenticationToken", { try tests.test_apiClientDoesNotPersistAuthenticationToken() }),
+      ("test_apiClientPreservesDeviceRegistrationWhenAuthenticationChanges", { try tests.test_apiClientPreservesDeviceRegistrationWhenAuthenticationChanges() }),
       ("test_synchronizeSendsSortedEventsAsSingleBatch", { try await tests.test_synchronizeSendsSortedEventsAsSingleBatch() }),
       ("test_synchronize400FallsBackToIndividualEvents", { try await tests.test_synchronize400FallsBackToIndividualEvents() }),
       ("test_synchronizeNon400ErrorPreservesQueue", { try await tests.test_synchronizeNon400ErrorPreservesQueue() }),

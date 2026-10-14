@@ -45,16 +45,12 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
 
   func setAuthToken(_ token: String) {
     self.authToken = token
-    self.deviceId = nil
-    UserDefaults.standard.removeObject(forKey: deviceKey)
-    WidgetLogger.debug("Authentication token stored in memory only")
+    WidgetLogger.debug("Authentication token stored; preserving device registration")
   }
 
   func clearAuthToken() {
     self.authToken = nil
-    self.deviceId = nil
-    UserDefaults.standard.removeObject(forKey: deviceKey)
-    WidgetLogger.debug("Cleared in-memory authentication token")
+    WidgetLogger.debug("Cleared in-memory authentication token; preserving device registration")
   }
 
   func hasAuthToken() -> Bool {
