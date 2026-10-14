@@ -29,6 +29,9 @@ func TestPostDateEventsAutoCreatesAndDeduplicates(t *testing.T) {
 		AcceptedEvents []struct {
 			ClientEventID string `json:"client_event_id"`
 		} `json:"accepted_events"`
+		Events []struct {
+			EventType string `json:"event_type"`
+		} `json:"events"`
 		DayTemplateID *int `json:"day_template_id"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&first); err != nil {
@@ -36,6 +39,9 @@ func TestPostDateEventsAutoCreatesAndDeduplicates(t *testing.T) {
 	}
 	if len(first.AcceptedEvents) != 1 || first.AcceptedEvents[0].ClientEventID != "event-1" {
 		t.Fatalf("unexpected accepted events: %+v", first.AcceptedEvents)
+	}
+	if len(first.Events) != 1 || first.Events[0].EventType != "transition" {
+		t.Fatalf("expected the response record to include the inserted event, got %+v", first.Events)
 	}
 
 	response = postDateEventsRequest(t, api, user.ID, "2026-09-06", requestBody)

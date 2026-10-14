@@ -32,7 +32,8 @@ Domain Entities:
     - *Untracked Block* - a gap in a day's actual record where no block of any type has been placed, treated as blank until the user does not adjust it during the day review.
 - *Day Record* - the complete data for a single calendar day: the template in use, all actual blocks, skips, and blank blocks.
     - *Day event* - some event used for logging the real state of day. Can confirm that the activity is still in progress, can state transitions from one category to another. It is important to note that resulting timeline and blocks derived from the events may be different from blocks in the template.
-        - *Confirmation* - user confirms staying focused on the activity.
+         - *Confirmation* - user confirms staying focused on the activity.
+         - *Note* - user records a short, timed note while staying in the current category, up to 512 characters.
         - *Transition* - the boundary event between two consecutive category blocks, where the user confirms moving from one activity to the next.
 - *Tracking Day Range* - local start and end times used only to render the visible Day View and Live Widget grid. Defaults to 04:00 AM through 11:00 PM. These settings do not affect which literal `calendar_date` receives an event or how actual blocks are derived.
 
@@ -51,7 +52,7 @@ Metrics:
 
 # Feature Requirements
 - All deletions are **soft** - entities become invisible to the user but are retained in storage. Hard delete occurs only on full account removal.
-- Actual day blocks are **derived from Day Events** (Confirmations and Transitions) until the user replaces them with corrected actual blocks.
+- Actual day blocks are **derived from Day Events** (Confirmations, Notes, and Transitions) until the user replaces them with corrected actual blocks.
 - Categories are **fully user-defined** - no hardcoded set. Defined by name, color, and an optional Pomodoro configuration.
 - Analysis includes all Day Records in the selected time window.
 
@@ -135,7 +136,7 @@ Tracking Day Range
 - A day is **active** when it is the current literal calendar date, **future** when it follows the current literal calendar date, and **past** once its literal date has passed. Past days keep their snapshot assignment, while actual blocks remain editable.
 
 *Day Events* are the atomic inputs that drive the Actual Block timeline.
-Two types for now:
+Three event types for now:
 - **Confirmation**
   - The user confirms that the current activity is still in progress.
   - Logs: timestamp, current category.
@@ -145,6 +146,9 @@ Two types for now:
   - Logs: timestamp and category.
   - Creates a boundary between two consecutive Actual Blocks.
   - Note that may signal transition both between planned categories and plan overrides, for example, when user takes an unexpected break or records a time region when they got distracted.
+- **Note**
+  - The user records a timed note with the current category.
+  - Notes are stored with up to 512 characters and behave like confirmations during actual block derivation.
 
 Actual Block Derivation:
 - The Actual Block timeline for a day is **derived** from the ordered sequence of Day Events during live tracking.
@@ -159,7 +163,7 @@ Actual Block Derivation:
 | **Untracked** | A gap in the day with no block of any type placed. Shown as empty/dimmed. Distinct from Blank. |
 
 ## Live Widget
-A persistent, minimal UI element always visible during the day on desktop and mobile. Handles Day Event input (Confirmations and Transitions). Never requires navigation for its core function.
+A persistent, minimal UI element always visible during the day on desktop and mobile. Handles Day Event input (Confirmations, Notes, and Transitions). Never requires navigation for its core function.
 
 ### Core Display
 - **Always-On Status**: Shows current category name (large, bold, uppercase) and progress bar indicating time remaining in current planned block.

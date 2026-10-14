@@ -18,8 +18,17 @@ export interface DayRecord {
   timezone_offset_locked: boolean;
   plan: PlannedBlock[];
   actual: ActualBlock[];
+  events: DayEvent[];
   created_at: string;
   updated_at: string;
+}
+
+export interface DayEvent {
+  event_type: "transition" | "confirmation" | "note" | "amendment";
+  category_id: number | null;
+  text: string | null;
+  occurred_at: string;
+  occurred_at_local: string;
 }
 
 async function request<T>(
@@ -107,12 +116,13 @@ export function updateDayRecordTemplate(
   );
 }
 
-export type DayEventType = "transition" | "confirmation" | "amendment";
+export type DayEventType = "transition" | "confirmation" | "note" | "amendment";
 
 export interface DayEventInput {
   client_event_id: string;
   event_type: DayEventType;
   category_id: number | null;
+  text?: string | null;
   occurred_at: string;
   occurred_at_local: string;
   target_client_event_id?: string;

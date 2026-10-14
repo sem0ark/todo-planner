@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// ErrNonMonotonicTransitions reports corrections that make timeline ordering invalid.
 var ErrNonMonotonicTransitions = NewBadRequestError("amendment produces invalid ordering")
 
 type ComputedBlock struct {
@@ -28,6 +29,31 @@ type timelineBlock struct {
 type resolvedDayEvent struct {
 	event       DayEvent
 	effectiveAt time.Time
+}
+
+func addUntrackedGaps(blocks []ActualBlock) []ActualBlock {
+	if len(blocks) < 2 {
+		return blocks
+	}
+	result := make([]ActualBlock, 0, len(blocks)*2)
+	for index, block := range blocks {
+		result = append(result, block)
+		if index == len(blocks)-1 {
+			continue
+		}
+		gapStart := block.StartTime.Add(time.Duration(block.DurationMinutes) * time.Minute)
+		gapMinutes := int(blocks[index+1].StartTime.Sub(gapStart).Minutes())
+		if gapMinutes > 0 {
+			result = append(result, ActualBlock{
+				DayRecordID:     block.DayRecordID,
+				BlockType:       "untracked",
+				StartTime:       gapStart,
+				DurationMinutes: gapMinutes,
+				UpdatedAt:       block.UpdatedAt,
+			})
+		}
+	}
+	return result
 }
 
 // resolveTimeline applies the latest correction per target, then orders by the
@@ -83,7 +109,7 @@ func resolveTimeline(events []DayEvent) []resolvedDayEvent {
 func observationsFromEvents(events []resolvedDayEvent) []timelineObservation {
 	observations := make([]timelineObservation, 0, len(events))
 	for _, event := range events {
-		if event.event.EventType != "transition" && event.event.EventType != "confirmation" {
+		if event.event.EventType != "transition" && event.event.EventType != "confirmation" && event.event.EventType != "note" {
 			continue
 		}
 		if event.event.CategoryID == nil {

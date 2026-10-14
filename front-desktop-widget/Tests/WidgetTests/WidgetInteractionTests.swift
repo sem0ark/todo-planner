@@ -211,7 +211,7 @@ func test_transitionEvent_populatesEventFields() async throws {
     try assertEqual(event.eventType, "transition")
     try assertEqual(event.categoryId, Fixtures.categoryB.id)
   }
-func test_confirmationEvent_populatesEventFields() async throws {
+ func test_confirmationEvent_populatesEventFields() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
     await h.initializeAndResetCalls()
 
@@ -224,6 +224,18 @@ func test_confirmationEvent_populatesEventFields() async throws {
       expectedIncomingId: Fixtures.categoryA.id
     )
     try assert(h.store.displayState == .active, "Should remain active when no boundary")
+  }
+ func test_addNote_populatesCategoryAndText() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock(categoryId: Fixtures.categoryA.id))
+    await h.initializeAndResetCalls()
+
+    await h.store.addNote(text: "Remember this")
+
+    try h.assertSubmitEventsCount(1)
+    let event = h.mock.submitEventsCalls[0].events[0]
+    try assertEqual(event.eventType, "note")
+    try assertEqual(event.categoryId, Fixtures.categoryA.id)
+    try assertEqual(event.text, "Remember this")
   }
 func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
     let pomodoroCategory = Category(
@@ -252,12 +264,14 @@ func test_pomodoroCompleted_sendsConfirmationEvent() async throws {
     await h.store.apply(result)
 
     try h.assertSubmitEventsCount(1)
-    try h.assertSubmitEventDetails(
-      index: 0,
-      expectedType: "confirmation",
-      expectedIncomingId: pomodoroCategory.id
-    )
-  }
+     try h.assertSubmitEventDetails(
+       index: 0,
+       expectedType: "confirmation",
+       expectedIncomingId: pomodoroCategory.id
+     )
+     try assert(h.store.context.pomodoroPhase == .work, "Work should remain active until auto-skip")
+     try assertEqual(h.store.context.pomodoroElapsed, 64)
+   }
 @MainActor
   func test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges() async throws {
     var context = WidgetContext()
@@ -333,6 +347,7 @@ func test_submitEventsCall_usesCorrectCalendarDateAndEventSequence() async throw
       ("test_submitEvents_useCorrectCalendarDate", { try await tests.test_submitEvents_useCorrectCalendarDate() }),
       ("test_transitionEvent_populatesEventFields", { try await tests.test_transitionEvent_populatesEventFields() }),
       ("test_confirmationEvent_populatesEventFields", { try await tests.test_confirmationEvent_populatesEventFields() }),
+      ("test_addNote_populatesCategoryAndText", { try await tests.test_addNote_populatesCategoryAndText() }),
       ("test_pomodoroCompleted_sendsConfirmationEvent", { try await tests.test_pomodoroCompleted_sendsConfirmationEvent() }),
       ("test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges", { try await tests.test_confirmationAtCategoryBoundary_logsTransitionWhenCategoryChanges() }),
       ("test_confirmationWithoutCategoryChange_logsTransition", { try await tests.test_confirmationWithoutCategoryChange_logsTransition() }),

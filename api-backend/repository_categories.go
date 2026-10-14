@@ -71,15 +71,41 @@ func (r *CategoryRepository) FindByID(ctx context.Context, id, userID int) (*Blo
 
 func (r *CategoryRepository) ValidateIDs(ctx context.Context, userID int, categoryIDs []int) error {
 	validatedCategoryIDs := make(map[int]struct{}, len(categoryIDs))
+	uniqueCategoryIDs := make([]int32, 0, len(categoryIDs))
 	for _, categoryID := range categoryIDs {
 		if _, alreadyValidated := validatedCategoryIDs[categoryID]; alreadyValidated {
 			continue
 		}
-		validatedCategoryIDs[categoryID] = struct{}{}
-		category, err := r.FindByID(ctx, categoryID, userID)
-		if err != nil || category.IsDeleted {
+		if categoryID <= 0 || int64(categoryID) > 2147483647 {
 			return ErrUnknownCategoryID
 		}
+		validatedCategoryIDs[categoryID] = struct{}{}
+		uniqueCategoryIDs = append(uniqueCategoryIDs, int32(categoryID))
+	}
+	if len(uniqueCategoryIDs) == 0 {
+		return nil
+	}
+
+	rows, err := r.db.Query(ctx, `
+		SELECT id
+		FROM block_categories
+		WHERE user_id = $1 AND is_deleted = FALSE AND id = ANY($2)
+	`, userID, uniqueCategoryIDs)
+	if err != nil {
+		return ErrUnknownCategoryID
+	}
+	defer rows.Close()
+
+	foundCategoryCount := 0
+	for rows.Next() {
+		var categoryID int
+		if err := rows.Scan(&categoryID); err != nil {
+			return ErrUnknownCategoryID
+		}
+		foundCategoryCount++
+	}
+	if rows.Err() != nil || foundCategoryCount != len(uniqueCategoryIDs) {
+		return ErrUnknownCategoryID
 	}
 	return nil
 }

@@ -20,6 +20,15 @@ func TestComputeTimelineEventConfigurations(t *testing.T) {
 			expectedTypes: []string{}, expectedDurations: []int{},
 		},
 		{
+			name: "notes behave like confirmations",
+			events: []DayEvent{
+				{ID: 1, EventType: "transition", CategoryID: &firstCategoryID, OccurredAt: parseTime("2026-07-20T09:00:00Z")},
+				{ID: 2, EventType: "note", CategoryID: &firstCategoryID, OccurredAt: parseTime("2026-07-20T10:00:00Z")},
+				{ID: 3, EventType: "transition", CategoryID: &secondCategoryID, OccurredAt: parseTime("2026-07-20T12:00:00Z")},
+			},
+			expectedTypes: []string{"actual"}, expectedDurations: []int{180},
+		},
+		{
 			name: "transition without a later confirmation has no materialized block",
 			events: []DayEvent{
 				{ID: 1, EventType: "transition", CategoryID: &firstCategoryID, OccurredAt: parseTime("2026-07-20T09:00:00Z")},

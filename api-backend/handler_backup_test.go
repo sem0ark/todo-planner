@@ -15,10 +15,37 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 	api := NewAPI(database, "test-secret", NewLogger("test"))
 	user := createTestUser(t, database, "backup-user", "password123")
 	category := createTestCategory(t, database, user.ID, "Work", "#123456")
+	template := createTestDayTemplate(t, database, user.ID, "Workday", nil)
 	calendarDate := mustCalendarDate("2026-09-06")
+	var dayRecordID int
+	if err := database.QueryRow(context.Background(), `
+		INSERT INTO day_records (user_id, day_template_id, calendar_date)
+		VALUES ($1, $2, $3) RETURNING id
+	`, user.ID, template.ID, calendarDate).Scan(&dayRecordID); err != nil {
+		t.Fatal(err)
+	}
+	var snapshotID int
+	if err := database.QueryRow(context.Background(), `
+		INSERT INTO template_snapshots (day_template_id, user_id)
+		VALUES ($1, $2) RETURNING id
+	`, template.ID, user.ID).Scan(&snapshotID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.Exec(context.Background(), `
-		INSERT INTO day_records (user_id, calendar_date) VALUES ($1, $2)
-	`, user.ID, calendarDate); err != nil {
+		UPDATE day_records SET snapshot_id = $1 WHERE id = $2
+	`, snapshotID, dayRecordID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(context.Background(), `
+		INSERT INTO snapshot_blocks (snapshot_id, category_id, start_time, duration_minutes)
+		VALUES ($1, $2, '08:00:00', 60)
+	`, snapshotID, category.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(context.Background(), `
+		INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes)
+		VALUES ($1, $2, 'actual', '09:00:00', 30)
+	`, dayRecordID, category.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(context.Background(), `
@@ -46,6 +73,9 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 	}
 	if backup.Version != 1 || len(backup.Events) != 1 || backup.Events[0].CalendarDate != calendarDate {
 		t.Fatalf("unexpected backup payload: %+v", backup)
+	}
+	if len(backup.Days) != 1 || len(backup.Days[0].Plan) != 1 || len(backup.Days[0].Actual) != 1 {
+		t.Fatalf("expected exported plan and actual blocks, got %+v", backup.Days)
 	}
 
 	timezoneOffsetMinutes := 120

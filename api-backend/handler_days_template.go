@@ -16,7 +16,7 @@ func (api *API) putDateTemplate(responseWriter http.ResponseWriter, request *htt
 		http.Error(responseWriter, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	record, err := api.dayRecordRepo.UpdateTemplateByDate(request.Context(), userID, parsedDate, input.DayTemplateID)
+	record, err := api.dayTrackingService.UpdateTemplateByDate(request.Context(), userID, parsedDate, input.DayTemplateID)
 	if err != nil {
 		if writeAppError(responseWriter, err) {
 			return

@@ -25,6 +25,7 @@ var (
 	ErrInvalidLocalTimestamp       = NewBadRequestError("occurred_at_local must be RFC3339 with a UTC offset")
 	ErrEventLocalDateMismatch      = NewBadRequestError("occurred_at_local date does not match the requested day")
 	ErrAmendmentOffsetMismatch     = NewBadRequestError("amendment offset must match the target event's recorded offset")
+	ErrInvalidNoteText             = NewBadRequestError("note text is required and must be at most 512 characters")
 )
 
 const minutesPerDay = 24 * 60
@@ -47,11 +48,14 @@ type ActualBlockInput struct {
 
 func validateDayEvents(events []DayEventInput) error {
 	for index, event := range events {
-		if event.EventType != "confirmation" && event.EventType != "transition" && event.EventType != "amendment" {
+		if event.EventType != "confirmation" && event.EventType != "transition" && event.EventType != "note" && event.EventType != "amendment" {
 			return ErrInvalidEventType
 		}
-		if (event.EventType == "transition" || event.EventType == "confirmation") && event.CategoryID == nil {
+		if (event.EventType == "transition" || event.EventType == "confirmation" || event.EventType == "note") && event.CategoryID == nil {
 			return ErrMissingEventCategory
+		}
+		if event.EventType == "note" && (event.Text == nil || len([]rune(*event.Text)) == 0 || len([]rune(*event.Text)) > 512) {
+			return ErrInvalidNoteText
 		}
 		if event.EventType == "amendment" && (event.TargetClientEventID == "" || event.CorrectedAt == nil) {
 			return ErrIncompleteAmendment

@@ -517,5 +517,21 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   11,
+			Name: "add_day_event_text",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE day_events ADD COLUMN IF NOT EXISTS text VARCHAR(512);
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE day_events DROP COLUMN IF EXISTS text;
+				`)
+				return err
+			},
+		},
 	}
 }

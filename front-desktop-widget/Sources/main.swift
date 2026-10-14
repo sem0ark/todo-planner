@@ -167,6 +167,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
       // Post notification for ContentView to handle
       NotificationCenter.default.post(name: .keyPressed, object: event)
+      if event.keyCode == 36 || event.modifierFlags.contains(.command) {
+        return nil
+      }
       return event
     }
   }

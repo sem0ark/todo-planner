@@ -60,7 +60,12 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 	dayRecordIDs := make([]int, 0, initPlanDays)
 	for dayIndex := 0; dayIndex < initPlanDays; dayIndex++ {
 		dayRecordDate := calendarDate.AddDate(0, 0, dayIndex)
-		dayRecordID, findError := findOrCreateDayRecord(request.Context(), transaction, userID, dayRecordDate)
+		dayRecordID, findError := api.dayTrackingService.FindOrCreateDayRecordTx(
+			request.Context(),
+			transaction,
+			userID,
+			dayRecordDate,
+		)
 		if findError != nil {
 			http.Error(responseWriter, "failed to load days", http.StatusInternalServerError)
 			return
@@ -73,7 +78,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 	}
 	dayRecords := make([]PublicDayRecord, 0, len(dayRecordIDs))
 	for _, dayRecordID := range dayRecordIDs {
-		record, findError := api.dayRecordRepo.FindByID(request.Context(), dayRecordID, userID)
+		record, findError := api.dayTrackingService.FindByID(request.Context(), dayRecordID, userID)
 		if findError != nil {
 			http.Error(responseWriter, "failed to load days", http.StatusInternalServerError)
 			return

@@ -35,6 +35,17 @@ func setupTestDB(t *testing.T) *pgxpool.Pool {
 	return db
 }
 
+func newDayTrackingServiceForTest(db *pgxpool.Pool) *DayTrackingService {
+	return NewDayTrackingService(
+		db,
+		NewDayRecordRepository(db),
+		NewDayEventRepository(db),
+		NewActualBlockRepository(db),
+		NewDayTemplateRepository(db),
+		NewScheduleRepository(db),
+	)
+}
+
 func cleanupTestDB(t *testing.T, db *pgxpool.Pool) {
 	t.Helper()
 
@@ -152,4 +163,18 @@ func mustCalendarDate(value string) CalendarDate {
 		panic(err)
 	}
 	return parsedDate
+}
+
+func calendarDateRelativeToToday(t *testing.T, database *pgxpool.Pool, dayOffset int) CalendarDate {
+	t.Helper()
+
+	var calendarDate CalendarDate
+	if err := database.QueryRow(
+		context.Background(),
+		"SELECT CURRENT_DATE + $1::integer",
+		dayOffset,
+	).Scan(&calendarDate); err != nil {
+		t.Fatalf("failed to get date relative to database today: %v", err)
+	}
+	return calendarDate
 }

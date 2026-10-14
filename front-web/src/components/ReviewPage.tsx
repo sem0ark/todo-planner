@@ -71,6 +71,7 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [copiedNotesDate, setCopiedNotesDate] = useState<string | null>(null);
   const [dataRevision, setDataRevision] = useState(0);
   const fileInputReference = useRef<HTMLInputElement>(null);
 
@@ -118,6 +119,33 @@ export default function ReviewPage() {
       );
     } finally {
       setBackupBusy(false);
+    }
+  };
+
+  const copyNotes = async (day: ReviewDay) => {
+    const record = day.record;
+    if (!record) return;
+
+    const notes = record.events
+      .filter((event) => event.event_type === "note" && event.text)
+      .sort((left, right) => left.occurred_at.localeCompare(right.occurred_at))
+      .map((event) => {
+        const category = categories.find(
+          (item) => item.id === event.category_id,
+        );
+        const localTimestamp = event.occurred_at_local || event.occurred_at;
+        const timestamp = localTimestamp.slice(0, 16).replace("T", " ");
+        return `${day.date} ${timestamp.slice(11)} ${category?.name ?? "Unknown"}\n${event.text}`;
+      })
+      .join("\n\n");
+
+    if (!notes) return;
+    try {
+      await navigator.clipboard.writeText(notes);
+      setCopiedNotesDate(day.date);
+      window.setTimeout(() => setCopiedNotesDate(null), 1500);
+    } catch {
+      setError("Failed to copy notes");
     }
   };
 
@@ -322,6 +350,17 @@ export default function ReviewPage() {
             >
               Edit
             </Link>
+            {day.record?.events.some(
+              (event) => event.event_type === "note" && event.text,
+            ) && (
+              <button
+                type="button"
+                onClick={() => void copyNotes(day)}
+                className="ml-2 text-xs text-slate-blue hover:text-cloud"
+              >
+                {copiedNotesDate === day.date ? "Copied" : "Copy notes"}
+              </button>
+            )}
           </div>
         ))}
         <div className="relative" style={{ height: `${dayRangeHours * 60}px` }}>

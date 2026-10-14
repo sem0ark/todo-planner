@@ -162,3 +162,8 @@ The visual language is based on:
   - Confirmation required: `bell.fill`.
 - **Colors and typography:** Uses the system template icon tint rather than custom widget colors.
 - **Behavior:** Clicking the icon opens or closes the transient `320 × 200 px` popover. The popover also opens automatically for confirmation and completed Pomodoro events.
+
+**12. Timed Note Entry**
+
+- **View:** Note entry mode in the left panel, opened by the right-rail `Add note` menu item or `Cmd+T`.
+- **Behavior:** The focused text field accepts up to 512 characters. `Enter` queues a note with the current category and timestamp; `Escape` cancels without creating an event.

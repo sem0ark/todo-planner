@@ -86,6 +86,9 @@ struct StyleTokens {
 struct ContentView: View {
   private let authController: AuthController
   private let widgetState: WidgetStateStore
+  @State private var isNoteEntryActive = false
+  @State private var noteText = ""
+  @FocusState private var isNoteFieldFocused: Bool
 
   init(widgetState: WidgetStateStore, authController: AuthController) {
     self.widgetState = widgetState
@@ -110,18 +113,33 @@ struct ContentView: View {
       case .widget:
         HStack(spacing: 0) {
           // Left Panel (65%)
-          LeftPanelView(widgetState: widgetState)
-            .frame(width: 208)
-            .overlay(
-              Rectangle()
-                .fill(StyleTokens.structuralBorder.opacity(Palette.overlayOpacity))
-                .frame(width: 1),
-              alignment: .trailing
-            )
+          Group {
+            if isNoteEntryActive {
+              NoteEntryView(
+                text: $noteText,
+                isFocused: $isNoteFieldFocused,
+                onCancel: cancelNote,
+                onSubmit: submitNote
+              )
+            } else {
+              LeftPanelView(widgetState: widgetState)
+            }
+          }
+          .frame(width: 208)
+          .overlay(
+            Rectangle()
+              .fill(StyleTokens.structuralBorder.opacity(Palette.overlayOpacity))
+              .frame(width: 1),
+            alignment: .trailing
+          )
 
           // Right Rail (35%)
-          RightRailView(widgetState: widgetState, authController: authController)
-            .frame(width: 112)
+          RightRailView(
+            widgetState: widgetState,
+            authController: authController,
+            onAddNote: beginNote
+          )
+          .frame(width: 112)
         }
         .onReceive(NotificationCenter.default.publisher(for: .keyPressed)) { notification in
           if let event = notification.object as? NSEvent {
@@ -165,7 +183,15 @@ struct ContentView: View {
 
     Task {
       switch key {
+      case "t" where event.modifierFlags.contains(.command):
+        beginNote()
+      case "\u{1b}" where isNoteEntryActive:
+        cancelNote()
       case "\r":  // Primary action key
+        if isNoteEntryActive {
+          submitNote()
+          return
+        }
         WidgetLogger.debug("Primary action key pressed")
         await widgetState.handlePrimaryAction()
       case "1", "2", "3", "4", "5", "6", "7", "8", "9":
@@ -186,6 +212,81 @@ struct ContentView: View {
         break
       }
     }
+  }
+
+  private func beginNote() {
+    isNoteEntryActive = true
+    noteText = ""
+    DispatchQueue.main.async {
+      isNoteFieldFocused = true
+    }
+  }
+
+  private func cancelNote() {
+    isNoteEntryActive = false
+    noteText = ""
+    isNoteFieldFocused = false
+  }
+
+  private func submitNote() {
+    let trimmedText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedText.isEmpty, trimmedText.count <= 512 else { return }
+    Task {
+      await widgetState.addNote(text: trimmedText)
+      cancelNote()
+    }
+  }
+}
+
+struct NoteEntryView: View {
+  @Binding var text: String
+  var isFocused: FocusState<Bool>.Binding
+  let onCancel: () -> Void
+  let onSubmit: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Text("ADD NOTE")
+          .font(.system(size: Typography.categoryNameMedium, weight: .bold))
+          .foregroundColor(StyleTokens.primaryText)
+        Spacer()
+        Text("\(text.count)/512")
+          .font(.system(size: Typography.tinyMono, design: .monospaced))
+          .foregroundColor(StyleTokens.secondaryText)
+      }
+
+      TextField("Write a note...", text: $text, axis: .vertical)
+        .focused(isFocused)
+        .lineLimit(5...8)
+        .textFieldStyle(.plain)
+        .foregroundColor(StyleTokens.primaryText)
+        .padding(8)
+        .background(StyleTokens.deepVoid.opacity(Palette.hoverOpacity))
+        .cornerRadius(StyleTokens.radiusInner)
+        .onChange(of: text) { _, value in
+          if value.count > 512 {
+            text = String(value.prefix(512))
+          }
+        }
+
+      Spacer()
+
+      HStack {
+        Text("Enter to save")
+          .font(.system(size: Typography.tinyMono, design: .monospaced))
+          .foregroundColor(StyleTokens.secondaryText)
+        Spacer()
+        Button("Cancel", action: onCancel)
+          .buttonStyle(.plain)
+          .foregroundColor(StyleTokens.secondaryText)
+        Button("Save", action: onSubmit)
+          .buttonStyle(.borderedProminent)
+          .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(12)
+    .background(StyleTokens.baseVoid)
   }
 }
 
@@ -416,6 +517,10 @@ struct ActiveView: View {
                   }
                 }
 
+                Text(pomoState.phase == .work ? "FOCUS" : "REST")
+                  .font(.system(size: Typography.labelBold, weight: .bold))
+                  .foregroundColor(textColor.opacity(Palette.labelOpacity))
+
                 Spacer()
               }
 
@@ -520,6 +625,7 @@ struct DashedLine: Shape {
 struct RightRailView: View {
   var widgetState: WidgetStateStore
   var authController: AuthController
+  let onAddNote: () -> Void
   @State private var isMenuExpanded = false
 
   var body: some View {
@@ -534,6 +640,11 @@ struct RightRailView: View {
       .frame(maxHeight: .infinity)
 
       if isMenuExpanded {
+        actionButton(title: "Add note", systemImage: "note.text") {
+          isMenuExpanded = false
+          onAddNote()
+        }
+
         actionButton(title: "Reload", systemImage: "arrow.clockwise") {
           isMenuExpanded = false
           Task {
