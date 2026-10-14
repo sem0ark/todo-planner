@@ -167,7 +167,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
       // Post notification for ContentView to handle
       NotificationCenter.default.post(name: .keyPressed, object: event)
-      if event.keyCode == 36 || event.modifierFlags.contains(.command) {
+      let key = event.charactersIgnoringModifiers?.lowercased()
+      let isHandledCommandShortcut =
+        event.modifierFlags.contains(.command) && (key == "t" || event.keyCode == 51)
+
+      if event.keyCode == 36 || isHandledCommandShortcut {
         return nil
       }
       return event
