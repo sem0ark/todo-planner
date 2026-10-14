@@ -19,7 +19,7 @@ export default function WeeklySchedule() {
   const { token } = useAuthStore();
   const { weeklySchedule, setWeeklySchedule, setOverrides } =
     useScheduleStore();
-  const { templates, setTemplates } = useTemplateStore();
+  const { templates, isLoading, setTemplates, setLoading } = useTemplateStore();
   const [localSchedule, setLocalSchedule] = useState<
     Record<number, number | null>
   >({});
@@ -43,6 +43,7 @@ export default function WeeklySchedule() {
 
   const loadData = async () => {
     if (!token) return;
+    setLoading(true);
     try {
       const [scheduleData, templatesData] = await Promise.all([
         getSchedule(token),
@@ -53,6 +54,8 @@ export default function WeeklySchedule() {
       setTemplates(templatesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -111,13 +114,14 @@ export default function WeeklySchedule() {
           <div className="flex gap-2">
             <button
               onClick={handleReset}
+              disabled={isLoading}
               className="h-9 px-4 text-sm font-semibold text-cloud bg-transparent border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/10"
             >
               Reset
             </button>
             <button
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || isLoading}
               className="px-4 py-2 text-sm font-semibold text-navy bg-snow rounded-lg transition-all duration-micro hover:bg-cloud disabled:opacity-50"
             >
               {isSaving ? "Saving..." : "Save Changes"}
@@ -132,26 +136,39 @@ export default function WeeklySchedule() {
         </div>
       )}
 
-      <div className="space-y-3">
-        {DAYS.map((day, index) =>
-          (() => {
+      {isLoading && (
+        <div
+          className="flex min-h-80 items-center justify-center rounded-lg border border-slate-grey/20 bg-navy/60"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-3 text-sm text-cloud">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-cloud/30 border-t-cloud" />
+            Loading schedule...
+          </div>
+        </div>
+      )}
+      {!isLoading && templates.length > 0 && (
+        <div className="space-y-3">
+          {DAYS.map((day, index) => {
             const currentTemplateId = getCurrentTemplateId(index);
             const isChanged = localSchedule[index] !== currentTemplateId;
 
             return (
               <div
-                key={index}
-                className={`flex items-center gap-4 p-4 bg-navy border rounded-lg hover:bg-slate-blue/10 ${
+                key={day}
+                className={`flex items-center gap-4 rounded-lg border bg-navy p-4 hover:bg-slate-blue/10 ${
                   isChanged
                     ? "border-warning bg-warning/5"
                     : "border-slate-grey/20"
                 }`}
               >
-                <span className="w-28 text-snow font-medium">{day}</span>
+                <span className="w-28 font-medium text-snow">{day}</span>
                 <select
                   value={localSchedule[index] ?? ""}
-                  onChange={(e) => handleChange(index, e.target.value)}
-                  className="flex-1 px-4 py-2 text-snow bg-navy/60 border-2 border-slate-grey rounded-lg outline-none transition-all duration-micro focus:border-cloud"
+                  onChange={(event) => handleChange(index, event.target.value)}
+                  disabled={isLoading}
+                  className="flex-1 rounded-lg border-2 border-slate-grey bg-navy/60 px-4 py-2 text-snow outline-none transition-all duration-micro focus:border-cloud disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">Unassigned</option>
                   {templates.map((template) => (
@@ -167,12 +184,11 @@ export default function WeeklySchedule() {
                 )}
               </div>
             );
-          })(),
-        )}
-      </div>
-
-      {templates.length === 0 && (
-        <p className="mt-4 text-sm text-cloud text-center">
+          })}
+        </div>
+      )}
+      {!isLoading && templates.length === 0 && (
+        <p className="mt-4 text-center text-sm text-cloud">
           Create templates first to assign them to days.
         </p>
       )}
