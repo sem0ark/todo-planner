@@ -14,6 +14,7 @@ extension Notification.Name {
 
 enum PomodoroPhase {
   case work
+  case awaitingWorkConfirmation
   case rest
 }
 
@@ -32,6 +33,7 @@ enum WidgetScreenState: Equatable {
   case checkingAuthentication
   case login
   case widget
+  case noteEntry
   case error(String)
 }
 
@@ -76,6 +78,7 @@ enum DayEventType: String {
 enum WidgetEffect {
   case logTransition(category: Category, occurredAt: Date?)
   case logConfirmation(category: Category)
+  case logNote(category: Category, text: String)
   case logAmendment(targetClientEventId: String, correctedAt: Date)
   case postNotification(Notification.Name)
   case updateMenuBarIcon
@@ -174,7 +177,8 @@ enum EventLoggingError: Error {
 
 enum PomodoroTickOutcome {
   case none
-  case workCompleted
+  case workNeedsConfirmation
+  case workAutoSkipped
   case restCompleted
 }
 
@@ -182,7 +186,13 @@ func tickPomodoro(_ context: inout WidgetContext) -> PomodoroTickOutcome {
   guard let category = context.currentCategory, let config = category.pomodoroConfig
   else { return .none }
 
-  let limit = context.pomodoroPhase == .work ? config.workDuration : config.restDuration
+  let limit: Int
+  switch context.pomodoroPhase {
+  case .work, .awaitingWorkConfirmation:
+    limit = config.workDuration
+  case .rest:
+    limit = config.restDuration
+  }
   guard limit > 0 else { return .none }
 
   let previousElapsed = context.pomodoroElapsed
@@ -213,13 +223,14 @@ func tickPomodoro(_ context: inout WidgetContext) -> PomodoroTickOutcome {
       ])
 
     let completedPhase = context.pomodoroPhase
-    context.pomodoroPhase = completedPhase == .work ? .rest : .work
+    context.pomodoroPhase = completedPhase == .rest ? .work : .rest
     context.pomodoroElapsed = 0
-    return completedPhase == .work ? .workCompleted : .restCompleted
+    return completedPhase == .rest ? .restCompleted : .workAutoSkipped
   }
 
   if crossedWorkLimit {
-    return .workCompleted
+    context.pomodoroPhase = .awaitingWorkConfirmation
+    return .workNeedsConfirmation
   }
 
   return .none
@@ -232,10 +243,15 @@ func togglePomodoro(_ context: inout WidgetContext) {
   let workLimit = config.workDuration
   guard workLimit > 0 else { return }
 
-  if context.pomodoroPhase == .work && context.pomodoroElapsed >= workLimit {
+  switch context.pomodoroPhase {
+  case .work:
+    guard context.pomodoroElapsed >= workLimit else { return }
     context.pomodoroPhase = .rest
     context.pomodoroElapsed = 0
-  } else if context.pomodoroPhase == .rest {
+  case .awaitingWorkConfirmation:
+    context.pomodoroPhase = .rest
+    context.pomodoroElapsed = 0
+  case .rest:
     context.pomodoroPhase = .work
     context.pomodoroElapsed = 0
   }
@@ -462,16 +478,20 @@ final class ActiveState: WidgetStateLogic {
     // Pomodoro Logic
     if ctx.currentCategory?.hasPomodoroEnabled == true {
       switch tickPomodoro(&ctx) {
-      case .workCompleted:
+      case .workNeedsConfirmation:
         var effects: [WidgetEffect] = []
-        if let category = ctx.currentCategory {
-          effects.append(.logConfirmation(category: category))
-        }
         effects.append(.postNotification(.pomodoroCompleted))
         return StateResult(
           nextState: self,
           updatedContext: ctx,
           effects: effects
+        )
+
+      case .workAutoSkipped:
+        return StateResult(
+          nextState: self,
+          updatedContext: ctx,
+          effects: [.postNotification(.pomodoroCompleted)]
         )
 
       case .restCompleted:
@@ -528,6 +548,7 @@ class WidgetStateStore {
   var currentState: WidgetStateLogic = InitializingState()
   var screenState: WidgetScreenState = .checkingAuthentication
   var context = WidgetContext()
+  var noteText = ""
   private let repository: TodoPlannerRepository
   private var tick = 0
 
@@ -585,7 +606,13 @@ class WidgetStateStore {
   }
   var pomodoroProgress: Double {
     guard let config = context.currentCategory?.pomodoroConfig else { return 0.0 }
-    let limit = (context.pomodoroPhase == .work ? config.workDuration : config.restDuration)
+    let limit: Int
+    switch context.pomodoroPhase {
+    case .work, .awaitingWorkConfirmation:
+      limit = config.workDuration
+    case .rest:
+      limit = config.restDuration
+    }
     guard limit > 0 else { return 0.0 }
     return min(Double(context.pomodoroElapsed) / Double(limit), 1.0)
   }
@@ -598,7 +625,9 @@ class WidgetStateStore {
     displayState == .active && context.currentCategory?.hasPomodoroEnabled == true
   }
 
-  var pomodoroPulsing: Bool { pomodoroActive && pomodoroProgress >= 1.0 }
+  var pomodoroPulsing: Bool {
+    pomodoroActive && context.pomodoroPhase == .awaitingWorkConfirmation
+  }
 
   init(repository: TodoPlannerRepository) {
     self.repository = repository
@@ -786,27 +815,58 @@ class WidgetStateStore {
   func handlePrimaryAction() async { await dispatch(.primaryAction) }
   func adjustOffset(minutes: Int) async { await dispatch(.adjustOffset(minutes)) }
 
-  func addNote(text: String) async {
-    guard !text.isEmpty, text.count <= 512, let category = context.currentCategory else {
+  func beginNote() {
+    guard screenState == .widget else { return }
+    noteText = ""
+    lastError = nil
+    screenState = .noteEntry
+  }
+
+  func updateNoteText(_ text: String) {
+    guard screenState == .noteEntry else { return }
+    noteText = String(text.prefix(512))
+  }
+
+  func deleteLastNoteWord() {
+    guard screenState == .noteEntry else { return }
+
+    let characters = Array(noteText)
+    var wordEnd = characters.count
+
+    while wordEnd > 0 && characters[wordEnd - 1].isWhitespace {
+      wordEnd -= 1
+    }
+
+    var wordStart = wordEnd
+    while wordStart > 0 && !characters[wordStart - 1].isWhitespace {
+      wordStart -= 1
+    }
+
+    updateNoteText(String(characters[..<wordStart]))
+  }
+
+  func cancelNote() {
+    guard screenState == .noteEntry else { return }
+    noteText = ""
+    lastError = nil
+    screenState = .widget
+  }
+
+  func submitNote() async {
+    guard screenState == .noteEntry else { return }
+
+    let trimmedText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedText.isEmpty, let category = context.currentCategory else {
       lastError = "A current category and note text are required"
       return
     }
-    do {
-      let eventResult = try await logEvent(
-        type: .note,
-        category: category,
-        text: text,
-        occurredAt: nil,
-        calendarDate: context.currentDayRecord?.calendarDate,
-        repo: repository
-      )
-      context.eventLocalTimestamps[eventResult.event.clientEventId] =
-        eventResult.event.occurredAtLocal
-      context.lastEventClientId = eventResult.clientEventId
-    } catch {
-      lastError = String(describing: error)
-      WidgetLogger.error("Failed to log note", context: ["error": lastError!])
-    }
+
+    let noteEffect = WidgetEffect.logNote(category: category, text: trimmedText)
+    guard await execute(noteEffect) else { return }
+
+    noteText = ""
+    lastError = nil
+    screenState = .widget
   }
 
   func synchronize() async {
@@ -853,6 +913,7 @@ class WidgetStateStore {
     do {
       try repository.clearLocalData()
       context = WidgetContext()
+      noteText = ""
       currentState = InitializingState()
       lastError = nil
     } catch {
@@ -946,6 +1007,27 @@ class WidgetStateStore {
         lastError = String(describing: error)
         WidgetLogger.error(
           "Failed to log confirmation; local state rolled back", context: ["error": lastError!])
+        return false
+      }
+
+    case .logNote(let category, let text):
+      logEffectContext("logNote", eventCategory: category)
+      do {
+        let eventResult = try await logEvent(
+          type: .note,
+          category: category,
+          text: text,
+          occurredAt: nil,
+          calendarDate: context.currentDayRecord?.calendarDate,
+          repo: repository
+        )
+        context.eventLocalTimestamps[eventResult.event.clientEventId] =
+          eventResult.event.occurredAtLocal
+        context.lastEventClientId = eventResult.clientEventId
+      } catch {
+        lastError = String(describing: error)
+        WidgetLogger.error(
+          "Failed to log note; local state rolled back", context: ["error": lastError!])
         return false
       }
 

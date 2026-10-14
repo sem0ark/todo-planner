@@ -35,7 +35,7 @@ format:
 	-cd api-backend && gofmt -w . > /dev/null
 	-cd front-web && pnpm exec prettier --write . --ignore-unknown > /dev/null
 	-cd front-rn-mobile && pnpm exec prettier --write . --ignore-unknown > /dev/null
-	-cd front-desktop-widget && swift format --in-place --recursive Sources/ > /dev/null
+	-cd front-desktop-widget && swift format --in-place --recursive Sources/ Tests/ > /dev/null
 	@echo "Code formatted"
 
 test-prepare:

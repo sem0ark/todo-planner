@@ -12,7 +12,8 @@ struct TestRunner {
     print("Running WidgetStateStore tests...")
     print("")
 
-    let testMethods = WidgetLoggerTests.testMethods()
+    let testMethods =
+      WidgetLoggerTests.testMethods()
       + AuthControllerTests.testMethods()
       + PersistenceTests.testMethods()
       + RepositorySyncTests.testMethods()

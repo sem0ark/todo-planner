@@ -18,7 +18,9 @@ struct WidgetLoggerTests {
     let tests = WidgetLoggerTests()
     return [
       ("test_contextIsSortedAndFormatted", { try tests.test_contextIsSortedAndFormatted() }),
-      ("test_emptyContextDoesNotAddSeparator", { try tests.test_emptyContextDoesNotAddSeparator() }),
+      (
+        "test_emptyContextDoesNotAddSeparator", { try tests.test_emptyContextDoesNotAddSeparator() }
+      ),
     ]
   }
 }
