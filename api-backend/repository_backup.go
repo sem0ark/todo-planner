@@ -347,14 +347,7 @@ func (repository *BackupRepository) Import(ctx context.Context, userID int, back
 			return 0, err
 		}
 		for _, block := range day.Actual {
-			var categoryID *int
-			if block.CategoryID != nil {
-				mappedCategoryID, exists := categoryIDs[*block.CategoryID]
-				if !exists {
-					mappedCategoryID = *block.CategoryID
-				}
-				categoryID = &mappedCategoryID
-			}
+			categoryID := mappedBackupCategoryID(categoryIDs, block.CategoryID)
 			_, err = transaction.Exec(ctx, `INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())`, dayRecordID, categoryID, block.BlockType, block.StartTime, block.DurationMinutes)
 			if err != nil {
 				return 0, err
@@ -416,12 +409,16 @@ func (repository *BackupRepository) insertTemplateSnapshot(ctx context.Context, 
 }
 
 func mappedEventCategoryID(categoryIDs map[int]int, categoryID *int) *int {
+	return mappedBackupCategoryID(categoryIDs, categoryID)
+}
+
+func mappedBackupCategoryID(categoryIDs map[int]int, categoryID *int) *int {
 	if categoryID == nil {
 		return nil
 	}
 	mappedCategoryID, exists := categoryIDs[*categoryID]
 	if !exists {
-		mappedCategoryID = *categoryID
+		return nil
 	}
 	return &mappedCategoryID
 }

@@ -32,7 +32,7 @@ describe("categories service", () => {
 
       const result = await getCategories(token);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/categories", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/categories", {
         headers: { Authorization: `Bearer ${token}` },
       });
       expect(result).toEqual([mockCategory]);
@@ -61,7 +61,7 @@ describe("categories service", () => {
 
       const result = await createCategory(token, input);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/categories", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/categories", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -99,7 +99,7 @@ describe("categories service", () => {
 
       const result = await updateCategory(token, 1, input);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/categories/1", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/categories/1", {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -129,7 +129,7 @@ describe("categories service", () => {
 
       await deleteCategory(token, 1);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/categories/1", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/categories/1", {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });

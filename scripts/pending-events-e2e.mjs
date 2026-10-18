@@ -95,7 +95,7 @@ if (argumentsMap.has("--help")) {
 Options:
   --backup PATH       Backup file (default: front-desktop-widget/pending-events-backup.json)
   --dump PATH         Write the exported /backup JSON here (default: pending-events-e2e-backup.json)
-  --api URL           Backend URL (default: http://localhost:8080)
+  --api URL           Backend URL (default: http://localhost:3648)
   --frontend URL      Frontend URL (default: http://localhost:5173)
   --username NAME     Reuse an existing test account
   --password VALUE    Password for --username
@@ -111,7 +111,7 @@ Options:
 
 const backupPath = argumentsMap.get("--backup") || "front-desktop-widget/pending-events-backup.json";
 const dumpPath = argumentsMap.get("--dump") || "pending-events-e2e-backup.json";
-const apiUrl = (argumentsMap.get("--api") || "http://localhost:8080").replace(/\/$/, "");
+const apiUrl = (argumentsMap.get("--api") || "http://localhost:3648").replace(/\/$/, "");
 const frontendUrl = (argumentsMap.get("--frontend") || "http://localhost:5173").replace(/\/$/, "");
 const reviewUrl = `${frontendUrl}/todo-planner/#/review`;
 const username = argumentsMap.get("--username") || `pending-events-e2e-${Date.now()}`;

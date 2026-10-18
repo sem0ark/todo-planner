@@ -44,9 +44,9 @@ services:
       - .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
-      PORT: ${PORT}
+      PORT: 3648
     ports:
-      - "8080:8080"
+      - "3648:3648"
     depends_on:
       postgres:
         condition: service_healthy

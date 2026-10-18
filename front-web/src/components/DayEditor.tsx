@@ -37,16 +37,7 @@ function editableBlocks(record: DayRecord): ActualBlockInput[] {
     )
     .sort((left, right) => left.start_time.localeCompare(right.start_time));
 
-  if (actualBlocks.length > 0) return actualBlocks;
-
-  return record.plan
-    .map(({ category_id, start_time, duration_minutes }) => ({
-      category_id,
-      block_type: "actual" as const,
-      start_time,
-      duration_minutes,
-    }))
-    .sort((left, right) => left.start_time.localeCompare(right.start_time));
+  return actualBlocks;
 }
 
 export default function DayEditor({

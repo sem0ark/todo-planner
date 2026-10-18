@@ -788,7 +788,8 @@ class WidgetStateStore {
       currentState = previousState
       screenState = previousScreenState
       lastError = String(describing: error)
-      WidgetLogger.error("Reload failed; previous widget state restored", context: ["error": lastError!])
+      WidgetLogger.error(
+        "Reload failed; previous widget state restored", context: ["error": lastError!])
     }
   }
 

@@ -47,7 +47,7 @@ final class LocalEventStore: @unchecked Sendable {
     if ProcessInfo.processInfo.processName == "test_runner" {
       return "tests"
     }
-    return BuildConfig.storageMode == "mock" ? "mock" : "remote"
+    return BuildConfig.storageMode
   }
 
   func append(calendarDate: String, event: DayEvent) throws {

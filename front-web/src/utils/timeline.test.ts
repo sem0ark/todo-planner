@@ -1,10 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterTimelineBlocksToRange,
   constrainTimelineDragDelta,
   constrainTimelinePosition,
   findNewTimelineBlockPosition,
   groupTimelineItemsIntoColumns,
 } from "./timeline";
+
+describe("filterTimelineBlocksToRange", () => {
+  it("does not return blocks that start outside the configured range", () => {
+    const blocks = [
+      { category_id: 1, start_time: "06:00:00", duration_minutes: 30 },
+      { category_id: 2, start_time: "08:00:00", duration_minutes: 60 },
+      { category_id: 3, start_time: "22:00:00", duration_minutes: 30 },
+    ];
+
+    expect(
+      filterTimelineBlocksToRange(blocks, "07:00:00", "21:00:00"),
+    ).toEqual([blocks[1]]);
+  });
+});
 
 const options = {
   dayStartMinutes: 8 * 60,

@@ -39,6 +39,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     WidgetLogger.debug("Single instance check passed")
     WidgetLogger.debug("Starting as menu bar app")
 
+    BackendManager.shared.startBackend()
+
     // Create the Menu Bar Item
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -60,6 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       rootView: ContentView(widgetState: widgetState, authController: authController))
 
     Task {
+      _ = await BackendManager.shared.waitUntilReady()
       await widgetState.start()
     }
 
@@ -199,6 +202,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       semaphore.signal()
     }
     _ = semaphore.wait(timeout: .now() + 5)
+    BackendManager.shared.stopBackend()
   }
 
   @objc func handleGetURLEvent(
