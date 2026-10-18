@@ -28,7 +28,7 @@ func main() {
 	}
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "3648"
 	}
 
 	dataDirectory := getEnvironment("EMBEDDED_PG_DATA_DIR", "~/.todoplanner")

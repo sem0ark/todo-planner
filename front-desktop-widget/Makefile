@@ -28,7 +28,7 @@ ifneq (,$(wildcard $(ENV_FILE)))
 endif
 
 # Default values if not provided in the .env file
-API_BASE_URL ?= http://localhost:8080
+API_BASE_URL ?= http://localhost:3648
 WEB_APP_BASE_URL ?= http://localhost:5173/todo-planner
 STORAGE_MODE ?= remote
 MOCK_SCHEDULE ?=

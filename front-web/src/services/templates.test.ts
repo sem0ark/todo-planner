@@ -32,7 +32,7 @@ describe("templates service", () => {
 
       const result = await getTemplates(token);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/templates", {
         headers: { Authorization: `Bearer ${token}` },
       });
       expect(result).toEqual([mockTemplate]);
@@ -87,7 +87,7 @@ describe("templates service", () => {
 
       const result = await createTemplate(token, input);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/templates", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -127,7 +127,7 @@ describe("templates service", () => {
 
       const result = await updateTemplate(token, 1, input);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates/1", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/templates/1", {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -157,7 +157,7 @@ describe("templates service", () => {
 
       await deleteTemplate(token, 1);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/templates/1", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/templates/1", {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });

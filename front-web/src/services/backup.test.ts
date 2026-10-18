@@ -14,7 +14,7 @@ describe("backup service", () => {
     });
 
     await expect(downloadBackup("token")).resolves.toBe(backupBlob);
-    expect(fetch).toHaveBeenCalledWith("http://localhost:8080/backup", {
+    expect(fetch).toHaveBeenCalledWith("http://localhost:3648/backup", {
       headers: { Authorization: "Bearer token" },
     });
   });
@@ -26,7 +26,7 @@ describe("backup service", () => {
     });
 
     await expect(importBackup("token", backupFile)).resolves.toBeUndefined();
-    expect(fetch).toHaveBeenCalledWith("http://localhost:8080/backup", {
+    expect(fetch).toHaveBeenCalledWith("http://localhost:3648/backup", {
       method: "POST",
       headers: {
         Authorization: "Bearer token",

@@ -47,7 +47,7 @@ describe("schedule service", () => {
 
       const result = await getSchedule(token);
 
-      expect(fetch).toHaveBeenCalledWith("http://localhost:8080/schedule", {
+      expect(fetch).toHaveBeenCalledWith("http://localhost:3648/schedule", {
         headers: { Authorization: `Bearer ${token}` },
       });
       expect(result).toEqual(mockSchedule);
@@ -78,7 +78,7 @@ describe("schedule service", () => {
       const result = await updateWeeklySchedule(token, input);
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:8080/schedule/weekly",
+        "http://localhost:3648/schedule/weekly",
         {
           method: "PUT",
           headers: {
@@ -118,7 +118,7 @@ describe("schedule service", () => {
       const result = await updateScheduleOverride(token, date, input);
 
       expect(fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/schedule/overrides/${date}`,
+        `http://localhost:3648/schedule/overrides/${date}`,
         {
           method: "PUT",
           headers: {

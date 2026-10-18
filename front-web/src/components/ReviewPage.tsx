@@ -454,11 +454,6 @@ export default function ReviewPage() {
             className="relative border-l border-slate-grey/20"
             style={{ height: `${dayRangeHours * 60}px` }}
           >
-            {day.record && !day.record.timezone_offset_locked && (
-              <span className="absolute right-1 top-1 z-10 rounded bg-amber-500/80 px-1 text-[10px] text-snow">
-                Time zone not yet recorded for this day
-              </span>
-            )}
             {loading ? (
               <div className="absolute inset-x-1 top-20 h-64 rounded bg-slate-blue/20 animate-pulse" />
             ) : (

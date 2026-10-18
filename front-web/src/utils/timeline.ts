@@ -3,6 +3,34 @@ export interface TimelinePosition {
   durationMinutes: number;
 }
 
+export interface TimelineBlock {
+  start_time: string;
+  duration_minutes: number;
+}
+
+function timeToMinutes(time: string): number {
+  const [hours, minutes, seconds = 0] = time.split(":").map(Number);
+  return hours * 60 + minutes + seconds / 60;
+}
+
+/** Excludes blocks whose start is outside the visible tracking range. */
+export function filterTimelineBlocksToRange<T extends TimelineBlock>(
+  blocks: T[],
+  dayStartTime: string,
+  dayEndTime: string,
+): T[] {
+  const dayStartMinutes = timeToMinutes(dayStartTime);
+  const dayEndMinutes =
+    dayEndTime === "24:00:00" ? 24 * 60 : timeToMinutes(dayEndTime);
+
+  return blocks.filter((block) => {
+    const blockStartMinutes = timeToMinutes(block.start_time);
+    return (
+      blockStartMinutes >= dayStartMinutes && blockStartMinutes < dayEndMinutes
+    );
+  });
+}
+
 export interface TimelineColumnItem {
   id: string;
   offset: number;

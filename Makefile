@@ -4,13 +4,13 @@ local:
 	-colima start
 	docker-compose down
 	docker-compose up --build --force-recreate
-	@echo "Application started. Backend: http://localhost:8080, Frontend: http://localhost:5173"
+	@echo "Application started. Backend: http://localhost:3648, Frontend: http://localhost:5173"
 
 local-bg:
 	-colima start
 	docker-compose down
 	docker-compose up --build --force-recreate -d
-	@echo "Application started in background. Backend: http://localhost:8080, Frontend: http://localhost:5173"
+	@echo "Application started in background. Backend: http://localhost:3648, Frontend: http://localhost:5173"
 
 clear-local:
 	docker-compose down -v

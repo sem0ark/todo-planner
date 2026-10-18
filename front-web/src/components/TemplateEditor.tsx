@@ -11,6 +11,7 @@ import type { PlannedBlock } from "../services/templates";
 import { getCategories } from "../services/categories";
 import { useSettingsStore } from "../store/settingsStore";
 import TimelineEditor from "./TimelineEditor";
+import { filterTimelineBlocksToRange } from "../utils/timeline";
 
 interface TemplateEditorProps {
   templateId: number | null;
@@ -136,7 +137,11 @@ export default function TemplateEditor({
       const input = {
         name: name.trim(),
         template_group_id: null,
-        plan: blocks,
+        plan: filterTimelineBlocksToRange(
+          blocks,
+          settings?.day_range_start_time ?? "00:00:00",
+          settings?.day_range_end_time ?? "24:00:00",
+        ),
       };
 
       if (templateId) {

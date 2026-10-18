@@ -279,7 +279,7 @@ The backend supports two equal runtime modes selected with `APP_MODE`:
 
 For cloud-mode local development, `docker-compose.yaml` runs PostgreSQL and the
 API. The web client runs through Vite on the host, normally at
-`http://localhost:5173`, and calls the API at `http://localhost:8080` unless
+`http://localhost:5173`, and calls the API at `http://localhost:3648` unless
 `VITE_API_URL` overrides it. The API applies migrations at startup and uses a
 deliberately small, shared `pgxpool` connection pool for the process lifetime.
 

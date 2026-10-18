@@ -33,7 +33,7 @@ instruction file when one is added for a subdirectory.
 
 ### Desktop Widget (`front-desktop-widget/`)
 - `make build` - build for current architecture
-- `make dev-local` - build and run against localhost:8080
+- `make dev-local` - build and run against localhost:3648
 - `make dev-remote` - build and run against staging
 - `make test` - run unit tests
 - `make clean` - remove build artifacts

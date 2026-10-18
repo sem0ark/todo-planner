@@ -31,7 +31,7 @@ describe("templateGroups service", () => {
       const result = await getTemplateGroups(token);
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:8080/template-groups",
+        "http://localhost:3648/template-groups",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -59,7 +59,7 @@ describe("templateGroups service", () => {
       const result = await createTemplateGroup(token, input);
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:8080/template-groups",
+        "http://localhost:3648/template-groups",
         {
           method: "POST",
           headers: {
@@ -92,7 +92,7 @@ describe("templateGroups service", () => {
       const result = await updateTemplateGroup(token, 1, input);
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:8080/template-groups/1",
+        "http://localhost:3648/template-groups/1",
         {
           method: "PUT",
           headers: {
@@ -121,7 +121,7 @@ describe("templateGroups service", () => {
       await deleteTemplateGroup(token, 1);
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:8080/template-groups/1",
+        "http://localhost:3648/template-groups/1",
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },

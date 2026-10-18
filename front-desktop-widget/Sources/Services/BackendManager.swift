@@ -24,7 +24,7 @@ final class BackendManager {
     var environment = ProcessInfo.processInfo.environment
     environment["APP_MODE"] = "local"
     environment["SERVE_FRONTEND"] = "true"
-    environment["PORT"] = "8080"
+    environment["PORT"] = "3648"
     environment["EMBEDDED_PG_PORT"] = "54321"
     environment["EMBEDDED_PG_DATA_DIR"] = "~/.todoplanner"
     environment["TODO_PLANNER_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
@@ -81,7 +81,7 @@ final class BackendManager {
   func waitUntilReady() async -> Bool {
     guard BuildConfig.storageMode == "local" else { return true }
 
-    guard let healthURL = URL(string: "http://127.0.0.1:8080/health") else { return false }
+    guard let healthURL = URL(string: "http://127.0.0.1:3648/health") else { return false }
     for _ in 0..<100 {
       if process?.isRunning != true { return false }
       do {
