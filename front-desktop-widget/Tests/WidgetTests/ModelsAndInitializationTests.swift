@@ -216,6 +216,42 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assert(h.store.displayState == .active, "After reload, state should be active")
   }
 
+  func test_reload_refreshesPlanAndCategoriesWithoutResettingCurrentCategory() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initialize()
+    await h.store.dispatch(.selectCategory(Fixtures.categoryB))
+
+    let newCategory = Category(
+      id: 3, name: "Reading", color: "#0000FF", pomodoroConfig: nil,
+      createdAt: Fixtures.now, updatedAt: Fixtures.now)
+    h.mock.stubbedCategories = [Fixtures.categoryA, Fixtures.categoryB, newCategory]
+    h.mock.stubbedDayRecord = DayRecord(
+      calendarDate: Fixtures.today,
+      plan: [Fixtures.blockCoveringNow(categoryId: newCategory.id)]
+    )
+
+    await h.store.reload()
+
+    try assertEqual(h.store.categories.map(\.id), [1, 2, 3])
+    try assertEqual(h.store.plannedCategory?.id, newCategory.id)
+    try assertEqual(h.store.currentCategory?.id, Fixtures.categoryB.id)
+    try assertEqual(h.store.displayState, .active)
+  }
+
+  func test_reloadFailureRestoresPreviousWidgetState() async throws {
+    let h = WidgetTestHarness(existingRecord: Fixtures.recordWithCurrentBlock())
+    await h.initialize()
+    await h.store.dispatch(.selectCategory(Fixtures.categoryB))
+    h.mock.initializationError = StorageError.networkFailure(NSError(domain: "MockError", code: 1))
+
+    await h.store.reload()
+
+    try assertEqual(h.store.displayState, .active)
+    try assertEqual(h.store.currentCategory?.id, Fixtures.categoryB.id)
+    try assertEqual(h.store.screenState, .widget)
+    try assert(h.store.lastError != nil, "Reload failure should be exposed")
+  }
+
   func test_missingScheduleData_isNotOnSchedule() async throws {
     let h = WidgetTestHarness(existingRecord: Fixtures.record())
     await h.initialize()
@@ -373,6 +409,14 @@ final class ModelsAndInitializationTests: WidgetTestCase {
       (
         "test_reload_fetchesRemoteDataAndReturnsToActive",
         { try await tests.test_reload_fetchesRemoteDataAndReturnsToActive() }
+      ),
+      (
+        "test_reload_refreshesPlanAndCategoriesWithoutResettingCurrentCategory",
+        { try await tests.test_reload_refreshesPlanAndCategoriesWithoutResettingCurrentCategory() }
+      ),
+      (
+        "test_reloadFailureRestoresPreviousWidgetState",
+        { try await tests.test_reloadFailureRestoresPreviousWidgetState() }
       ),
       (
         "test_missingScheduleData_isNotOnSchedule",
