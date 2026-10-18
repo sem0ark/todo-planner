@@ -34,7 +34,7 @@ struct Typography {
   static let categoryNameMedium: CGFloat = 14  // Category name in secondary blocks
   static let bodyMedium: CGFloat = 14  // Body text
   static let labelBold: CGFloat = 10  // Small labels (ACTUAL, PLANNED)
-  static let smallMono: CGFloat = 12  // Small monospaced text (times, numbers)
+  static let smallMono: CGFloat = 10  // Small monospaced text (times, numbers)
   static let categoryRowName: CGFloat = 10  // Right rail category names
 }
 
@@ -447,11 +447,8 @@ struct ActiveView: View {
 
           Spacer(minLength: 0)
 
-          OffsetButton(label: "-15m", minutes: 15, widgetState: widgetState)
-          OffsetButton(label: "+15m", minutes: -15, widgetState: widgetState)
-
           if widgetState.scheduleDeviation != nil {
-            Button("RETURN") {
+            Button("BACK") {
               WidgetLogger.debug("Return to plan requested from unplanned category")
               Task { await widgetState.dispatch(.returnToPlan) }
             }
@@ -665,7 +662,7 @@ struct RightRailView: View {
           Task {
             WidgetLogger.debug("Refresh requested; waiting for web authentication")
             if await authController.authenticateFromWeb() {
-              await widgetState.synchronize()
+              await widgetState.reload()
             }
           }
         }

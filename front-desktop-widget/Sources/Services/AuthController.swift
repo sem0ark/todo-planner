@@ -63,6 +63,11 @@ final class AuthController {
         }
       }
 
+      if let pendingToken = DeepLinkHandler.shared.consumePendingToken() {
+        DeepLinkHandler.shared.onTokenReceived?(pendingToken)
+        return
+      }
+
       let authenticationURL = BuildConfig.webAppBaseURL + "/#/token"
       guard let url = URL(string: authenticationURL) else {
         webAuthContinuation?.resume(returning: false)

@@ -15,6 +15,7 @@ struct TestRunner {
     let testMethods =
       WidgetLoggerTests.testMethods()
       + AuthControllerTests.testMethods()
+      + DeepLinkHandlerTests.testMethods()
       + PersistenceTests.testMethods()
       + RepositorySyncTests.testMethods()
       + ModelsAndInitializationTests.testMethods()

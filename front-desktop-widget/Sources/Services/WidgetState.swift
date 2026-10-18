@@ -664,6 +664,20 @@ class WidgetStateStore {
 
   func start() async {
     guard screenState == .checkingAuthentication else { return }
+
+    if let pendingToken = DeepLinkHandler.shared.consumePendingToken() {
+      do {
+        try await repository.persistAuthToken(pendingToken)
+        WidgetLogger.debug("Applied authentication token received during startup")
+      } catch {
+        lastError = String(describing: error)
+        screenState = .login
+        WidgetLogger.error(
+          "Failed to apply startup authentication token", context: ["error": lastError!])
+        return
+      }
+    }
+
     let hasAuthenticationToken =
       repository.getAuthToken().map {
         AuthController.isWorkingAuthenticationToken($0)
@@ -754,22 +768,35 @@ class WidgetStateStore {
   }
 
   func reload() async {
+    let previousContext = context
+    let previousState = currentState
+    let previousScreenState = screenState
+
     await dispatch(.reload)
 
     do {
-      try await loadData()
-      await dispatch(.initialize)
+      // Flush local writes before fetching the latest server-side plan and categories.
+      try await repository.synchronize()
+      try await loadData(resetCurrentCategory: false)
+      context.plannedCategory = plannedCategory
+      currentState = previousState
+      screenState = .widget
+      lastError = nil
+      updateMenuBarIcon()
     } catch {
+      context = previousContext
+      currentState = previousState
+      screenState = previousScreenState
       lastError = String(describing: error)
-      WidgetLogger.error("Reload failed; widget remains inactive", context: ["error": lastError!])
+      WidgetLogger.error("Reload failed; previous widget state restored", context: ["error": lastError!])
     }
   }
 
-  private func loadData() async throws {
+  private func loadData(resetCurrentCategory: Bool = true) async throws {
     let today = DateFormatter.yyyyMMdd.string(from: Date())
     let bootstrap = try await repository.initialize(calendarDate: today)
     try validateBootstrap(bootstrap, requestedDate: today)
-    applyBootstrap(bootstrap, resetCurrentCategory: true)
+    applyBootstrap(bootstrap, resetCurrentCategory: resetCurrentCategory)
   }
 
   private func applyBootstrap(_ bootstrap: InitResponse, resetCurrentCategory: Bool) {
@@ -785,10 +812,17 @@ class WidgetStateStore {
     let plannedCategory = context.categories.first { $0.id == currentPlannedBlock?.categoryId }
     context.plannedCategory = plannedCategory
 
-    if resetCurrentCategory || context.currentCategory == nil
+    let shouldResetCurrentCategory =
+      resetCurrentCategory || context.currentCategory == nil
       || !context.categories.contains(where: { $0.id == context.currentCategory?.id })
-    {
+    if shouldResetCurrentCategory {
       context.currentCategory = plannedCategory
+      context.lastEventClientId = nil
+      context.eventLocalTimestamps.removeAll()
+      context.lastEventTime = Date()
+      context.offsetSeconds = 0
+      context.pomodoroPhase = .work
+      context.pomodoroElapsed = 0
     }
   }
 

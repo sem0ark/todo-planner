@@ -156,6 +156,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     WidgetLogger.debug("Popover closed")
   }
 
+  func application(_ application: NSApplication, open urls: [URL]) {
+    for url in urls {
+      handleDeepLink(url)
+    }
+  }
+
   private func installKeyboardMonitor() {
     // Remove existing monitor if any
     removeKeyboardMonitor()
@@ -201,15 +207,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     if let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
       let url = URL(string: urlString)
     {
-      let displayedURLPrefix = String(urlString.prefix(32))
-      WidgetLogger.debug("Received deep link", context: ["urlPrefix": displayedURLPrefix])
-
-      // Show popover when deep link is received
-      showPopover()
-
-      // Handle the URL
-      DeepLinkHandler.shared.handleURL(url)
+      handleDeepLink(url)
     }
+  }
+
+  private func handleDeepLink(_ url: URL) {
+    let displayedURLPrefix = String(url.absoluteString.prefix(32))
+    WidgetLogger.debug("Received deep link", context: ["urlPrefix": displayedURLPrefix])
+
+    showPopover()
+    DeepLinkHandler.shared.handleURL(url)
   }
 
   // Public method to show popover from anywhere (e.g., notifications, timers)
