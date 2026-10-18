@@ -12,7 +12,7 @@ final class BootstrapCache: @unchecked Sendable {
     } else {
       let applicationSupport = fileManager.urls(
         for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      let namespace = BuildConfig.storageMode == "mock" ? "mock" : "remote"
+      let namespace = BuildConfig.storageMode
       directory =
         applicationSupport
         .appendingPathComponent("TodoPlannerWidget-\(namespace)", isDirectory: true)

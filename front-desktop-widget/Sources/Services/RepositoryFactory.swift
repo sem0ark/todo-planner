@@ -15,6 +15,9 @@ enum RepositoryFactory {
     case "remote":
       WidgetLogger.debug("Using remote repository")
       return RemoteTodoPlannerRepository()
+    case "local":
+      WidgetLogger.debug("Using local repository backed by bundled API")
+      return RemoteTodoPlannerRepository()
     default:
       WidgetLogger.error(
         "Unknown storage mode; defaulting to remote", context: ["mode": mode])

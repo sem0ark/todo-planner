@@ -25,6 +25,7 @@ The core question the app answers over time: "Is the life structure I designed f
 - [x] UI analytics logic.
 - [x] More reselient day event logging logic.
 - [x] Rewrite widget to store events locally to lower communication with backend to lower costs, sync on startup & shutdown only.
-- [ ] Mobile support
-    - [ ] Mobile widget
-    - [ ] Mobile review logic
+
+Bugs:
+- [x] Device ID kept being deleted.
+- [x] In case widget opened and started via URL, token & access info does not get received.

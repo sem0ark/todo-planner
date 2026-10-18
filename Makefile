@@ -1,4 +1,4 @@
-.PHONY: local local-bg clear-local local-fe railway lint lint-backend lint-frontend format test-prepare test
+.PHONY: local local-bg clear-local local-fe railway lint lint-backend lint-frontend format test-prepare test test-local stage-frontend build-local-backend build-local install-local install-remote run-local clean-local-build
 
 local:
 	-colima start
@@ -20,6 +20,33 @@ clear-local:
 
 local-fe:
 	cd front-web && pnpm dev
+
+stage-frontend:
+	rm -rf front-web/dist api-backend/frontend/dist
+	cd front-web && pnpm build
+	@mkdir -p api-backend/frontend/dist
+	@cp -R front-web/dist/. api-backend/frontend/dist/
+
+build-local-backend: stage-frontend
+	@mkdir -p bin
+	cd api-backend && go build -tags frontend -o ../bin/todo-planner-backend-local .
+
+build-local:
+	rm -rf bin/todo-planner-backend-local
+	$(MAKE) -C front-desktop-widget build-local
+	@echo "Local application built at front-desktop-widget/build/TodoPlannerWidget.app"
+
+install-local:
+	$(MAKE) -C front-desktop-widget install-local
+
+install-remote:
+	$(MAKE) -C front-desktop-widget install-remote
+
+run-local: build-local
+	open front-desktop-widget/build/TodoPlannerWidget.app
+
+clean-local-build:
+	rm -rf bin/todo-planner-backend-local front-desktop-widget/build
 
 lint: lint-backend lint-frontend
 
@@ -49,3 +76,6 @@ railway:
 
 test: test-prepare
 	export TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5433/test_db?sslmode=disable" && cd api-backend && go test ./...
+
+test-local:
+	EMBEDDED_TEST_DATABASE=true cd api-backend && go test -count=1 ./...

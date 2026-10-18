@@ -6,6 +6,13 @@ CONTENTS = $(APP_BUNDLE)/Contents
 MACOS_DIR = $(CONTENTS)/MacOS
 RESOURCES = $(CONTENTS)/Resources
 APP_EXECUTABLE = $(MACOS_DIR)/$(APP_NAME)
+BACKEND_BUILD = $(BUILD_DIR)/todo-planner-backend-local
+BACKEND_RESOURCE = $(RESOURCES)/todoplanner-backend
+BACKEND_SOURCE_DIR = ../api-backend
+FRONTEND_SOURCE_DIR = ../front-web
+FRONTEND_STAGE_DIR = $(BACKEND_SOURCE_DIR)/frontend/dist
+EVENT_STORAGE_MODE = $(if $(filter mock local,$(STORAGE_MODE)),$(STORAGE_MODE),remote)
+EVENT_STORAGE_DIRECTORY = $(HOME)/Library/Application Support/TodoPlannerWidget-$(EVENT_STORAGE_MODE)
 
 SOURCES = $(shell find Sources -name '*.swift' -type f | LC_ALL=C sort)
 ARCH ?= $(shell uname -m)
@@ -32,7 +39,7 @@ ifndef SWIFTC
 $(error Swift compiler not found. Install via Swiftly: curl -L https://swift-server.github.io/swiftly/swiftly-install.sh | bash)
 endif
 
-.PHONY: all clean help test generate-config install build setup universal build-prod build-remote build-local dev-weekend-mock dev-prod dev-remote dev-local logs test-build test-run
+.PHONY: all clean help test generate-config install install-local install-remote build setup universal build-prod build-remote build-local dev-weekend-mock dev-prod dev-remote dev-local logs open-event-files test-build test-run build-local-backend stage-local-frontend
 
 help: ## Show this help message
 	@echo "Todo Planner Desktop Widget - macOS Swift App"
@@ -109,9 +116,23 @@ build-remote: ## Build using .env.remote
 	$(MAKE) clean
 	$(MAKE) build ENV_FILE=.env.remote
 
-build-local: ## Build using .env.local
+stage-local-frontend:
+	@rm -rf "$(FRONTEND_SOURCE_DIR)/dist" "$(FRONTEND_STAGE_DIR)"
+	cd $(FRONTEND_SOURCE_DIR) && pnpm build
+	@mkdir -p "$(FRONTEND_STAGE_DIR)"
+	@cp -R $(FRONTEND_SOURCE_DIR)/dist/. "$(FRONTEND_STAGE_DIR)/"
+
+build-local-backend: stage-local-frontend
+	@mkdir -p "$(BUILD_DIR)"
+	cd $(BACKEND_SOURCE_DIR) && go build -tags frontend -o "../front-desktop-widget/$(BACKEND_BUILD)" .
+
+build-local: ## Build the backend, frontend, and app using .env.local
 	$(MAKE) clean
+	$(MAKE) build-local-backend
 	$(MAKE) build ENV_FILE=.env.local
+	@mkdir -p "$(RESOURCES)"
+	@cp "$(BACKEND_BUILD)" "$(BACKEND_RESOURCE)"
+	@chmod +x "$(BACKEND_RESOURCE)"
 
 dev-weekend-mock: ## Build and run weekend mock in foreground (logs to terminal)
 	$(MAKE) clean
@@ -143,6 +164,19 @@ clean: ## Clean build artifacts
 install: all ## Install the app to /Applications
 	@cp -r "$(APP_BUNDLE)" /Applications/
 
+install-local: ## Build and install the self-contained local app
+	$(MAKE) build-local
+	@rm -rf "/Applications/$(APP_NAME).app"
+	@cp -R "$(APP_BUNDLE)" "/Applications/$(APP_NAME).app"
+	@echo "Installed local app at /Applications/$(APP_NAME).app"
+
+install-remote: ## Build and install the production remote app
+	$(MAKE) clean
+	$(MAKE) build ENV_FILE=.env.prod
+	@rm -rf "/Applications/$(APP_NAME).app"
+	@cp -R "$(APP_BUNDLE)" "/Applications/$(APP_NAME).app"
+	@echo "Installed remote app at /Applications/$(APP_NAME).app"
+
 universal: ## Build universal binary (arm64 + x86_64)
 	@$(MAKE) ARCH=universal all
 
@@ -150,6 +184,9 @@ logs: ## Stream application logs
 	@echo "Streaming logs from $(BUNDLE_ID)..."
 	@echo "Press Ctrl+C to stop"
 	@log stream --level debug --predicate 'subsystem == "$(BUNDLE_ID)"' --style compact
+
+open-event-files: ## Open the event JSONL files in Finder
+	@open "$(EVENT_STORAGE_DIRECTORY)"
 
 setup: ## Initial setup
 	@command -v swiftc >/dev/null 2>&1 || { echo "Swift not found."; exit 1; }

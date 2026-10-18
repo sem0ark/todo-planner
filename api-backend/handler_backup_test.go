@@ -80,6 +80,8 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 
 	timezoneOffsetMinutes := 120
 	backupClientEventID := "backup-event-2"
+	unknownCategoryEventID := "backup-event-unknown-category"
+	unknownCategoryID := 99999
 	postPayload := BackupData{
 		Version: 1,
 		Days: []BackupDay{{
@@ -100,6 +102,13 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 			CategoryID:      &category.ID,
 			OccurredAt:      time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC),
 			OccurredAtLocal: "2026-09-06T12:00:00+02:00",
+		}, {
+			CalendarDate:    calendarDate,
+			ClientEventID:   &unknownCategoryEventID,
+			EventType:       "transition",
+			CategoryID:      &unknownCategoryID,
+			OccurredAt:      time.Date(2026, 9, 6, 11, 0, 0, 0, time.UTC),
+			OccurredAtLocal: "2026-09-06T13:00:00+02:00",
 		}},
 	}
 	postBody, err := json.Marshal(postPayload)
@@ -121,8 +130,19 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 	if err := json.NewDecoder(postResponse.Body).Decode(&importResponse); err != nil {
 		t.Fatal(err)
 	}
-	if importResponse.ImportedEvents != 1 {
-		t.Fatalf("expected one imported event, got %d", importResponse.ImportedEvents)
+	if importResponse.ImportedEvents != 2 {
+		t.Fatalf("expected two imported events, got %d", importResponse.ImportedEvents)
+	}
+	var unknownCategory *int
+	if err := database.QueryRow(context.Background(), `
+		SELECT category_id FROM day_events
+		JOIN day_records ON day_records.id = day_events.day_record_id
+		WHERE day_records.user_id = $1 AND day_events.client_event_id = $2
+	`, user.ID, unknownCategoryEventID).Scan(&unknownCategory); err != nil {
+		t.Fatal(err)
+	}
+	if unknownCategory != nil {
+		t.Fatalf("expected unknown historical category to be cleared, got %d", *unknownCategory)
 	}
 	var timezoneOffset int
 	var timezoneLocked bool
