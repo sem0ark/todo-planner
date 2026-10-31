@@ -15,9 +15,9 @@ describe("filterTimelineBlocksToRange", () => {
       { category_id: 3, start_time: "22:00:00", duration_minutes: 30 },
     ];
 
-    expect(
-      filterTimelineBlocksToRange(blocks, "07:00:00", "21:00:00"),
-    ).toEqual([blocks[1]]);
+    expect(filterTimelineBlocksToRange(blocks, "07:00:00", "21:00:00")).toEqual(
+      [blocks[1]],
+    );
   });
 });
 

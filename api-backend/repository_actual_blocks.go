@@ -125,6 +125,20 @@ func (repository *ActualBlockRepository) InsertComputedTx(
 	return insertedBlocks, nil
 }
 
+func (repository *ActualBlockRepository) UpdateDurationTx(
+	ctx context.Context,
+	transaction pgx.Tx,
+	blockID int,
+	durationMinutes int,
+) error {
+	_, err := transaction.Exec(ctx, `
+		UPDATE actual_blocks
+		SET duration_minutes = $2, updated_at = $3
+		WHERE id = $1
+	`, blockID, durationMinutes, time.Now())
+	return err
+}
+
 func (repository *ActualBlockRepository) ReplaceTx(
 	ctx context.Context,
 	transaction pgx.Tx,

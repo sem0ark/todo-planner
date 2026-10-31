@@ -15,6 +15,7 @@ import {
 import { useSettingsStore } from "../store/settingsStore";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { downloadBackup, importBackup } from "../services/backup";
+import { getContrastTextColor } from "../utils/colors";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const GRID_UNIT = 1;
@@ -336,8 +337,11 @@ export default function ReviewPage() {
     const category = categories.find((value) => value.id === item.categoryId);
     return (
       <div
-        className="h-full rounded-sm px-1 text-[10px] text-snow overflow-hidden"
-        style={{ backgroundColor: category?.color || "#003448" }}
+        className="h-full rounded-sm px-1 text-[10px] overflow-hidden"
+        style={{
+          backgroundColor: category?.color || "#003448",
+          color: getContrastTextColor(category?.color || "#003448"),
+        }}
       >
         {elementType !== "overlay" && category?.name}
       </div>
