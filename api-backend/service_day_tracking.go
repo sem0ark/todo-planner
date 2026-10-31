@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,41 +50,6 @@ func NewDayTrackingService(
 		dayTemplateRepo: dayTemplateRepo,
 		scheduleRepo:    scheduleRepo,
 	}
-}
-
-// CreateEvents appends events and refreshes the record's timeline atomically.
-func (service *DayTrackingService) CreateEvents(
-	ctx context.Context,
-	dayRecordID int,
-	userID int,
-	inputs []DayEventInput,
-) ([]DayEvent, []ActualBlock, error) {
-	transaction, err := service.db.Begin(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer transaction.Rollback(ctx)
-
-	if err := service.dayRecordRepo.EnsureOwnedTx(ctx, transaction, dayRecordID, userID); err != nil {
-		return nil, nil, err
-	}
-
-	createdEvents, err := service.dayEventRepo.InsertManualTx(ctx, transaction, dayRecordID, inputs)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	actualBlocks, _, err := service.recomputeActualBlocks(ctx, transaction, dayRecordID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := service.dayRecordRepo.TouchTx(ctx, transaction, dayRecordID, userID); err != nil {
-		return nil, nil, err
-	}
-	if err := transaction.Commit(ctx); err != nil {
-		return nil, nil, err
-	}
-	return createdEvents, actualBlocks, nil
 }
 
 // CreateEventsByDate creates the date record when needed and persists a retry-safe batch.
@@ -550,11 +516,67 @@ func (service *DayTrackingService) recomputeActualBlocks(
 	if err != nil {
 		return nil, nil, err
 	}
+	computedBlocks, err = service.mergeComputedBoundaryTx(
+		ctx, transaction, computedBlocks, existingBlocks, calendarDate,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
 	insertedBlocks, err := service.actualBlockRepo.InsertComputedTx(ctx, transaction, dayRecordID, computedBlocks)
 	if err != nil {
 		return nil, nil, err
 	}
 	return append(existingBlocks, insertedBlocks...), events, nil
+}
+
+func (service *DayTrackingService) mergeComputedBoundaryTx(
+	ctx context.Context,
+	transaction pgx.Tx,
+	computedBlocks []ComputedBlock,
+	existingBlocks []ActualBlock,
+	calendarDate CalendarDate,
+) ([]ComputedBlock, error) {
+	if len(computedBlocks) == 0 {
+		return computedBlocks, nil
+	}
+
+	latestIndex := -1
+	for blockIndex := range existingBlocks {
+		if existingBlocks[blockIndex].BlockType != "actual" {
+			continue
+		}
+		if latestIndex == -1 || time.Time(existingBlocks[blockIndex].StartTime).After(time.Time(existingBlocks[latestIndex].StartTime)) {
+			latestIndex = blockIndex
+		}
+	}
+	if latestIndex == -1 {
+		return computedBlocks, nil
+	}
+
+	latestBlock := existingBlocks[latestIndex]
+	if latestBlock.CategoryID == nil || computedBlocks[0].CategoryID == nil ||
+		*latestBlock.CategoryID != *computedBlocks[0].CategoryID {
+		return computedBlocks, nil
+	}
+	latestStart := time.Date(
+		calendarDate.Year(), calendarDate.Month(), calendarDate.Day(),
+		latestBlock.StartTime.Hour(), latestBlock.StartTime.Minute(), latestBlock.StartTime.Second(),
+		0, time.UTC,
+	)
+	latestEnd := latestStart.Add(time.Duration(latestBlock.DurationMinutes) * time.Minute)
+	if computedBlocks[0].StartTime.Sub(latestEnd) > minimumActualBlockDuration {
+		return computedBlocks, nil
+	}
+	computedEnd := computedBlocks[0].StartTime.Add(
+		time.Duration(computedBlocks[0].DurationMinutes) * time.Minute,
+	)
+	mergedDuration := int(computedEnd.Sub(latestStart).Minutes())
+	if err := service.actualBlockRepo.UpdateDurationTx(
+		ctx, transaction, latestBlock.ID, mergedDuration,
+	); err != nil {
+		return nil, err
+	}
+	return computedBlocks[1:], nil
 }
 
 func firstTimezoneOffset(inputs []DayEventInput) (int, bool, error) {

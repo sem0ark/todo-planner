@@ -3,10 +3,13 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var localhostOriginPattern = regexp.MustCompile(`^https?://(localhost|127\.0\.0\.1)(:\d+)?$`)
 
 type API struct {
 	db                 *pgxpool.Pool
@@ -75,11 +78,13 @@ func NewCORSMiddleware(allowedOrigins []string) func(http.HandlerFunc) http.Hand
 		return func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 
-			isAllowed := false
-			for _, allowed := range allowedOrigins {
-				if allowed == "*" || origin == allowed {
-					isAllowed = true
-					break
+			isAllowed := localhostOriginPattern.MatchString(origin)
+			if !isAllowed {
+				for _, allowed := range allowedOrigins {
+					if allowed == "*" || origin == allowed {
+						isAllowed = true
+						break
+					}
 				}
 			}
 

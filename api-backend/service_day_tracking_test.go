@@ -773,34 +773,6 @@ func TestComputeActualBlocks_ExcludesSubMinuteOngoingBlock(t *testing.T) {
 	}
 }
 
-func TestDayTrackingService_CreateEvents_RollsBackPartialBatch(t *testing.T) {
-	// Arrange
-	db := setupTestDB(t)
-	user := createTestUser(t, db, "testuser", "password123")
-	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
-	record, _ := newDayTrackingServiceForTest(db).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
-	invalidCategoryID := 99999
-	inputs := []DayEventInput{
-		{EventType: "transition", CategoryID: &category.ID, OccurredAt: parseTime("2026-07-07T09:00:00Z")},
-		{EventType: "transition", CategoryID: &invalidCategoryID, OccurredAt: parseTime("2026-07-07T10:00:00Z")},
-	}
-
-	// Act
-	_, _, err := newDayTrackingServiceForTest(db).CreateEvents(context.Background(), record.ID, user.ID, inputs)
-
-	// Assert
-	if err == nil {
-		t.Fatal("Expected CreateEvents to fail")
-	}
-	var eventCount int
-	if err := db.QueryRow(context.Background(), "SELECT COUNT(*) FROM day_events WHERE day_record_id = $1", record.ID).Scan(&eventCount); err != nil {
-		t.Fatalf("Failed to count day events: %v", err)
-	}
-	if eventCount != 0 {
-		t.Errorf("Expected no events after rollback, got %d", eventCount)
-	}
-}
-
 func TestDayTrackingService_CreateEventsByDate_AmendmentOrdering(t *testing.T) {
 	testCases := []struct {
 		name             string
@@ -905,54 +877,6 @@ func TestDayTrackingService_CreateEventsByDate_ConcurrentDuplicate(t *testing.T)
 	}
 	if acceptedCount != 1 || duplicateCount != 1 {
 		t.Fatalf("expected one accepted and one duplicate event, got accepted=%d duplicate=%d", acceptedCount, duplicateCount)
-	}
-}
-
-func TestDayTrackingService_CreateEvents_AppendsAfterSavedActualBlocks(t *testing.T) {
-	// Arrange
-	database := setupTestDB(t)
-	user := createTestUser(t, database, "incremental-blocks", "password123")
-	firstCategory, _ := NewCategoryRepository(database).Create(context.Background(), CategoryInput{Name: "First", Color: "#FF5733"}, user.ID)
-	secondCategory, _ := NewCategoryRepository(database).Create(context.Background(), CategoryInput{Name: "Second", Color: "#3357FF"}, user.ID)
-	record, err := newDayTrackingServiceForTest(database).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
-	if err != nil {
-		t.Fatalf("failed to create day record: %v", err)
-	}
-	_, err = newDayTrackingServiceForTest(database).ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{{
-		CategoryID:      &firstCategory.ID,
-		BlockType:       "actual",
-		StartTime:       mustScheduleTime("09:00:00"),
-		DurationMinutes: 60,
-	}}, nil)
-	if err != nil {
-		t.Fatalf("failed to seed actual block: %v", err)
-	}
-
-	// Act
-	_, _, err = newDayTrackingServiceForTest(database).CreateEvents(context.Background(), record.ID, user.ID, []DayEventInput{
-		{EventType: "transition", CategoryID: &secondCategory.ID, OccurredAt: parseTime("2026-07-07T10:05:00Z")},
-		{EventType: "confirmation", CategoryID: &secondCategory.ID, OccurredAt: parseTime("2026-07-07T10:15:00Z")},
-	})
-
-	// Assert
-	if err != nil {
-		t.Fatalf("CreateEvents failed: %v", err)
-	}
-	updatedRecord, err := newDayTrackingServiceForTest(database).FindByID(context.Background(), record.ID, user.ID)
-	if err != nil {
-		t.Fatalf("failed to reload day record: %v", err)
-	}
-	if len(updatedRecord.ActualBlocks) != 2 {
-		t.Fatalf("expected saved block and one appended block, got %d", len(updatedRecord.ActualBlocks))
-	}
-	if updatedRecord.ActualBlocks[0].StartTime.Hour() != 9 || updatedRecord.ActualBlocks[0].StartTime.Minute() != 0 {
-		t.Errorf("expected saved block to remain at 09:00:00, got %v", updatedRecord.ActualBlocks[0].StartTime)
-	}
-	if updatedRecord.ActualBlocks[1].DurationMinutes != 10 {
-		t.Errorf("expected ten-minute appended block, got %d", updatedRecord.ActualBlocks[1].DurationMinutes)
-	}
-	if updatedRecord.ActualBlocks[1].CategoryID == nil || *updatedRecord.ActualBlocks[1].CategoryID != secondCategory.ID {
-		t.Errorf("expected appended block to use category %d, got %v", secondCategory.ID, updatedRecord.ActualBlocks[1].CategoryID)
 	}
 }
 

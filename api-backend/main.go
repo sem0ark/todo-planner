@@ -65,7 +65,7 @@ func main() {
 	var corsOrigins []string
 	if corsOriginsStr == "" {
 		if appMode == "local" {
-			corsOrigins = []string{"http://127.0.0.1:" + port, "http://localhost:" + port}
+			corsOrigins = []string{"http://127.0.0.1", "http://localhost"}
 		} else {
 			corsOrigins = []string{"*"}
 		}

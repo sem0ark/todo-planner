@@ -452,9 +452,7 @@ export default function TimelineEditor<T extends EditableBlock>({
         category_id: categories[0]?.id || 0,
         start_time: minutesToTime(newBlockPosition.startMinutes),
         duration_minutes: newBlockPosition.durationMinutes,
-        ...(blocks[0] && "block_type" in blocks[0]
-          ? { block_type: "actual" as const }
-          : {}),
+        block_type: "actual",
       } as T,
     ]);
     revealNewBlockPosition(newBlockPosition);
