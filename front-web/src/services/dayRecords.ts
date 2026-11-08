@@ -2,12 +2,12 @@ import type { PlannedBlock } from "./templates";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3648";
 
-export type ActualBlockType = "actual" | "blank" | "untracked";
+export type ActualBlockType = "actual";
 
 export interface ActualBlock {
-  category_id: number | null;
+  category_id: number;
   block_type: ActualBlockType;
-  start_time: string;
+  start_at: string;
   duration_minutes: number;
 }
 
@@ -15,7 +15,7 @@ export interface DayRecord {
   calendar_date: string;
   day_template_id: number | null;
   timezone_offset_minutes: number | null;
-  timezone_offset_locked: boolean;
+  blocks_edited: boolean;
   plan: PlannedBlock[];
   actual: ActualBlock[];
   events: DayEvent[];
@@ -28,7 +28,6 @@ export interface DayEvent {
   category_id: number | null;
   text: string | null;
   occurred_at: string;
-  occurred_at_local: string;
 }
 
 async function request<T>(
@@ -72,22 +71,34 @@ export function getDayRecord(token: string, date: string): Promise<DayRecord> {
 export function createDayRecord(
   token: string,
   date: string,
+  timezoneOffsetMinutes: number,
 ): Promise<DayRecord> {
   return request<DayRecord>(token, `/days/${encodeURIComponent(date)}`, {
     method: "POST",
+    body: JSON.stringify({ timezone_offset_minutes: timezoneOffsetMinutes }),
+  });
+}
+
+export function updateDayTimezoneOffset(
+  token: string,
+  date: string,
+  timezoneOffsetMinutes: number,
+): Promise<DayRecord> {
+  return request<DayRecord>(token, `/days/${encodeURIComponent(date)}`, {
+    method: "PUT",
+    body: JSON.stringify({ timezone_offset_minutes: timezoneOffsetMinutes }),
   });
 }
 
 export interface ActualBlockInput {
-  category_id: number | null;
-  block_type: "actual" | "blank";
-  start_time: string;
+  category_id: number;
+  block_type: "actual";
+  start_at: string;
   duration_minutes: number;
 }
 
 export interface UpdateDayBlocksInput {
   actual: ActualBlockInput[];
-  client_offset_minutes?: number;
 }
 
 export function updateDayBlocks(
@@ -124,10 +135,8 @@ export interface DayEventInput {
   category_id: number | null;
   text?: string | null;
   occurred_at: string;
-  occurred_at_local: string;
   target_client_event_id?: string;
   corrected_at?: string;
-  corrected_at_local?: string;
 }
 
 export interface AppendDayEventsInput {
@@ -136,7 +145,7 @@ export interface AppendDayEventsInput {
 }
 
 export interface AppendDayEventsResponse extends DayRecord {
-  accepted_events: Array<DayEventInput & { occurred_at: string }>;
+  accepted_events: DayEventInput[];
   duplicate_client_event_ids: string[];
 }
 

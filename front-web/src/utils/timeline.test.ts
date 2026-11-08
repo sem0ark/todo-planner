@@ -5,7 +5,43 @@ import {
   constrainTimelinePosition,
   findNewTimelineBlockPosition,
   groupTimelineItemsIntoColumns,
+  utcTimestampToLocalTime,
+  localTimeToUtcTimestamp,
+  deriveUntrackedGaps,
 } from "./timeline";
+
+describe("timeline time conversion", () => {
+  it("converts a UTC instant to the day's local wall clock", () => {
+    expect(utcTimestampToLocalTime("2026-10-30T07:05:00Z", 120)).toBe(
+      "09:05:00",
+    );
+  });
+
+  it("converts a local wall clock back to the same UTC instant", () => {
+    expect(localTimeToUtcTimestamp("2026-10-30", "09:05:00", 120)).toBe(
+      "2026-10-30T07:05:00Z",
+    );
+  });
+});
+
+describe("deriveUntrackedGaps", () => {
+  it("returns the gaps around and between actual blocks", () => {
+    expect(
+      deriveUntrackedGaps(
+        [
+          { startMinutes: 9 * 60, durationMinutes: 60 },
+          { startMinutes: 11 * 60, durationMinutes: 30 },
+        ],
+        8 * 60,
+        12 * 60,
+      ),
+    ).toEqual([
+      { startMinutes: 8 * 60, durationMinutes: 60 },
+      { startMinutes: 10 * 60, durationMinutes: 60 },
+      { startMinutes: 11 * 60 + 30, durationMinutes: 30 },
+    ]);
+  });
+});
 
 describe("filterTimelineBlocksToRange", () => {
   it("does not return blocks that start outside the configured range", () => {

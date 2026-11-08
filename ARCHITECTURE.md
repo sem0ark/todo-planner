@@ -146,7 +146,7 @@ The desktop widget also supports local bootstrap and event persistence so the li
 
 The web review surface can replace a day's actual block list with
 `PUT /days/{date}/blocks`. This is a deliberate correction or reconstruction path and is distinct from appending live events. The server validates alignment,
-duration, overlap, category ownership, and blank-block rules, then derives untracked gaps for the returned day representation.
+duration, category ownership rules, and silently resolves overlaps (later blocks win). Gaps are not returned; clients derive untracked time.
 
 Subsequent live event behavior must follow the API contract. Clients should display the returned server state rather than attempting to merge independently calculated timelines.
 
@@ -175,7 +175,7 @@ User
 - **Day Record** is the date-keyed container for a planned snapshot, raw events, its presentation timezone offset, and actual blocks.
 - **Day Event** is the append-oriented input from live tracking. Transitions, confirmations, notes, and amendments are retained for audit and replay.
 - **Actual Block** is the materialized timeline used by review and analysis. It may be derived from events or replaced by a review correction.
-- **Untracked** is a server-derived gap, not a stored user category. **Blank** is an explicit review block marking time the user cannot recall; the two must remain visually and analytically distinct.
+- **Untracked** time is the gap between actual blocks. The API does not return it; clients compute it. Only `actual` blocks exist for now.
 
 ## Time and Versioning Rules
 
@@ -245,4 +245,4 @@ Make a feature change in the owning client or backend layer and update the contr
 5. Update the native repository models and local persistence if the feature is  part of the live flow.
 6. Verify the API contract from each supported client and document any platform  limitation instead of silently diverging behavior.
 
-Keep the API contract stable across clients, keep presentation platform-specific, and preserve the distinction between planned structure, recorded events, actual blocks, blank time, and untracked time.
+Keep the API contract stable across clients, keep presentation platform-specific, and preserve the distinction between planned structure, recorded events, and actual blocks.

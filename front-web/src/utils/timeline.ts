@@ -8,6 +8,84 @@ export interface TimelineBlock {
   duration_minutes: number;
 }
 
+export function getLocalTimezoneOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset();
+}
+
+export function resolveTimezoneOffsetMinutes(
+  timezoneOffsetMinutes: number | null | undefined,
+): number {
+  return timezoneOffsetMinutes ?? getLocalTimezoneOffsetMinutes();
+}
+
+/** Converts a UTC instant into a wall-clock time for a day-specific offset. */
+export function utcTimestampToLocalTime(
+  timestamp: string,
+  timezoneOffsetMinutes: number,
+): string {
+  const localDate = new Date(
+    new Date(timestamp).getTime() + timezoneOffsetMinutes * 60_000,
+  );
+  return `${String(localDate.getUTCHours()).padStart(2, "0")}:${String(
+    localDate.getUTCMinutes(),
+  ).padStart(2, "0")}:${String(localDate.getUTCSeconds()).padStart(2, "0")}`;
+}
+
+/** Converts a local wall-clock time on a calendar date into a UTC instant. */
+export function localTimeToUtcTimestamp(
+  calendarDate: string,
+  localTime: string,
+  timezoneOffsetMinutes: number,
+): string {
+  const [year, month, day] = calendarDate.split("-").map(Number);
+  const [hours, minutes, seconds = 0] = localTime.split(":").map(Number);
+  return new Date(
+    Date.UTC(year, month - 1, day, hours, minutes, seconds) -
+      timezoneOffsetMinutes * 60_000,
+  )
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
+export function deriveUntrackedGaps(
+  blocks: TimelinePosition[],
+  dayStartMinutes: number,
+  dayEndMinutes: number,
+): TimelinePosition[] {
+  const sortedBlocks = blocks
+    .map((block) => ({
+      startMinutes: Math.max(dayStartMinutes, block.startMinutes),
+      durationMinutes:
+        Math.min(dayEndMinutes, block.startMinutes + block.durationMinutes) -
+        Math.max(dayStartMinutes, block.startMinutes),
+    }))
+    .filter((block) => block.durationMinutes > 0)
+    .sort((left, right) => left.startMinutes - right.startMinutes);
+  const gaps: TimelinePosition[] = [];
+  let gapStartMinutes = dayStartMinutes;
+
+  for (const block of sortedBlocks) {
+    if (block.startMinutes > gapStartMinutes) {
+      gaps.push({
+        startMinutes: gapStartMinutes,
+        durationMinutes: block.startMinutes - gapStartMinutes,
+      });
+    }
+    gapStartMinutes = Math.max(
+      gapStartMinutes,
+      block.startMinutes + block.durationMinutes,
+    );
+  }
+
+  if (gapStartMinutes < dayEndMinutes) {
+    gaps.push({
+      startMinutes: gapStartMinutes,
+      durationMinutes: dayEndMinutes - gapStartMinutes,
+    });
+  }
+  return gaps;
+}
+
 function timeToMinutes(time: string): number {
   const [hours, minutes, seconds = 0] = time.split(":").map(Number);
   return hours * 60 + minutes + seconds / 60;
@@ -69,7 +147,7 @@ export function findNewTimelineBlockPosition(
   dayStartMinutes: number,
   dayEndMinutes: number,
   targetCenterMinutes: number,
-  snapInterval = 1,
+  snapInterval = 15,
 ): TimelinePosition | null {
   const durationMinutes = 30;
   const timelineCenterMinutes = Math.min(

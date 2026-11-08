@@ -16,6 +16,10 @@ import { useSettingsStore } from "../store/settingsStore";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { downloadBackup, importBackup } from "../services/backup";
 import { getContrastTextColor } from "../utils/colors";
+import {
+  resolveTimezoneOffsetMinutes,
+  utcTimestampToLocalTime,
+} from "../utils/timeline";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const GRID_UNIT = 1;
@@ -76,6 +80,7 @@ type DayCopySource = {
   actual: ActualBlock[];
   events: DayEvent[];
   plan: DayRecord["plan"];
+  timezoneOffsetMinutes: number;
 };
 
 function timeToMinutes(time: string) {
@@ -90,9 +95,9 @@ function formatMinutes(totalMinutes: number) {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-function eventTime(event: DayEvent) {
+function eventTime(event: DayEvent, timezoneOffsetMinutes: number) {
   return timeToMinutes(
-    (event.occurred_at_local || event.occurred_at).slice(11, 19),
+    utcTimestampToLocalTime(event.occurred_at, timezoneOffsetMinutes),
   );
 }
 
@@ -102,9 +107,12 @@ function copyableActualBlocks(source: DayCopySource): CopyableBlock[] {
       (block): block is ActualBlock & { category_id: number } =>
         block.block_type === "actual" && block.category_id !== null,
     )
-    .map(({ category_id, start_time, duration_minutes }) => ({
+    .map(({ category_id, start_at, duration_minutes }) => ({
       category_id,
-      start_time,
+      start_time: utcTimestampToLocalTime(
+        start_at,
+        source.timezoneOffsetMinutes,
+      ),
       duration_minutes,
     }));
 }
@@ -128,7 +136,7 @@ function formatDayCopyContent(source: DayCopySource, categories: Category[]) {
     .filter((event) => event.event_type === "note" && event.text?.trim())
     .forEach((event, index) => {
       entries.push({
-        time: eventTime(event),
+        time: eventTime(event, source.timezoneOffsetMinutes),
         order: blocks.length + index,
         text: event.text!.trim(),
       });
@@ -207,6 +215,9 @@ export default function ReviewPage() {
       actual: day.record?.actual ?? [],
       events: day.record?.events ?? [],
       plan: day.plan,
+      timezoneOffsetMinutes: resolveTimezoneOffsetMinutes(
+        day.record?.timezone_offset_minutes,
+      ),
     };
     if (!hasCopyableBlocks(source)) return;
     const content = formatDayCopyContent(source, categories);
@@ -306,7 +317,11 @@ export default function ReviewPage() {
     );
 
   const toItems = (
-    blocks: ReviewDay["plan"] | ReviewDay["actual"],
+    blocks: Array<{
+      start_time: string;
+      duration_minutes: number;
+      category_id: number;
+    }>,
   ): LayoutItem[] =>
     blocks.map((block, index) => ({
       id: `${block.start_time}-${index}`,
@@ -328,7 +343,15 @@ export default function ReviewPage() {
     });
 
   const visibleActualBlocks = (day: ReviewDay) =>
-    day.actual.filter((block) => isBlockInDayRange(block.start_time));
+    day.actual
+      .map((block) => ({
+        ...block,
+        start_time: utcTimestampToLocalTime(
+          block.start_at,
+          resolveTimezoneOffsetMinutes(day.record?.timezone_offset_minutes),
+        ),
+      }))
+      .filter((block) => isBlockInDayRange(block.start_time));
 
   const renderBlock = (
     item: LayoutItem,
@@ -428,6 +451,9 @@ export default function ReviewPage() {
               actual: day.record?.actual ?? [],
               events: day.record?.events ?? [],
               plan: day.plan,
+              timezoneOffsetMinutes: resolveTimezoneOffsetMinutes(
+                day.record?.timezone_offset_minutes,
+              ),
             }) && (
               <button
                 type="button"
