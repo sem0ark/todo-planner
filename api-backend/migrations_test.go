@@ -136,7 +136,7 @@ func TestMigration12ConvertsActualBlocksAndDayOffsets(t *testing.T) {
 		SELECT COUNT(*) FROM information_schema.columns
 		WHERE table_schema = 'public' AND (
 			(table_name = 'actual_blocks' AND column_name = 'start_time') OR
-			(table_name = 'day_records' AND column_name = 'timezone_offset_locked') OR
+			(table_name = 'day_records' AND column_name IN ('timezone_offset_locked', 'blocks_edited')) OR
 			(table_name = 'day_events' AND column_name IN ('occurred_at_local', 'corrected_at_local')))
 	`).Scan(&removedColumns); err != nil {
 		t.Fatal(err)
@@ -151,19 +151,17 @@ func TestMigration12ConvertsActualBlocksAndDayOffsets(t *testing.T) {
 	`).Scan(&nullable); err != nil || nullable != "NO" {
 		t.Errorf("expected timezone_offset_minutes NOT NULL, got %q (%v)", nullable, err)
 	}
-	var blocksEdited bool
-	if err := database.QueryRow(ctx, `SELECT blocks_edited FROM day_records WHERE id = $1`, lockedRecordID).Scan(&blocksEdited); err != nil {
-		t.Fatal(err)
-	}
-	if !blocksEdited {
-		t.Error("expected a past day with stored blocks to be frozen (blocks_edited)")
-	}
-
-	if err := all[len(all)-1].Down(ctx, database); err != nil {
-		t.Fatalf("migration 13 down failed: %v", err)
-	}
-	if err := all[len(all)-2].Down(ctx, database); err != nil {
-		t.Fatalf("migration 12 down failed: %v", err)
+	for _, migrationID := range []int{14, 13, 12} {
+		var migration Migration
+		for _, candidate := range all {
+			if candidate.ID == migrationID {
+				migration = candidate
+				break
+			}
+		}
+		if err := migration.Down(ctx, database); err != nil {
+			t.Fatalf("migration %d down failed: %v", migrationID, err)
+		}
 	}
 
 	var restoredColumns int

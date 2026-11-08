@@ -189,7 +189,7 @@ The literal `calendar_date` in the route and event payload determines the day re
 
 The API pins a template snapshot to a day record. Past records are frozen to their pinned snapshot when templates or schedules change. Active and future records may be re-resolved and re-pinned, while their events and actual blocks remain unchanged. This preserves historical comparisons between intended and lived structure.
 
-When events are submitted, the API applies amendments, sorts by effective time with a deterministic server tie-breaker, rejects invalid non-monotonic corrections, and recomputes actual blocks transactionally. Clients should treat the response as authoritative.
+When events are submitted, the API applies amendments, sorts by effective time with a deterministic server tie-breaker, rejects invalid non-monotonic corrections, and recomputes actual blocks transactionally, appending the new part to the stored blocks from the latest one. Clients should treat the response as authoritative.
 
 ## Security and Data Isolation
 

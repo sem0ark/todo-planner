@@ -184,3 +184,44 @@ func computeDayTimeline(events []DayEvent) ([]ActualBlockInput, error) {
 	}
 	return blocks, nil
 }
+
+// Appends the computed blocks that extend past the latest existing block.
+// A computed block overlapping that block is clipped to start at its end.
+// Blocks of the same category on the boundary are merged into one block.
+func mergeComputedBlocks(existing, computed []ActualBlockInput) []ActualBlockInput {
+	result := append(make([]ActualBlockInput, 0, len(existing)+len(computed)), existing...)
+	var checkpoint time.Time
+	if len(result) > 0 {
+		checkpoint = result[len(result)-1].endAt()
+	}
+	for _, block := range computed {
+		end := block.endAt()
+		if len(result) > 0 && !end.After(checkpoint) {
+			continue
+		}
+		start := block.StartAt
+		if len(result) > 0 && start.Before(checkpoint) {
+			start = checkpoint
+		}
+		if len(result) > 0 {
+			last := &result[len(result)-1]
+			if sameCategory(last.CategoryID, block.CategoryID) && start.Sub(last.endAt()) <= minimumActualBlockDuration {
+				if end.After(last.endAt()) {
+					last.DurationMinutes = int(end.Sub(last.StartAt).Minutes())
+				}
+				continue
+			}
+		}
+		duration := end.Sub(start)
+		if duration < minimumActualBlockDuration {
+			continue
+		}
+		result = append(result, ActualBlockInput{
+			CategoryID:      block.CategoryID,
+			BlockType:       block.BlockType,
+			StartAt:         start,
+			DurationMinutes: int(duration.Minutes()),
+		})
+	}
+	return result
+}

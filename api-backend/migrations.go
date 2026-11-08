@@ -652,5 +652,16 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID: 14, Name: "remove_blocks_edited",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `ALTER TABLE day_records DROP COLUMN IF EXISTS blocks_edited`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `ALTER TABLE day_records ADD COLUMN IF NOT EXISTS blocks_edited BOOLEAN NOT NULL DEFAULT FALSE`)
+				return err
+			},
+		},
 	}
 }

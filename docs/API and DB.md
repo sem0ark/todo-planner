@@ -51,8 +51,8 @@ Date-only values must not include a time or timezone. Schedule times must not in
   - `GET /days/{date}` - fetch a single day record
   - `POST /days/{date}` - create a record, set its timezone offset (optional, default 0) and pin the active template snapshot
   - `PUT /days/{date}` - override the timezone offset of an existing record
-  - `POST /days/{date}/events` - append batch of day events to an existing record; rebuilds actual blocks unless they were manually edited
-  - `PUT /days/{date}/blocks` - replace the actual blocks of an existing record during review; stops automatic rebuilding
+  - `POST /days/{date}/events` - append batch of day events to an existing record; derives actual blocks from all events and appends those after the latest stored block
+  - `PUT /days/{date}/blocks` - replace the actual blocks of an existing record during review
   - `PUT /days/{date}/template` - re-resolve or explicitly assign the template and re-pin an active/future day
 
 - **Client Init**
@@ -158,7 +158,6 @@ erDiagram
         integer snapshot_id FK
         date calendar_date
         integer timezone_offset_minutes "NOT NULL, default 0; presentation only"
-        boolean blocks_edited "stops automatic rebuilding"
         timestamp created_at
         timestamp updated_at
     }
@@ -976,7 +975,7 @@ Overrides the timezone offset of an existing day record. Only the offset changes
 ### `POST /days/{date}/events`
 Appends one or more day events to the existing day record identified by `{date}` (create it first with `POST /days/{date}`).
 - Clients can retry a batch safely because `client_event_id` is idempotent.
-- After persisting events, the server rebuilds the actual blocks from all of the day's events and replaces them, unless the day's blocks were manually replaced through `PUT /days/{date}/blocks`; in that case events are stored and the blocks are left as the user edited them. The server does not check that events fall inside the local calendar day; the URL date is trusted.
+- After persisting events, the server recomputes the full block list from all of the day's events and merges it with the stored blocks. The server does not check that events fall inside the local calendar day.
 
 Native clients may persist events locally and submit them in batches during startup, shutdown, or an explicit user-triggered sync. Clients must retain locally queued events until they receive either the event in `accepted_events` or its ID in `duplicate_client_event_ids`.
 
@@ -1070,7 +1069,7 @@ Native clients may persist events locally and submit them in batches during star
 - `404` — day record does not exist, or device not found or does not belong to user
 
 ### `PUT /days/{date}/blocks`
-Replaces the complete actual block list of an existing day record. This is used during review to correct or reconstruct the actual timeline. The day is then marked as manually edited: later events are stored but no longer rebuild its blocks. Untracked gaps are derived by the server and returned in the standard day record response.
+Replaces the complete actual block list of an existing day record. This is used during review to correct or reconstruct the actual timeline. Later events only extend the list past its last block, as described for `POST /days/{date}/events`. Gaps are not returned; clients derive untracked time.
 
 **Input:**
 ```json

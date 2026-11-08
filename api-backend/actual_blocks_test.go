@@ -215,6 +215,42 @@ func TestNormalizeTimelineBlocksKeepsFiveMinuteBlock(t *testing.T) {
 	}
 }
 
+func TestMergeComputedBlocksPreservesHistoryAndExtendsLatestBlock(t *testing.T) {
+	categoryID := 7
+	existing := []ActualBlockInput{{
+		CategoryID: &categoryID, BlockType: "actual",
+		StartAt: parseTime("2026-07-20T09:00:00Z"), DurationMinutes: 30,
+	}}
+	computed := []ActualBlockInput{{
+		CategoryID: &categoryID, BlockType: "actual",
+		StartAt: parseTime("2026-07-20T08:00:00Z"), DurationMinutes: 300,
+	}}
+
+	merged := mergeComputedBlocks(existing, computed)
+
+	if len(merged) != 1 || !merged[0].StartAt.Equal(existing[0].StartAt) || merged[0].DurationMinutes != 240 {
+		t.Fatalf("expected history-preserving extension, got %+v", merged)
+	}
+}
+
+func TestMergeComputedBlocksIgnoresComputedBlocksBeforeHistory(t *testing.T) {
+	categoryID := 7
+	existing := []ActualBlockInput{{
+		CategoryID: &categoryID, BlockType: "actual",
+		StartAt: parseTime("2026-07-20T09:00:00Z"), DurationMinutes: 60,
+	}}
+	computed := []ActualBlockInput{{
+		CategoryID: &categoryID, BlockType: "actual",
+		StartAt: parseTime("2026-07-20T08:00:00Z"), DurationMinutes: 30,
+	}}
+
+	merged := mergeComputedBlocks(existing, computed)
+
+	if len(merged) != 1 || merged[0].DurationMinutes != existing[0].DurationMinutes {
+		t.Fatalf("expected earlier computed block to be ignored, got %+v", merged)
+	}
+}
+
 func TestResolveOverlappingActualBlocksLaterBlockWins(t *testing.T) {
 	// Arrange
 	firstCategoryID := 1

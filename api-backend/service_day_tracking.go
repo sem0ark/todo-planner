@@ -110,10 +110,8 @@ func (service *DayTrackingService) CreateEventsByDate(
 	if err != nil {
 		return nil, err
 	}
-	if !result.Record.BlocksEdited {
-		if err := service.rebuildActualBlocksTx(ctx, transaction, dayRecordID); err != nil {
-			return nil, err
-		}
+	if err := service.syncActualBlocksTx(ctx, transaction, dayRecordID); err != nil {
+		return nil, err
 	}
 	if err := service.hydrateRecord(ctx, transaction, result.Record); err != nil {
 		return nil, err
@@ -379,8 +377,8 @@ func (service *DayTrackingService) hydrateRecord(ctx context.Context, db dbQueri
 	return nil
 }
 
-// ReplaceActualBlocks stores a manually reviewed block list and stops event
-// ingestion from rebuilding the day's blocks.
+// ReplaceActualBlocks stores a manually reviewed block list. Later events only
+// extend it past its last block (see syncActualBlocksTx).
 func (service *DayTrackingService) ReplaceActualBlocks(
 	ctx context.Context,
 	dayRecordID int,
@@ -400,17 +398,15 @@ func (service *DayTrackingService) ReplaceActualBlocks(
 	if err != nil {
 		return nil, err
 	}
-	if err := service.dayRecordRepo.MarkBlocksEdited(ctx, transaction, dayRecordID, userID); err != nil {
-		return nil, err
-	}
 	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return blocks, nil
 }
 
-// rebuildActualBlocksTx replaces the day's blocks with the ones derived from all events.
-func (service *DayTrackingService) rebuildActualBlocksTx(
+// syncActualBlocksTx derives the day's blocks from all events and appends the
+// part after the latest stored block, so earlier or reviewed blocks stay as saved.
+func (service *DayTrackingService) syncActualBlocksTx(
 	ctx context.Context,
 	transaction pgx.Tx,
 	dayRecordID int,
@@ -423,7 +419,18 @@ func (service *DayTrackingService) rebuildActualBlocksTx(
 	if err != nil {
 		return err
 	}
-	_, err = service.actualBlockRepo.ReplaceTx(ctx, transaction, dayRecordID, blocks)
+	stored, err := service.actualBlockRepo.FindByRecordID(ctx, transaction, dayRecordID)
+	if err != nil {
+		return err
+	}
+	existing := make([]ActualBlockInput, 0, len(stored))
+	for _, block := range stored {
+		existing = append(existing, ActualBlockInput{
+			CategoryID: block.CategoryID, BlockType: block.BlockType,
+			StartAt: block.StartAt, DurationMinutes: block.DurationMinutes,
+		})
+	}
+	_, err = service.actualBlockRepo.ReplaceTx(ctx, transaction, dayRecordID, mergeComputedBlocks(existing, blocks))
 	return err
 }
 

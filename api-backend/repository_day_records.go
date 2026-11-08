@@ -21,7 +21,6 @@ type DayRecord struct {
 	DayTemplateID         *int            `json:"day_template_id"`
 	CalendarDate          CalendarDate    `json:"calendar_date"`
 	TimezoneOffsetMinutes int             `json:"timezone_offset_minutes"`
-	BlocksEdited          bool            `json:"blocks_edited"`
 	SnapshotBlocks        []SnapshotBlock `json:"snapshot_blocks"`
 	ActualBlocks          []ActualBlock   `json:"actual_blocks"`
 	Events                []DayEvent      `json:"events"`
@@ -37,12 +36,12 @@ var (
 )
 
 const dayRecordColumns = `id, user_id, day_template_id, snapshot_id, calendar_date,
-	timezone_offset_minutes, blocks_edited, created_at, updated_at`
+	timezone_offset_minutes, created_at, updated_at`
 
 func scanDayRecord(row pgx.Row, record *DayRecord) error {
 	return row.Scan(
 		&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID,
-		&record.CalendarDate, &record.TimezoneOffsetMinutes, &record.BlocksEdited,
+		&record.CalendarDate, &record.TimezoneOffsetMinutes,
 		&record.CreatedAt, &record.UpdatedAt,
 	)
 }
@@ -58,13 +57,6 @@ func (repository *DayRecordRepository) EnsureOwned(ctx context.Context, transact
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrDayRecordNotFound
 	}
-	return err
-}
-
-func (repository *DayRecordRepository) MarkBlocksEdited(ctx context.Context, transaction dbQuerier, recordID, userID int) error {
-	_, err := transaction.Exec(ctx, `
-		UPDATE day_records SET blocks_edited = TRUE, updated_at = NOW() WHERE id = $1 AND user_id = $2
-	`, recordID, userID)
 	return err
 }
 

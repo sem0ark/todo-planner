@@ -15,7 +15,6 @@ export interface DayRecord {
   calendar_date: string;
   day_template_id: number | null;
   timezone_offset_minutes: number | null;
-  blocks_edited: boolean;
   plan: PlannedBlock[];
   actual: ActualBlock[];
   events: DayEvent[];

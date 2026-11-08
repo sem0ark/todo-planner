@@ -40,7 +40,6 @@ type BackupDay struct {
 	DayTemplateID         *int                `json:"day_template_id,omitempty"`
 	SnapshotID            *int                `json:"snapshot_id,omitempty"`
 	TimezoneOffsetMinutes *int                `json:"timezone_offset_minutes,omitempty"` // v1 backups may omit it
-	BlocksEdited          *bool               `json:"blocks_edited,omitempty"`           // v1 backups omit it
 	Plan                  []BackupPlanBlock   `json:"plan,omitempty"`
 	Actual                []BackupActualBlock `json:"actual,omitempty"`
 	CreatedAt             time.Time           `json:"created_at"`
@@ -147,7 +146,7 @@ func (repository *BackupRepository) Export(ctx context.Context, userID int) (*Ba
 		backupDay := BackupDay{
 			CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
 			SnapshotID: record.SnapshotID, TimezoneOffsetMinutes: &record.TimezoneOffsetMinutes,
-			BlocksEdited: &record.BlocksEdited, CreatedAt: record.CreatedAt,
+			CreatedAt: record.CreatedAt,
 			UpdatedAt: record.UpdatedAt, Plan: make([]BackupPlanBlock, 0, len(snapshotBlocks)),
 			Actual: make([]BackupActualBlock, 0, len(actualBlocks)),
 		}
@@ -348,12 +347,7 @@ func (repository *BackupRepository) Import(ctx context.Context, userID int, back
 		if err := validateTimezoneOffsetMinutes(offsetMinutes); err != nil {
 			return 0, err
 		}
-		// A v1 backup cannot tell derived blocks from reviewed ones, so keep them.
-		blocksEdited := len(day.Actual) > 0
-		if day.BlocksEdited != nil {
-			blocksEdited = *day.BlocksEdited
-		}
-		_, err = transaction.Exec(ctx, `UPDATE day_records SET day_template_id = COALESCE($1, day_template_id), snapshot_id = COALESCE($2, snapshot_id), timezone_offset_minutes = $3, blocks_edited = $4, updated_at = NOW() WHERE id = $5 AND user_id = $6`, templateID, snapshotID, offsetMinutes, blocksEdited, dayRecordID, userID)
+		_, err = transaction.Exec(ctx, `UPDATE day_records SET day_template_id = COALESCE($1, day_template_id), snapshot_id = COALESCE($2, snapshot_id), timezone_offset_minutes = $3, updated_at = NOW() WHERE id = $4 AND user_id = $5`, templateID, snapshotID, offsetMinutes, dayRecordID, userID)
 		if err != nil {
 			return 0, err
 		}

@@ -278,7 +278,7 @@ func TestDayTrackingService_CreateDayRecordStoresExplicitOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	if defaultRecord.TimezoneOffsetMinutes != 0 || defaultRecord.BlocksEdited {
+	if defaultRecord.TimezoneOffsetMinutes != 0 {
 		t.Fatalf("unexpected default record: %+v", defaultRecord)
 	}
 	offsetRecord, err := service.CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-07"), 120)
@@ -392,16 +392,9 @@ func TestDayTrackingService_EventsRebuildBlocksFromAllEvents(t *testing.T) {
 		blocks[1].CategoryID == nil || *blocks[1].CategoryID != second.ID {
 		t.Fatalf("unexpected second block: %+v", blocks[1])
 	}
-	reloaded, err := NewDayRecordRepository(database).FindByDate(context.Background(), user.ID, date)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reloaded.BlocksEdited {
-		t.Fatal("event ingestion must not mark blocks as edited")
-	}
 }
 
-func TestDayTrackingService_AmendmentRederivesEarlierBlock(t *testing.T) {
+func TestDayTrackingService_AmendmentDoesNotRewriteStoredBlocks(t *testing.T) {
 	database := setupTestDB(t)
 	user := createTestUser(t, database, "amend-rederive-user", "password123")
 	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
@@ -431,8 +424,8 @@ func TestDayTrackingService_AmendmentRederivesEarlierBlock(t *testing.T) {
 	}
 
 	blocks := loadActualBlocksForTest(t, database, record.ID)
-	if len(blocks) != 1 || !blocks[0].StartAt.Equal(correctedAt) || blocks[0].DurationMinutes != 90 {
-		t.Fatalf("expected block re-derived from 08:30 for 90 minutes, got %+v", blocks)
+	if len(blocks) != 1 || !blocks[0].StartAt.Equal(parseTime("2026-09-06T08:00:00Z")) || blocks[0].DurationMinutes != 120 {
+		t.Fatalf("expected stored block to remain unchanged, got %+v", blocks)
 	}
 }
 
@@ -478,18 +471,11 @@ func TestDayTrackingService_ManualBlocksSurviveLaterEvents(t *testing.T) {
 	}
 
 	blocks = loadActualBlocksForTest(t, database, record.ID)
-	if len(blocks) != 1 || !blocks[0].StartAt.Equal(parseTime("2026-09-06T09:00:00Z")) || blocks[0].DurationMinutes != 30 {
-		t.Fatalf("expected manual blocks untouched, got %+v", blocks)
+	if len(blocks) != 1 || !blocks[0].StartAt.Equal(parseTime("2026-09-06T09:00:00Z")) || blocks[0].DurationMinutes != 240 {
+		t.Fatalf("expected manual block to extend with later events, got %+v", blocks)
 	}
 	if len(result.Record.Events) != 4 {
 		t.Fatalf("expected all events kept, got %d", len(result.Record.Events))
-	}
-	reloaded, err := NewDayRecordRepository(database).FindByDate(context.Background(), user.ID, date)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reloaded.BlocksEdited {
-		t.Fatal("expected blocks_edited to be set")
 	}
 }
 
