@@ -19,7 +19,7 @@ func (api *API) backupRouter(responseWriter http.ResponseWriter, request *http.R
 	case http.MethodPost:
 		var backup BackupData
 		decoder := json.NewDecoder(request.Body)
-		if err := decoder.Decode(&backup); err != nil || backup.Version != 1 {
+		if err := decoder.Decode(&backup); err != nil || (backup.Version != 1 && backup.Version != backupVersion) {
 			http.Error(responseWriter, "invalid backup JSON", http.StatusBadRequest)
 			return
 		}

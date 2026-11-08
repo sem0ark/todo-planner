@@ -20,8 +20,8 @@ type DayRecord struct {
 	SnapshotID            *int            `json:"snapshot_id"`
 	DayTemplateID         *int            `json:"day_template_id"`
 	CalendarDate          CalendarDate    `json:"calendar_date"`
-	TimezoneOffsetMinutes *int            `json:"timezone_offset_minutes"`
-	TimezoneOffsetLocked  bool            `json:"timezone_offset_locked"`
+	TimezoneOffsetMinutes int             `json:"timezone_offset_minutes"`
+	BlocksEdited          bool            `json:"blocks_edited"`
 	SnapshotBlocks        []SnapshotBlock `json:"snapshot_blocks"`
 	ActualBlocks          []ActualBlock   `json:"actual_blocks"`
 	Events                []DayEvent      `json:"events"`
@@ -35,6 +35,17 @@ var (
 	ErrDayRecordNotFound      = NewAppErrorWithCause(http.StatusNotFound, "day record not found", pgx.ErrNoRows)
 	ErrDayRecordAlreadyExists = NewConflictError("day record already exists")
 )
+
+const dayRecordColumns = `id, user_id, day_template_id, snapshot_id, calendar_date,
+	timezone_offset_minutes, blocks_edited, created_at, updated_at`
+
+func scanDayRecord(row pgx.Row, record *DayRecord) error {
+	return row.Scan(
+		&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID,
+		&record.CalendarDate, &record.TimezoneOffsetMinutes, &record.BlocksEdited,
+		&record.CreatedAt, &record.UpdatedAt,
+	)
+}
 
 func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
 	return &DayRecordRepository{db: db}
@@ -50,49 +61,47 @@ func (repository *DayRecordRepository) EnsureOwnedTx(ctx context.Context, transa
 	return err
 }
 
-func (repository *DayRecordRepository) FindCalendarDateTx(ctx context.Context, transaction pgx.Tx, recordID int) (CalendarDate, error) {
-	var calendarDate CalendarDate
-	err := transaction.QueryRow(ctx, `SELECT calendar_date FROM day_records WHERE id = $1`, recordID).Scan(&calendarDate)
-	return calendarDate, err
-}
-
-func (repository *DayRecordRepository) TouchTx(ctx context.Context, transaction pgx.Tx, recordID, userID int) error {
+func (repository *DayRecordRepository) MarkBlocksEditedTx(ctx context.Context, transaction pgx.Tx, recordID, userID int) error {
 	_, err := transaction.Exec(ctx, `
-		UPDATE day_records SET updated_at = NOW() WHERE id = $1 AND user_id = $2
+		UPDATE day_records SET blocks_edited = TRUE, updated_at = NOW() WHERE id = $1 AND user_id = $2
 	`, recordID, userID)
 	return err
 }
 
-func (repository *DayRecordRepository) LockTimezoneOffsetTx(
+// UpdateTimezoneOffset only changes how clients present the day's UTC instants.
+func (repository *DayRecordRepository) UpdateTimezoneOffset(
 	ctx context.Context,
-	transaction pgx.Tx,
-	recordID, userID, offsetMinutes int,
-) error {
-	_, err := transaction.Exec(ctx, `
-		UPDATE day_records
-		SET timezone_offset_minutes = $1, timezone_offset_locked = TRUE
-		WHERE id = $2 AND user_id = $3 AND timezone_offset_locked = FALSE
-	`, offsetMinutes, recordID, userID)
-	return err
+	userID int,
+	calendarDate CalendarDate,
+	offsetMinutes int,
+) (int, error) {
+	var recordID int
+	err := repository.db.QueryRow(ctx, `
+		UPDATE day_records SET timezone_offset_minutes = $1, updated_at = NOW()
+		WHERE user_id = $2 AND calendar_date = $3
+		RETURNING id
+	`, offsetMinutes, userID, calendarDate).Scan(&recordID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrDayRecordNotFound
+	}
+	return recordID, err
 }
 
-func (repository *DayRecordRepository) FindForDateTx(
+// FindIDForDateTx returns ErrDayRecordNotFound when the day was never created.
+func (repository *DayRecordRepository) FindIDForDateTx(
 	ctx context.Context,
 	transaction pgx.Tx,
 	userID int,
 	calendarDate CalendarDate,
-) (int, bool, error) {
+) (int, error) {
 	var recordID int
-	var timezoneOffsetLocked bool
 	err := transaction.QueryRow(ctx, `
-		SELECT id, timezone_offset_locked
-		FROM day_records
-		WHERE user_id = $1 AND calendar_date = $2
-	`, userID, calendarDate).Scan(&recordID, &timezoneOffsetLocked)
+		SELECT id FROM day_records WHERE user_id = $1 AND calendar_date = $2
+	`, userID, calendarDate).Scan(&recordID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
+		return 0, ErrDayRecordNotFound
 	}
-	return recordID, timezoneOffsetLocked, err
+	return recordID, err
 }
 
 func (repository *DayRecordRepository) FindOrCreateTx(
@@ -100,16 +109,17 @@ func (repository *DayRecordRepository) FindOrCreateTx(
 	transaction pgx.Tx,
 	userID int,
 	calendarDate CalendarDate,
+	offsetMinutes int,
 	templateID *int,
 	snapshotID *int,
 ) (int, error) {
 	var recordID int
 	err := transaction.QueryRow(ctx, `
-		INSERT INTO day_records(user_id, day_template_id, snapshot_id, calendar_date)
-		VALUES($1, $2, $3, $4)
+		INSERT INTO day_records(user_id, day_template_id, snapshot_id, calendar_date, timezone_offset_minutes)
+		VALUES($1, $2, $3, $4, $5)
 		ON CONFLICT (user_id, calendar_date) DO NOTHING
 		RETURNING id
-	`, userID, templateID, snapshotID, calendarDate).Scan(&recordID)
+	`, userID, templateID, snapshotID, calendarDate, offsetMinutes).Scan(&recordID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = transaction.QueryRow(ctx, `
 			SELECT id FROM day_records WHERE user_id = $1 AND calendar_date = $2
@@ -120,8 +130,7 @@ func (repository *DayRecordRepository) FindOrCreateTx(
 
 func (repository *DayRecordRepository) FindByDateRange(ctx context.Context, userID int, fromDate, toDate CalendarDate) ([]DayRecord, error) {
 	rows, err := repository.db.Query(ctx, `
-		SELECT id, user_id, day_template_id, snapshot_id, calendar_date,
-			timezone_offset_minutes, timezone_offset_locked, created_at, updated_at
+		SELECT `+dayRecordColumns+`
 		FROM day_records
 		WHERE user_id = $1 AND calendar_date >= $2 AND calendar_date <= $3
 		ORDER BY calendar_date ASC
@@ -133,33 +142,25 @@ func (repository *DayRecordRepository) FindByDateRange(ctx context.Context, user
 	var records []DayRecord
 	for rows.Next() {
 		var record DayRecord
-		if err := rows.Scan(
-			&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID,
-			&record.CalendarDate, &record.TimezoneOffsetMinutes,
-			&record.TimezoneOffsetLocked, &record.CreatedAt, &record.UpdatedAt,
-		); err != nil {
+		if err := scanDayRecord(rows, &record); err != nil {
 			return nil, err
 		}
 		records = append(records, record)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return records, nil
+	return records, rows.Err()
 }
 
 func (repository *DayRecordRepository) FindByDate(ctx context.Context, userID int, calendarDate CalendarDate) (*DayRecord, error) {
 	var record DayRecord
-	err := repository.db.QueryRow(ctx, `
-		SELECT id, user_id, day_template_id, snapshot_id, calendar_date,
-			timezone_offset_minutes, timezone_offset_locked, created_at, updated_at
+	err := scanDayRecord(repository.db.QueryRow(ctx, `
+		SELECT `+dayRecordColumns+`
 		FROM day_records
 		WHERE user_id = $1 AND calendar_date = $2
-	`, userID, calendarDate).Scan(&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID, &record.CalendarDate, &record.TimezoneOffsetMinutes, &record.TimezoneOffsetLocked, &record.CreatedAt, &record.UpdatedAt)
+	`, userID, calendarDate), &record)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrDayRecordNotFound
+	}
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrDayRecordNotFound
-		}
 		return nil, err
 	}
 	return &record, nil
@@ -168,19 +169,17 @@ func (repository *DayRecordRepository) FindByDate(ctx context.Context, userID in
 // FindByID returns a day record only when it belongs to the requested user.
 func (repository *DayRecordRepository) FindByID(ctx context.Context, id, userID int) (*DayRecord, error) {
 	var record DayRecord
-	err := repository.db.QueryRow(ctx, `
-		SELECT id, user_id, day_template_id, snapshot_id, calendar_date,
-			timezone_offset_minutes, timezone_offset_locked, created_at, updated_at
+	err := scanDayRecord(repository.db.QueryRow(ctx, `
+		SELECT `+dayRecordColumns+`
 		FROM day_records
 		WHERE id = $1 AND user_id = $2
-	`, id, userID).Scan(&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID, &record.CalendarDate, &record.TimezoneOffsetMinutes, &record.TimezoneOffsetLocked, &record.CreatedAt, &record.UpdatedAt)
+	`, id, userID), &record)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrDayRecordNotFound
+	}
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrDayRecordNotFound
-		}
 		return nil, err
 	}
-
 	return &record, nil
 }
 
@@ -189,20 +188,15 @@ func (repository *DayRecordRepository) CreateTx(
 	transaction pgx.Tx,
 	userID int,
 	calendarDate CalendarDate,
+	offsetMinutes int,
 	templateID *int,
 	snapshotID *int,
 ) (*DayRecord, error) {
 	var record DayRecord
-	now := time.Now()
-	err := transaction.QueryRow(ctx, `
-		INSERT INTO day_records (user_id, day_template_id, snapshot_id, calendar_date, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, user_id, day_template_id, snapshot_id, calendar_date,
-			timezone_offset_minutes, timezone_offset_locked, created_at, updated_at
-	`, userID, templateID, snapshotID, calendarDate, now, now).Scan(
-		&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID, &record.CalendarDate,
-		&record.TimezoneOffsetMinutes, &record.TimezoneOffsetLocked, &record.CreatedAt, &record.UpdatedAt,
-	)
+	err := scanDayRecord(transaction.QueryRow(ctx, `
+		INSERT INTO day_records (user_id, day_template_id, snapshot_id, calendar_date, timezone_offset_minutes)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING `+dayRecordColumns, userID, templateID, snapshotID, calendarDate, offsetMinutes), &record)
 	if err != nil {
 		return nil, err
 	}
@@ -248,16 +242,10 @@ func (repository *DayRecordRepository) TouchAndFindByIDTx(
 	userID int,
 ) (*DayRecord, error) {
 	record := &DayRecord{}
-	err := transaction.QueryRow(ctx, `
+	err := scanDayRecord(transaction.QueryRow(ctx, `
 		UPDATE day_records SET updated_at = now()
 		WHERE id = $1 AND user_id = $2
-		RETURNING id, user_id, day_template_id, snapshot_id, calendar_date,
-			timezone_offset_minutes, timezone_offset_locked, created_at, updated_at
-	`, dayRecordID, userID).Scan(
-		&record.ID, &record.UserID, &record.DayTemplateID, &record.SnapshotID,
-		&record.CalendarDate, &record.TimezoneOffsetMinutes,
-		&record.TimezoneOffsetLocked, &record.CreatedAt, &record.UpdatedAt,
-	)
+		RETURNING `+dayRecordColumns, dayRecordID, userID), record)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrDayRecordNotFound
 	}

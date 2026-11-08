@@ -37,6 +37,8 @@ func (api *API) routeDays(responseWriter http.ResponseWriter, request *http.Requ
 			api.getDay(responseWriter, request, userID, parts[0])
 		case http.MethodPost:
 			api.createDay(responseWriter, request, userID, parts[0])
+		case http.MethodPut:
+			api.updateDay(responseWriter, request, userID, parts[0])
 		default:
 			methodNotAllowed(responseWriter)
 		}

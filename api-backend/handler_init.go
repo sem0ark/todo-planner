@@ -8,8 +8,9 @@ import (
 )
 
 type initRequest struct {
-	DeviceID     int    `json:"device_id"`
-	CalendarDate string `json:"calendar_date"`
+	DeviceID              int    `json:"device_id"`
+	CalendarDate          string `json:"calendar_date"`
+	TimezoneOffsetMinutes *int   `json:"timezone_offset_minutes"`
 }
 
 type initResponse struct {
@@ -33,6 +34,14 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 	calendarDate, err := parseCalendarDate(input.CalendarDate)
 	if err != nil {
 		http.Error(responseWriter, "invalid date", http.StatusBadRequest)
+		return
+	}
+	if input.TimezoneOffsetMinutes == nil {
+		writeAppError(responseWriter, ErrInvalidTimezoneOffset)
+		return
+	}
+	if err := validateTimezoneOffsetMinutes(*input.TimezoneOffsetMinutes); err != nil {
+		writeAppError(responseWriter, err)
 		return
 	}
 	transaction, err := api.db.Begin(request.Context())
@@ -65,6 +74,7 @@ func (api *API) initHandler(responseWriter http.ResponseWriter, request *http.Re
 			transaction,
 			userID,
 			dayRecordDate,
+			*input.TimezoneOffsetMinutes,
 		)
 		if findError != nil {
 			http.Error(responseWriter, "failed to load days", http.StatusInternalServerError)

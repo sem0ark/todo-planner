@@ -118,9 +118,6 @@ Each Day Record contains:
 - The Template Snapshot currently applied to the day. This snapshot can change while its date is active or future, but is fixed for past dates.
 - All Day Events recorded for that day (in order).
 - The current actual blocks, including any review corrections or reconstruction.
-- The internal `timezone_offset_minutes` and `timezone_offset_locked` state used to project derived UTC blocks into the numeric offset recorded by the client. This is not a user-facing timezone setting.
-
-Day Events preserve both the canonical UTC instant and the original RFC3339 local timestamp with its numeric offset. The first transition or confirmation in request-array order locks a previously unlocked day. An amendment must preserve the target event's numeric offset. A literal late-night event belongs to its local calendar date; any heuristic that suggests a previous day is client-only and never changes persisted `calendar_date`.
 
 Template changes:
 - Updating a Day Template creates a new Template Snapshot.
@@ -255,6 +252,7 @@ A persistent, minimal UI element always visible during the day on desktop and mo
 
 ## Review: Day View
 Retroactive reconstruction and review of a single calendar day. Primary logging surface. Accessed via the web app only.
+- **Day timezone offset**: an internal Day Record value, used to display that day's UTC blocks and events.
 
 #### Opening State
 - Opens with the current actual blocks, or with the active template snapshot as the starting state when no actual blocks exist.
@@ -290,7 +288,6 @@ A 7-day overview of actual theme distribution. Default landing view of the web a
 ## User Settings
 User-level configuration values stored server-side and synced across devices.
 - **Tracking Day Range**: configurable local start/end times used for visual rendering only. Default: 04:00 AM through 11:00 PM.
-- **Locked event offset**: an internal Day Record value, not a user setting. The first eligible live event records the numeric UTC offset used to display derived blocks for that day.
 - **Manual sync trigger**: button to push/pull data with the server. Displays last sync timestamp.
 - **Account management**: accessible from Settings. Includes full account deletion (hard delete of all data).
 

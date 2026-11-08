@@ -1,30 +1,27 @@
 package main
 
-import (
-	"net/http"
-	"time"
-)
+import "net/http"
 
+// PublicTimelineBlock carries a UTC instant; clients present it using the
+// day's timezone_offset_minutes.
 type PublicTimelineBlock struct {
 	CategoryID      *int         `json:"category_id"`
 	BlockType       string       `json:"block_type"`
-	StartTime       ScheduleTime `json:"start_time"`
+	StartAt         APITimestamp `json:"start_at"`
 	DurationMinutes int          `json:"duration_minutes"`
 }
 
 type PublicDayEvent struct {
-	EventType       string       `json:"event_type"`
-	CategoryID      *int         `json:"category_id"`
-	Text            *string      `json:"text"`
-	OccurredAt      APITimestamp `json:"occurred_at"`
-	OccurredAtLocal string       `json:"occurred_at_local"`
+	EventType  string       `json:"event_type"`
+	CategoryID *int         `json:"category_id"`
+	Text       *string      `json:"text"`
+	OccurredAt APITimestamp `json:"occurred_at"`
 }
 
 type PublicDayRecord struct {
 	CalendarDate          CalendarDate          `json:"calendar_date"`
 	DayTemplateID         *int                  `json:"day_template_id"`
-	TimezoneOffsetMinutes *int                  `json:"timezone_offset_minutes"`
-	TimezoneOffsetLocked  bool                  `json:"timezone_offset_locked"`
+	TimezoneOffsetMinutes int                   `json:"timezone_offset_minutes"`
 	Plan                  []PublicTemplateBlock `json:"plan"`
 	Actual                []PublicTimelineBlock `json:"actual"`
 	Events                []PublicDayEvent      `json:"events"`
@@ -42,32 +39,27 @@ type PublicDayRangeResponse struct {
 }
 
 func toPublicDayRecord(record *DayRecord) PublicDayRecord {
-	plan := toPublicTemplateBlocks(record.SnapshotBlocks)
 	actualBlocks := make([]PublicTimelineBlock, 0, len(record.ActualBlocks))
 	for _, block := range record.ActualBlocks {
-		startTime := block.StartTime
-		if record.TimezoneOffsetMinutes != nil {
-			startTime = shiftScheduleTime(startTime, *record.TimezoneOffsetMinutes)
-		}
-		actualBlocks = append(actualBlocks, PublicTimelineBlock{CategoryID: block.CategoryID,
-			BlockType: block.BlockType, StartTime: startTime,
-			DurationMinutes: block.DurationMinutes})
+		actualBlocks = append(actualBlocks, PublicTimelineBlock{
+			CategoryID: block.CategoryID, BlockType: block.BlockType,
+			StartAt: APITimestamp(block.StartAt), DurationMinutes: block.DurationMinutes,
+		})
 	}
 	events := make([]PublicDayEvent, 0, len(record.Events))
 	for _, event := range record.Events {
 		events = append(events, PublicDayEvent{
 			EventType: event.EventType, CategoryID: event.CategoryID, Text: event.Text,
-			OccurredAt: APITimestamp(event.OccurredAt), OccurredAtLocal: event.OccurredAtLocal,
+			OccurredAt: APITimestamp(event.OccurredAt),
 		})
 	}
-	return PublicDayRecord{CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
-		TimezoneOffsetMinutes: record.TimezoneOffsetMinutes, TimezoneOffsetLocked: record.TimezoneOffsetLocked,
-		Plan: plan, Actual: actualBlocks, Events: events, CreatedAt: APITimestamp(record.CreatedAt),
-		UpdatedAt: APITimestamp(record.UpdatedAt)}
-}
-
-func shiftScheduleTime(value ScheduleTime, offsetMinutes int) ScheduleTime {
-	return ScheduleTime(time.Time(value).Add(time.Duration(offsetMinutes) * time.Minute))
+	return PublicDayRecord{
+		CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
+		TimezoneOffsetMinutes: record.TimezoneOffsetMinutes,
+		Plan:                  toPublicTemplateBlocks(record.SnapshotBlocks),
+		Actual:                actualBlocks, Events: events,
+		CreatedAt: APITimestamp(record.CreatedAt), UpdatedAt: APITimestamp(record.UpdatedAt),
+	}
 }
 
 func (api *API) getDays(responseWriter http.ResponseWriter, request *http.Request, userID int) {

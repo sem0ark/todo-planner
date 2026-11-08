@@ -2,22 +2,21 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 )
 
 type publicBlockReplacement struct {
 	CategoryID      *int         `json:"category_id"`
 	BlockType       string       `json:"block_type"`
-	StartTime       ScheduleTime `json:"start_time"`
+	StartAt         APITimestamp `json:"start_at"`
 	DurationMinutes int          `json:"duration_minutes"`
 }
 
 type publicBlockReplacementRequest struct {
-	Actual              *[]publicBlockReplacement `json:"actual"`
-	ClientOffsetMinutes *int                      `json:"client_offset_minutes"`
+	Actual *[]publicBlockReplacement `json:"actual"`
 }
 
+// putDateBlocks replaces the day's actual blocks during review. The day must exist.
 func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.Request, userID int, calendarDate string) {
 	parsedDate, err := parseCalendarDate(calendarDate)
 	if err != nil {
@@ -36,31 +35,16 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 		return
 	}
 	record, err := api.dayRecordRepo.FindByDate(request.Context(), userID, parsedDate)
-	if errors.Is(err, ErrDayRecordNotFound) {
-		record, err = api.dayTrackingService.CreateDayRecord(request.Context(), userID, parsedDate)
-	}
 	if err != nil {
-		if writeAppError(responseWriter, err) {
-			return
-		}
-		HTTPError(responseWriter, request, api.logger, 500, "failed to retrieve day record", err, nil)
+		api.writeDayError(responseWriter, request, "failed to retrieve day record", err)
 		return
-	}
-	storageOffsetMinutes := publicInput.ClientOffsetMinutes
-	if record.TimezoneOffsetMinutes != nil {
-		storageOffsetMinutes = record.TimezoneOffsetMinutes
 	}
 	actualBlocks := make([]ActualBlockInput, 0, len(*publicInput.Actual))
 	for _, block := range *publicInput.Actual {
-		actualBlocks = append(actualBlocks, ActualBlockInput{CategoryID: block.CategoryID,
-			BlockType: block.BlockType, StartTime: block.StartTime,
-			DurationMinutes: block.DurationMinutes})
-	}
-	if storageOffsetMinutes != nil {
-		actualBlocks = adjustActualBlocksForStorage(
-			actualBlocks,
-			*storageOffsetMinutes,
-		)
+		actualBlocks = append(actualBlocks, ActualBlockInput{
+			CategoryID: block.CategoryID, BlockType: block.BlockType,
+			StartAt: block.StartAt.Time(), DurationMinutes: block.DurationMinutes,
+		})
 	}
 	actualBlocks = resolveOverlappingActualBlocks(actualBlocks)
 	if err := validateActualBlocks(actualBlocks); err != nil {
@@ -79,30 +63,14 @@ func (api *API) putDateBlocks(responseWriter http.ResponseWriter, request *http.
 		}
 		return
 	}
-	if err == nil {
-		_, err = api.dayTrackingService.ReplaceActualBlocks(request.Context(), record.ID, userID, actualBlocks, publicInput.ClientOffsetMinutes)
-		if err == nil {
-			record, err = api.dayTrackingService.FindByDate(request.Context(), userID, parsedDate)
-		}
+	if _, err := api.dayTrackingService.ReplaceActualBlocks(request.Context(), record.ID, userID, actualBlocks); err != nil {
+		api.writeDayError(responseWriter, request, "failed to replace actual blocks", err)
+		return
 	}
+	record, err = api.dayTrackingService.FindByDate(request.Context(), userID, parsedDate)
 	if err != nil {
-		if writeAppError(responseWriter, err) {
-			return
-		}
-		HTTPError(responseWriter, request, api.logger, 500, "failed to replace actual blocks", err, nil)
+		api.writeDayError(responseWriter, request, "failed to replace actual blocks", err)
 		return
 	}
 	writeJSON(responseWriter, toPublicDayRecord(record))
-}
-
-func adjustActualBlocksForStorage(blocks []ActualBlockInput, clientOffsetMinutes int) []ActualBlockInput {
-	adjustedBlocks := make([]ActualBlockInput, len(blocks))
-	copy(adjustedBlocks, blocks)
-	for blockIndex := range adjustedBlocks {
-		adjustedBlocks[blockIndex].StartTime = shiftScheduleTime(
-			adjustedBlocks[blockIndex].StartTime,
-			-clientOffsetMinutes,
-		)
-	}
-	return adjustedBlocks
 }

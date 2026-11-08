@@ -43,18 +43,18 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(context.Background(), `
-		INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes)
-		VALUES ($1, $2, 'actual', '09:00:00', 30)
+		INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_at, duration_minutes)
+		VALUES ($1, $2, 'actual', '2026-09-06T09:00:00Z', 30)
 	`, dayRecordID, category.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(context.Background(), `
 		INSERT INTO day_events (day_record_id, client_event_id, event_type, category_id,
-			occurred_at, occurred_at_local)
-		SELECT id, 'backup-event', 'transition', $1, $2, $3
-		FROM day_records WHERE user_id = $4 AND calendar_date = $5
+			occurred_at)
+		SELECT id, 'backup-event', 'transition', $1, $2
+		FROM day_records WHERE user_id = $3 AND calendar_date = $4
 	`, category.ID, time.Date(2026, 9, 6, 9, 0, 0, 0, time.UTC),
-		"2026-09-06T11:00:00+02:00", user.ID, calendarDate); err != nil {
+		user.ID, calendarDate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,7 +71,7 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 	if err := json.NewDecoder(getResponse.Body).Decode(&backup); err != nil {
 		t.Fatal(err)
 	}
-	if backup.Version != 1 || len(backup.Events) != 1 || backup.Events[0].CalendarDate != calendarDate {
+	if backup.Version != 2 || len(backup.Events) != 1 || backup.Events[0].CalendarDate != calendarDate {
 		t.Fatalf("unexpected backup payload: %+v", backup)
 	}
 	if len(backup.Days) != 1 || len(backup.Days[0].Plan) != 1 || len(backup.Days[0].Actual) != 1 {
@@ -79,36 +79,34 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 	}
 
 	timezoneOffsetMinutes := 120
+	blockStartAt := time.Date(2026, 9, 6, 9, 0, 0, 0, time.UTC)
 	backupClientEventID := "backup-event-2"
 	unknownCategoryEventID := "backup-event-unknown-category"
 	unknownCategoryID := 99999
 	postPayload := BackupData{
-		Version: 1,
+		Version: 2,
 		Days: []BackupDay{{
 			CalendarDate:          calendarDate,
 			TimezoneOffsetMinutes: &timezoneOffsetMinutes,
-			TimezoneOffsetLocked:  true,
 			Actual: []BackupActualBlock{{
 				CategoryID:      &category.ID,
 				BlockType:       "actual",
-				StartTime:       "09:00:00",
+				StartAt:         &blockStartAt,
 				DurationMinutes: 60,
 			}},
 		}},
 		Events: []BackupEvent{{
-			CalendarDate:    calendarDate,
-			ClientEventID:   &backupClientEventID,
-			EventType:       "transition",
-			CategoryID:      &category.ID,
-			OccurredAt:      time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC),
-			OccurredAtLocal: "2026-09-06T12:00:00+02:00",
+			CalendarDate:  calendarDate,
+			ClientEventID: &backupClientEventID,
+			EventType:     "transition",
+			CategoryID:    &category.ID,
+			OccurredAt:    time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC),
 		}, {
-			CalendarDate:    calendarDate,
-			ClientEventID:   &unknownCategoryEventID,
-			EventType:       "transition",
-			CategoryID:      &unknownCategoryID,
-			OccurredAt:      time.Date(2026, 9, 6, 11, 0, 0, 0, time.UTC),
-			OccurredAtLocal: "2026-09-06T13:00:00+02:00",
+			CalendarDate:  calendarDate,
+			ClientEventID: &unknownCategoryEventID,
+			EventType:     "transition",
+			CategoryID:    &unknownCategoryID,
+			OccurredAt:    time.Date(2026, 9, 6, 11, 0, 0, 0, time.UTC),
 		}},
 	}
 	postBody, err := json.Marshal(postPayload)
@@ -145,15 +143,14 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 		t.Fatalf("expected unknown historical category to be cleared, got %d", *unknownCategory)
 	}
 	var timezoneOffset int
-	var timezoneLocked bool
 	if err := database.QueryRow(context.Background(), `
-		SELECT timezone_offset_minutes, timezone_offset_locked
+		SELECT timezone_offset_minutes
 		FROM day_records WHERE user_id = $1 AND calendar_date = $2
-	`, user.ID, calendarDate).Scan(&timezoneOffset, &timezoneLocked); err != nil {
+	`, user.ID, calendarDate).Scan(&timezoneOffset); err != nil {
 		t.Fatal(err)
 	}
-	if timezoneOffset != 120 || !timezoneLocked {
-		t.Fatalf("expected imported timezone metadata, got %d/%t", timezoneOffset, timezoneLocked)
+	if timezoneOffset != 120 {
+		t.Fatalf("expected imported timezone offset 120, got %d", timezoneOffset)
 	}
 	var actualBlockCount int
 	if err := database.QueryRow(context.Background(), `
@@ -166,12 +163,101 @@ func TestBackupRouterGetAndPost(t *testing.T) {
 	if actualBlockCount != 1 {
 		t.Fatalf("expected one imported actual block, got %d", actualBlockCount)
 	}
+	var importedStartAt time.Time
+	if err := database.QueryRow(context.Background(), `
+		SELECT start_at FROM actual_blocks
+		JOIN day_records ON day_records.id = actual_blocks.day_record_id
+		WHERE day_records.user_id = $1 AND day_records.calendar_date = $2
+	`, user.ID, calendarDate).Scan(&importedStartAt); err != nil {
+		t.Fatal(err)
+	}
+	if !importedStartAt.Equal(blockStartAt) {
+		t.Fatalf("expected imported start_at %v, got %v", blockStartAt, importedStartAt)
+	}
+}
+
+func TestBackupRouterImportsVersion1UTCTimeOfDayBlocks(t *testing.T) {
+	database := setupTestDB(t)
+	api := NewAPI(database, "test-secret", NewLogger("test"))
+	user := createTestUser(t, database, "backup-v1-user", "password123")
+	// Offset +120: the local day 2026-10-19 spans 2026-10-18T22:00Z to 2026-10-19T22:00Z.
+	body := `{"version":1,"days":[{
+		"calendar_date":"2026-10-19",
+		"timezone_offset_minutes":120,
+		"timezone_offset_locked":true,
+		"actual":[
+			{"block_type":"blank","start_time":"06:30:00","duration_minutes":30},
+			{"block_type":"blank","start_time":"22:30:00","duration_minutes":30}
+		],
+		"created_at":"2026-10-19T00:00:00Z","updated_at":"2026-10-19T00:00:00Z"
+	}]}`
+	request := httptest.NewRequest(http.MethodPost, "/backup", bytes.NewBufferString(body))
+	request = request.WithContext(withUserID(context.Background(), user.ID))
+	response := httptest.NewRecorder()
+
+	api.backupRouter(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	rows, err := database.Query(context.Background(), `
+		SELECT start_at FROM actual_blocks
+		JOIN day_records ON day_records.id = actual_blocks.day_record_id
+		WHERE day_records.user_id = $1 ORDER BY start_at
+	`, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var starts []time.Time
+	for rows.Next() {
+		var startAt time.Time
+		if err := rows.Scan(&startAt); err != nil {
+			t.Fatal(err)
+		}
+		starts = append(starts, startAt.UTC())
+	}
+	expected := []time.Time{parseTime("2026-10-18T22:30:00Z"), parseTime("2026-10-19T06:30:00Z")}
+	if len(starts) != 2 || !starts[0].Equal(expected[0]) || !starts[1].Equal(expected[1]) {
+		t.Fatalf("expected %v, got %v", expected, starts)
+	}
+}
+
+func TestBackupActualBlockStartAtConvertsVersion1TimeOfDay(t *testing.T) {
+	date := mustCalendarDate("2026-10-19")
+	testCases := []struct {
+		name     string
+		offset   int
+		start    string
+		expected string
+	}{
+		{name: "inside the local day on the same UTC date", offset: 120, start: "06:30:00", expected: "2026-10-19T06:30:00Z"},
+		{name: "before UTC midnight belongs to the previous UTC date", offset: 120, start: "22:30:00", expected: "2026-10-18T22:30:00Z"},
+		{name: "negative offset", offset: -300, start: "02:00:00", expected: "2026-10-20T02:00:00Z"},
+		{name: "zero offset", offset: 0, start: "00:00:00", expected: "2026-10-19T00:00:00Z"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			startAt, err := BackupActualBlock{StartTime: testCase.start}.startAt(date, testCase.offset)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !startAt.Equal(parseTime(testCase.expected)) {
+				t.Fatalf("expected %s, got %s", testCase.expected, startAt)
+			}
+		})
+	}
+	explicit := parseTime("2026-10-19T12:00:00+02:00")
+	startAt, err := BackupActualBlock{StartAt: &explicit, StartTime: "01:00:00"}.startAt(date, 120)
+	if err != nil || !startAt.Equal(explicit) {
+		t.Fatalf("expected explicit start_at to win, got %v (%v)", startAt, err)
+	}
 }
 
 func TestBackupRouterRejectsInvalidBackup(t *testing.T) {
 	database := setupTestDB(t)
 	api := NewAPI(database, "test-secret", NewLogger("test"))
-	request := httptest.NewRequest(http.MethodPost, "/backup", bytes.NewBufferString(`{"version":2}`))
+	request := httptest.NewRequest(http.MethodPost, "/backup", bytes.NewBufferString(`{"version":99}`))
 	request = request.WithContext(withUserID(context.Background(), 1))
 	response := httptest.NewRecorder()
 

@@ -216,49 +216,6 @@ func (r *DayTemplateRepository) FindSnapshotBlocks(ctx context.Context, snapshot
 	return blocks, rows.Err()
 }
 
-func (r *DayTemplateRepository) FindSnapshotBlocksTx(
-	ctx context.Context,
-	transaction pgx.Tx,
-	snapshotID int,
-) ([]SnapshotBlock, error) {
-	rows, err := transaction.Query(ctx, `
-		SELECT id, snapshot_id, category_id, start_time, duration_minutes
-		FROM snapshot_blocks
-		WHERE snapshot_id = $1
-		ORDER BY start_time ASC, id ASC
-	`, snapshotID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	blocks := make([]SnapshotBlock, 0)
-	for rows.Next() {
-		var block SnapshotBlock
-		if err := rows.Scan(
-			&block.ID, &block.SnapshotID, &block.CategoryID,
-			&block.StartTime, &block.DurationMinutes,
-		); err != nil {
-			return nil, err
-		}
-		blocks = append(blocks, block)
-	}
-	return blocks, rows.Err()
-}
-
-func (r *DayTemplateRepository) FindSnapshotTimeTx(
-	ctx context.Context,
-	transaction pgx.Tx,
-	snapshotID int,
-) (time.Time, error) {
-	var snapshottedAt time.Time
-	err := transaction.QueryRow(ctx,
-		`SELECT snapshotted_at FROM template_snapshots WHERE id = $1`,
-		snapshotID,
-	).Scan(&snapshottedAt)
-	return snapshottedAt, err
-}
-
 func (r *DayTemplateRepository) FindSnapshotTime(ctx context.Context, snapshotID int) (time.Time, error) {
 	var snapshottedAt time.Time
 	err := r.db.QueryRow(ctx,

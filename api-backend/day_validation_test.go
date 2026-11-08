@@ -9,11 +9,10 @@ import (
 func TestValidateDayEventsNoteText(t *testing.T) {
 	categoryID := 1
 	baseEvent := DayEventInput{
-		ClientEventID:   "note-1",
-		EventType:       "note",
-		CategoryID:      &categoryID,
-		OccurredAt:      time.Date(2026, time.July, 20, 9, 0, 0, 0, time.UTC),
-		OccurredAtLocal: "2026-07-20T09:00:00+00:00",
+		ClientEventID: "note-1",
+		EventType:     "note",
+		CategoryID:    &categoryID,
+		OccurredAt:    time.Date(2026, time.July, 20, 9, 0, 0, 0, time.UTC),
 	}
 
 	validText := strings.Repeat("a", 512)

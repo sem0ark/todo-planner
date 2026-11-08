@@ -18,10 +18,8 @@ type BackupEvent struct {
 	CategoryID          *int         `json:"category_id"`
 	Text                *string      `json:"text,omitempty"`
 	OccurredAt          time.Time    `json:"occurred_at"`
-	OccurredAtLocal     string       `json:"occurred_at_local"`
 	TargetClientEventID *string      `json:"target_client_event_id,omitempty"`
 	CorrectedAt         *time.Time   `json:"corrected_at,omitempty"`
-	CorrectedAtLocal    *string      `json:"corrected_at_local,omitempty"`
 }
 
 type BackupData struct {
@@ -41,8 +39,8 @@ type BackupDay struct {
 	CalendarDate          CalendarDate        `json:"calendar_date"`
 	DayTemplateID         *int                `json:"day_template_id,omitempty"`
 	SnapshotID            *int                `json:"snapshot_id,omitempty"`
-	TimezoneOffsetMinutes *int                `json:"timezone_offset_minutes,omitempty"`
-	TimezoneOffsetLocked  bool                `json:"timezone_offset_locked"`
+	TimezoneOffsetMinutes *int                `json:"timezone_offset_minutes,omitempty"` // v1 backups may omit it
+	BlocksEdited          *bool               `json:"blocks_edited,omitempty"`           // v1 backups omit it
 	Plan                  []BackupPlanBlock   `json:"plan,omitempty"`
 	Actual                []BackupActualBlock `json:"actual,omitempty"`
 	CreatedAt             time.Time           `json:"created_at"`
@@ -62,12 +60,17 @@ type BackupTemplate struct {
 	Plan            []BackupPlanBlock `json:"plan,omitempty"`
 }
 
+// BackupActualBlock stores a UTC instant. Version 1 backups carried a UTC time
+// of day in StartTime instead, which is converted on import.
 type BackupActualBlock struct {
-	CategoryID      *int   `json:"category_id"`
-	BlockType       string `json:"block_type"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
+	CategoryID      *int       `json:"category_id"`
+	BlockType       string     `json:"block_type"`
+	StartAt         *time.Time `json:"start_at,omitempty"`
+	StartTime       string     `json:"start_time,omitempty"`
+	DurationMinutes int        `json:"duration_minutes"`
 }
+
+const backupVersion = 2
 
 type BackupSettings struct {
 	DayRangeStartTime string    `json:"day_range_start_time"`
@@ -143,8 +146,8 @@ func (repository *BackupRepository) Export(ctx context.Context, userID int) (*Ba
 		}
 		backupDay := BackupDay{
 			CalendarDate: record.CalendarDate, DayTemplateID: record.DayTemplateID,
-			SnapshotID: record.SnapshotID, TimezoneOffsetMinutes: record.TimezoneOffsetMinutes,
-			TimezoneOffsetLocked: record.TimezoneOffsetLocked, CreatedAt: record.CreatedAt,
+			SnapshotID: record.SnapshotID, TimezoneOffsetMinutes: &record.TimezoneOffsetMinutes,
+			BlocksEdited: &record.BlocksEdited, CreatedAt: record.CreatedAt,
 			UpdatedAt: record.UpdatedAt, Plan: make([]BackupPlanBlock, 0, len(snapshotBlocks)),
 			Actual: make([]BackupActualBlock, 0, len(actualBlocks)),
 		}
@@ -152,7 +155,8 @@ func (repository *BackupRepository) Export(ctx context.Context, userID int) (*Ba
 			backupDay.Plan = append(backupDay.Plan, BackupPlanBlock{CategoryID: block.CategoryID, StartTime: time.Time(block.StartTime).Format(ScheduleTimeFormat), DurationMinutes: block.DurationMinutes})
 		}
 		for _, block := range actualBlocks {
-			backupDay.Actual = append(backupDay.Actual, BackupActualBlock{CategoryID: block.CategoryID, BlockType: block.BlockType, StartTime: time.Time(block.StartTime).Format(ScheduleTimeFormat), DurationMinutes: block.DurationMinutes})
+			startAt := block.StartAt.UTC()
+			backupDay.Actual = append(backupDay.Actual, BackupActualBlock{CategoryID: block.CategoryID, BlockType: block.BlockType, StartAt: &startAt, DurationMinutes: block.DurationMinutes})
 		}
 		backupDays = append(backupDays, backupDay)
 	}
@@ -167,7 +171,7 @@ func (repository *BackupRepository) Export(ctx context.Context, userID int) (*Ba
 		}
 		backupTemplates = append(backupTemplates, backupTemplate)
 	}
-	return &BackupData{Version: 1, ExportedAt: &exportedAt, Settings: backupSettings, Categories: categories, Groups: groups, Templates: backupTemplates, WeeklySchedule: weeklySchedule, Overrides: overrides, Days: backupDays, Events: events}, nil
+	return &BackupData{Version: backupVersion, ExportedAt: &exportedAt, Settings: backupSettings, Categories: categories, Groups: groups, Templates: backupTemplates, WeeklySchedule: weeklySchedule, Overrides: overrides, Days: backupDays, Events: events}, nil
 }
 
 func (repository *BackupRepository) findAllOverrides(ctx context.Context, userID int) ([]ScheduleOverride, error) {
@@ -195,8 +199,7 @@ func (repository *BackupRepository) findEvents(ctx context.Context, userID int) 
 	rows, err := repository.db.Query(ctx, `
 		SELECT events.id, records.calendar_date, events.device_id, events.client_event_id,
 		       events.event_type, events.category_id, events.text, events.occurred_at,
-		       COALESCE(events.occurred_at_local, ''), events.target_client_event_id,
-		       events.corrected_at, events.corrected_at_local
+		       events.target_client_event_id, events.corrected_at
 		FROM day_events events
 		JOIN day_records records ON records.id = events.day_record_id
 		WHERE records.user_id = $1
@@ -208,7 +211,7 @@ func (repository *BackupRepository) findEvents(ctx context.Context, userID int) 
 	events := make([]BackupEvent, 0)
 	for rows.Next() {
 		var event BackupEvent
-		if err := rows.Scan(&event.ID, &event.CalendarDate, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.Text, &event.OccurredAt, &event.OccurredAtLocal, &event.TargetClientEventID, &event.CorrectedAt, &event.CorrectedAtLocal); err != nil {
+		if err := rows.Scan(&event.ID, &event.CalendarDate, &event.DeviceID, &event.ClientEventID, &event.EventType, &event.CategoryID, &event.Text, &event.OccurredAt, &event.TargetClientEventID, &event.CorrectedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -338,7 +341,19 @@ func (repository *BackupRepository) Import(ctx context.Context, userID int, back
 			return 0, err
 		}
 		dayRecordIDs[dayRecordID] = struct{}{}
-		_, err = transaction.Exec(ctx, `UPDATE day_records SET day_template_id = COALESCE($1, day_template_id), snapshot_id = COALESCE($2, snapshot_id), timezone_offset_minutes = $3, timezone_offset_locked = $4, updated_at = NOW() WHERE id = $5 AND user_id = $6`, templateID, snapshotID, day.TimezoneOffsetMinutes, day.TimezoneOffsetLocked, dayRecordID, userID)
+		offsetMinutes := 0
+		if day.TimezoneOffsetMinutes != nil {
+			offsetMinutes = *day.TimezoneOffsetMinutes
+		}
+		if err := validateTimezoneOffsetMinutes(offsetMinutes); err != nil {
+			return 0, err
+		}
+		// A v1 backup cannot tell derived blocks from reviewed ones, so keep them.
+		blocksEdited := len(day.Actual) > 0
+		if day.BlocksEdited != nil {
+			blocksEdited = *day.BlocksEdited
+		}
+		_, err = transaction.Exec(ctx, `UPDATE day_records SET day_template_id = COALESCE($1, day_template_id), snapshot_id = COALESCE($2, snapshot_id), timezone_offset_minutes = $3, blocks_edited = $4, updated_at = NOW() WHERE id = $5 AND user_id = $6`, templateID, snapshotID, offsetMinutes, blocksEdited, dayRecordID, userID)
 		if err != nil {
 			return 0, err
 		}
@@ -348,7 +363,11 @@ func (repository *BackupRepository) Import(ctx context.Context, userID int, back
 		}
 		for _, block := range day.Actual {
 			categoryID := mappedBackupCategoryID(categoryIDs, block.CategoryID)
-			_, err = transaction.Exec(ctx, `INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_time, duration_minutes, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())`, dayRecordID, categoryID, block.BlockType, block.StartTime, block.DurationMinutes)
+			startAt, startError := block.startAt(day.CalendarDate, offsetMinutes)
+			if startError != nil {
+				return 0, startError
+			}
+			_, err = transaction.Exec(ctx, `INSERT INTO actual_blocks (day_record_id, category_id, block_type, start_at, duration_minutes, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())`, dayRecordID, categoryID, block.BlockType, startAt, block.DurationMinutes)
 			if err != nil {
 				return 0, err
 			}
@@ -371,13 +390,13 @@ func (repository *BackupRepository) Import(ctx context.Context, userID int, back
 		dayRecordIDs[dayRecordID] = struct{}{}
 		commandTag, insertError := transaction.Exec(ctx, `
 			INSERT INTO day_events
-			(day_record_id, device_id, client_event_id, event_type, category_id, occurred_at, occurred_at_local,
-			 target_client_event_id, corrected_at, corrected_at_local, text)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			(day_record_id, device_id, client_event_id, event_type, category_id, occurred_at,
+			 target_client_event_id, corrected_at, text)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			ON CONFLICT DO NOTHING
 		`, dayRecordID, nil, event.ClientEventID, event.EventType,
-			mappedEventCategoryID(categoryIDs, event.CategoryID), event.OccurredAt, event.OccurredAtLocal,
-			event.TargetClientEventID, event.CorrectedAt, event.CorrectedAtLocal, event.Text)
+			mappedEventCategoryID(categoryIDs, event.CategoryID), event.OccurredAt,
+			event.TargetClientEventID, event.CorrectedAt, event.Text)
 		if insertError != nil {
 			return 0, insertError
 		}
@@ -421,4 +440,23 @@ func mappedBackupCategoryID(categoryIDs map[int]int, categoryID *int) *int {
 		return nil
 	}
 	return &mappedCategoryID
+}
+
+// startAt returns the block's UTC instant. A v1 backup stored the UTC time of
+// day; it belongs to the first such time inside the day's local window.
+func (block BackupActualBlock) startAt(calendarDate CalendarDate, offsetMinutes int) (time.Time, error) {
+	if block.StartAt != nil {
+		return block.StartAt.UTC(), nil
+	}
+	timeOfDay, err := parseScheduleTime(block.StartTime)
+	if err != nil {
+		return time.Time{}, err
+	}
+	dayStart := time.Time(calendarDate).Add(-time.Duration(offsetMinutes) * time.Minute)
+	candidate := time.Date(dayStart.Year(), dayStart.Month(), dayStart.Day(),
+		timeOfDay.Hour(), timeOfDay.Minute(), timeOfDay.Second(), 0, time.UTC)
+	if candidate.Before(dayStart) {
+		candidate = candidate.AddDate(0, 0, 1)
+	}
+	return candidate, nil
 }

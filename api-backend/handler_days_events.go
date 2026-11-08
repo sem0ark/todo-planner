@@ -7,12 +7,11 @@ import (
 )
 
 type publicAcceptedEvent struct {
-	ClientEventID   string       `json:"client_event_id"`
-	EventType       string       `json:"event_type"`
-	CategoryID      *int         `json:"category_id"`
-	Text            *string      `json:"text"`
-	OccurredAt      APITimestamp `json:"occurred_at"`
-	OccurredAtLocal string       `json:"occurred_at_local"`
+	ClientEventID string       `json:"client_event_id"`
+	EventType     string       `json:"event_type"`
+	CategoryID    *int         `json:"category_id"`
+	Text          *string      `json:"text"`
+	OccurredAt    APITimestamp `json:"occurred_at"`
 }
 
 type publicDayEventsResponse struct {
@@ -26,10 +25,8 @@ type dayEventRequest struct {
 	EventType           string        `json:"event_type"`
 	CategoryID          *int          `json:"category_id"`
 	OccurredAt          APITimestamp  `json:"occurred_at"`
-	OccurredAtLocal     string        `json:"occurred_at_local"`
 	TargetClientEventID *string       `json:"target_client_event_id"`
 	CorrectedAt         *APITimestamp `json:"corrected_at"`
-	CorrectedAtLocal    *string       `json:"corrected_at_local"`
 	Text                *string       `json:"text"`
 }
 
@@ -54,7 +51,7 @@ func toInternalDayEventsRequest(request dayEventsRequest) DayEventsInput {
 			ClientEventID: event.ClientEventID, EventType: event.EventType,
 			CategoryID: event.CategoryID, OccurredAt: time.Time(event.OccurredAt),
 			Text:                event.Text,
-			TargetClientEventID: targetClientEventID, CorrectedAt: correctedAt, OccurredAtLocal: event.OccurredAtLocal, CorrectedAtLocal: event.CorrectedAtLocal,
+			TargetClientEventID: targetClientEventID, CorrectedAt: correctedAt,
 		})
 	}
 	return DayEventsInput{DeviceID: request.DeviceID, Events: events}
@@ -114,13 +111,6 @@ func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http
 		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
 		return
 	}
-	for _, event := range input.Events {
-		localDate, localDateError := localCalendarDate(event.OccurredAtLocal)
-		if localDateError != nil || localDate != parsedDate {
-			http.Error(responseWriter, ErrEventLocalDateMismatch.Error(), http.StatusBadRequest)
-			return
-		}
-	}
 	api.logger.Info("Day events request validation passed", map[string]interface{}{
 		"device_id":   input.DeviceID,
 		"event_count": len(input.Events),
@@ -178,7 +168,7 @@ func (api *API) postDateEvents(responseWriter http.ResponseWriter, request *http
 		if event.ClientEventID != nil {
 			clientEventID = *event.ClientEventID
 		}
-		acceptedEvents = append(acceptedEvents, publicAcceptedEvent{clientEventID, event.EventType, event.CategoryID, event.Text, APITimestamp(event.OccurredAt), event.OccurredAtLocal})
+		acceptedEvents = append(acceptedEvents, publicAcceptedEvent{clientEventID, event.EventType, event.CategoryID, event.Text, APITimestamp(event.OccurredAt)})
 	}
 	api.logger.Info("Building day events response", map[string]interface{}{
 		"accepted_events":  len(acceptedEvents),
