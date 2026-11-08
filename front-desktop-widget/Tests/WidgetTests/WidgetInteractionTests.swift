@@ -81,14 +81,7 @@ final class WidgetInteractionTests: WidgetTestCase {
     try h.assertSubmitEventDetails(index: 1, expectedType: "amendment", expectedIncomingId: nil)
     let amendments = h.mock.submitEventsCalls.map { $0.events[0] }
     try assertEqual(amendments[0].targetClientEventId, amendments[1].targetClientEventId)
-    try assert(
-      amendments[0].correctedAtLocal?.suffix(6) == amendments[1].correctedAtLocal?.suffix(6),
-      "Amendments should preserve the target event timezone offset"
-    )
-    try assert(
-      amendments[0].correctedAtLocal != amendments[0].occurredAtLocal,
-      "Amendments should carry the corrected wall-clock time"
-    )
+    try assert(amendments[0].correctedAt != nil, "Amendments should carry a UTC correction")
     try assert(h.store.offsetMinutes == 10, "Offset should accumulate to 10")
   }
 
@@ -462,8 +455,7 @@ final class WidgetInteractionTests: WidgetTestCase {
     try assertEqual(events1.count, 1)
     try assertEqual(events1[0].categoryId, Fixtures.categoryA.id)
     try assert(
-      events1[0].occurredAtLocal.count == 25, "Local timestamp should include numeric offset")
-    try assert(events1[0].occurredAtLocal.last == "0", "Local timestamp should be RFC3339")
+      events1[0].occurredAt.timeIntervalSince1970 > 0, "Events should carry a UTC timestamp")
 
     // Verify second call
     let (date2, events2) = calls[1]

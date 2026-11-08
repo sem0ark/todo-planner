@@ -52,7 +52,6 @@ struct WidgetContext {
   var plannedCategory: Category?
   var lastEventTime = Date()
   var lastEventClientId: String?
-  var eventLocalTimestamps: [String: String] = [:]
   var pomodoroPhase: PomodoroPhase = .work
   var pomodoroElapsed = 0
   var offsetSeconds = 0
@@ -321,7 +320,6 @@ func logEvent(
   repo: TodoPlannerRepository,
   targetClientEventId: String? = nil,
   correctedAt: Date? = nil,
-  targetOccurredAtLocal: String? = nil
 ) async throws -> (clientEventId: String, event: DayEvent) {
   guard let calendarDate else {
     throw EventLoggingError.missingCalendarDate
@@ -331,28 +329,19 @@ func logEvent(
     throw EventLoggingError.missingCategory(eventType: type)
   }
   guard type != .amendment || targetClientEventId != nil,
-    type != .amendment || correctedAt != nil,
-    type != .amendment || targetOccurredAtLocal != nil
+    type != .amendment || correctedAt != nil
   else {
     throw EventLoggingError.incompleteAmendment
   }
 
   let eventOccurredAt = occurredAt ?? Date()
-  let correctedAtLocal: String?
-  if let correctedAt, let targetOccurredAtLocal {
-    correctedAtLocal = TimeFormats.localTimestamp(
-      for: correctedAt, preservingOffsetFrom: targetOccurredAtLocal)
-  } else {
-    correctedAtLocal = nil
-  }
   let event = DayEvent(
     eventType: type.rawValue,
     categoryId: type == .amendment ? nil : categoryId,
     text: type == .note ? text : nil,
     occurredAt: eventOccurredAt,
     targetClientEventId: targetClientEventId,
-    correctedAt: correctedAt,
-    correctedAtLocal: correctedAtLocal
+    correctedAt: correctedAt
   )
 
   _ = try await repo.submitEvents(calendarDate: calendarDate, events: [event])
@@ -819,7 +808,6 @@ class WidgetStateStore {
     if shouldResetCurrentCategory {
       context.currentCategory = plannedCategory
       context.lastEventClientId = nil
-      context.eventLocalTimestamps.removeAll()
       context.lastEventTime = Date()
       context.offsetSeconds = 0
       context.pomodoroPhase = .work
@@ -1015,8 +1003,6 @@ class WidgetStateStore {
           calendarDate: context.currentDayRecord?.calendarDate,
           repo: repository
         )
-        context.eventLocalTimestamps[eventResult.event.clientEventId] =
-          eventResult.event.occurredAtLocal
         context.lastEventClientId = eventResult.clientEventId
       } catch {
         lastError = String(describing: error)
@@ -1035,8 +1021,6 @@ class WidgetStateStore {
           calendarDate: context.currentDayRecord?.calendarDate,
           repo: repository
         )
-        context.eventLocalTimestamps[eventResult.event.clientEventId] =
-          eventResult.event.occurredAtLocal
         context.lastEventClientId = eventResult.clientEventId
       } catch {
         lastError = String(describing: error)
@@ -1056,8 +1040,6 @@ class WidgetStateStore {
           calendarDate: context.currentDayRecord?.calendarDate,
           repo: repository
         )
-        context.eventLocalTimestamps[eventResult.event.clientEventId] =
-          eventResult.event.occurredAtLocal
         context.lastEventClientId = eventResult.clientEventId
       } catch {
         lastError = String(describing: error)
@@ -1077,11 +1059,8 @@ class WidgetStateStore {
           calendarDate: context.currentDayRecord?.calendarDate,
           repo: repository,
           targetClientEventId: targetClientEventId,
-          correctedAt: correctedAt,
-          targetOccurredAtLocal: context.eventLocalTimestamps[targetClientEventId]
+          correctedAt: correctedAt
         )
-        context.eventLocalTimestamps[eventResult.event.clientEventId] =
-          eventResult.event.occurredAtLocal
       } catch {
         lastError = String(describing: error)
         WidgetLogger.error(

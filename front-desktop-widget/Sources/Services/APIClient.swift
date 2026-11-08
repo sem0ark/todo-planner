@@ -14,7 +14,7 @@ protocol TodoPlannerAPI: Sendable {
   func setAuthToken(_ token: String)
   func clearAuthToken()
   func validateToken() async throws -> Bool
-  func initialize(calendarDate: String) async throws -> InitResponse
+  func initialize(calendarDate: String, timezoneOffsetMinutes: Int) async throws -> InitResponse
   func postDayEvents(date: String, events: [DayEvent]) async throws -> DayEventsResponse
 }
 
@@ -187,18 +187,22 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
     }
   }
 
-  func initialize(calendarDate: String) async throws -> InitResponse {
+  func initialize(calendarDate: String, timezoneOffsetMinutes: Int) async throws -> InitResponse {
     let registeredDeviceId = try await registerDeviceIfNeeded()
     struct InitRequest: Encodable {
       let device_id: Int
       let calendar_date: String
+      let timezone_offset_minutes: Int
     }
 
     do {
       return try await makeRequest(
         endpoint: "/init",
         method: "POST",
-        body: InitRequest(device_id: registeredDeviceId, calendar_date: calendarDate)
+        body: InitRequest(
+          device_id: registeredDeviceId,
+          calendar_date: calendarDate,
+          timezone_offset_minutes: timezoneOffsetMinutes)
       )
     } catch APIError.serverError(404, let message) where message.contains("device not found") {
       WidgetLogger.error(
@@ -209,7 +213,10 @@ final class APIClient: @unchecked Sendable, TodoPlannerAPI {
       return try await makeRequest(
         endpoint: "/init",
         method: "POST",
-        body: InitRequest(device_id: replacementDeviceId, calendar_date: calendarDate)
+        body: InitRequest(
+          device_id: replacementDeviceId,
+          calendar_date: calendarDate,
+          timezone_offset_minutes: timezoneOffsetMinutes)
       )
     }
   }

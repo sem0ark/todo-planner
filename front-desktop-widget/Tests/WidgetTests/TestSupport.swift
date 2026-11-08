@@ -132,7 +132,7 @@ final class SynchronizationAPI: TodoPlannerAPI, @unchecked Sendable {
   func setAuthToken(_ token: String) {}
   func clearAuthToken() {}
   func validateToken() async throws -> Bool { true }
-  func initialize(calendarDate: String) async throws -> InitResponse {
+  func initialize(calendarDate: String, timezoneOffsetMinutes: Int) async throws -> InitResponse {
     guard let initializationResponse else { throw StorageError.notFound }
     return initializationResponse
   }
@@ -199,8 +199,7 @@ enum Fixtures {
       clientEventId: id,
       eventType: "transition",
       categoryId: categoryId,
-      occurredAt: occurredAt,
-      occurredAtLocal: TimeFormats.localTimestamp(for: occurredAt)
+      occurredAt: occurredAt
     )
   }
 }
@@ -223,6 +222,7 @@ final class WidgetTestHarness {
     let repo = MockRepository()
     repo.stubbedCategories = categories
     repo.stubbedDayRecord = existingRecord
+    repo.stubbedCreatedRecord = createdRecord
     repo.stubbedEventsResponse = eventsResponse
     self.mock = repo
     self.store = TestableWidgetStateStore(repository: repo)
