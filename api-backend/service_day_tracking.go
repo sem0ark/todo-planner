@@ -67,19 +67,19 @@ func (service *DayTrackingService) CreateEventsByDate(
 	}
 	defer transaction.Rollback(ctx)
 
-	deviceUserID, err := service.dayEventRepo.FindDeviceUserIDTx(ctx, transaction, deviceID)
+	deviceUserID, err := service.dayEventRepo.FindDeviceUserID(ctx, transaction, deviceID)
 	if err != nil {
 		return nil, err
 	}
 	if deviceUserID != userID {
 		return nil, ErrDeviceNotFound
 	}
-	dayRecordID, err := service.dayRecordRepo.FindIDForDateTx(ctx, transaction, userID, calendarDate)
+	dayRecordID, err := service.dayRecordRepo.FindIDForDate(ctx, transaction, userID, calendarDate)
 	if err != nil {
 		return nil, err
 	}
 
-	existingEventIDs, err := service.dayEventRepo.FindExistingClientEventIDsTx(
+	existingEventIDs, err := service.dayEventRepo.FindExistingClientEventIDs(
 		ctx,
 		transaction,
 		dayRecordID,
@@ -94,7 +94,7 @@ func (service *DayTrackingService) CreateEventsByDate(
 	}
 	result := &DateEventResult{DuplicateEventIDs: duplicateEventIDs}
 	var insertDuplicateIDs []string
-	result.AcceptedEvents, insertDuplicateIDs, err = service.dayEventRepo.InsertTx(
+	result.AcceptedEvents, insertDuplicateIDs, err = service.dayEventRepo.Insert(
 		ctx,
 		transaction,
 		dayRecordID,
@@ -106,7 +106,7 @@ func (service *DayTrackingService) CreateEventsByDate(
 	}
 	result.DuplicateEventIDs = append(result.DuplicateEventIDs, insertDuplicateIDs...)
 
-	result.Record, err = service.dayRecordRepo.TouchAndFindByIDTx(ctx, transaction, dayRecordID, userID)
+	result.Record, err = service.dayRecordRepo.TouchAndFindByID(ctx, transaction, dayRecordID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -115,10 +115,10 @@ func (service *DayTrackingService) CreateEventsByDate(
 			return nil, err
 		}
 	}
-	if err := transaction.Commit(ctx); err != nil {
+	if err := service.hydrateRecord(ctx, transaction, result.Record); err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, result.Record); err != nil {
+	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -133,7 +133,7 @@ func (service *DayTrackingService) FindByDate(
 	if err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -148,7 +148,7 @@ func (service *DayTrackingService) FindByID(
 	if err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -167,7 +167,7 @@ func (service *DayTrackingService) FindDateRange(
 	recordsByDate := make(map[CalendarDate]*DayRecord, len(records))
 	for recordIndex := range records {
 		record := &records[recordIndex]
-		if err := service.hydrateRecord(ctx, record); err != nil {
+		if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 			return nil, err
 		}
 		recordsByDate[record.CalendarDate] = record
@@ -194,7 +194,7 @@ func (service *DayTrackingService) CreateDayRecord(
 		return nil, err
 	}
 	defer transaction.Rollback(ctx)
-	if _, err := service.dayRecordRepo.FindIDForDateTx(ctx, transaction, userID, calendarDate); err == nil {
+	if _, err := service.dayRecordRepo.FindIDForDate(ctx, transaction, userID, calendarDate); err == nil {
 		return nil, fmt.Errorf("%w for date %s", ErrDayRecordAlreadyExists, calendarDate.Format(DateFormat))
 	} else if !errors.Is(err, ErrDayRecordNotFound) {
 		return nil, err
@@ -203,7 +203,7 @@ func (service *DayTrackingService) CreateDayRecord(
 	if err != nil {
 		return nil, err
 	}
-	record, err := service.dayRecordRepo.CreateTx(
+	record, err := service.dayRecordRepo.Create(
 		ctx,
 		transaction,
 		userID,
@@ -218,7 +218,7 @@ func (service *DayTrackingService) CreateDayRecord(
 	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -236,7 +236,7 @@ func (service *DayTrackingService) UpdateTemplateByDate(
 	}
 	defer transaction.Rollback(ctx)
 	if requestedTemplateID != nil {
-		exists, err := service.dayTemplateRepo.ExistsForUserTx(
+		exists, err := service.dayTemplateRepo.ExistsForUser(
 			ctx,
 			transaction,
 			*requestedTemplateID,
@@ -259,7 +259,7 @@ func (service *DayTrackingService) UpdateTemplateByDate(
 	if err != nil {
 		return nil, err
 	}
-	recordID, err := service.dayRecordRepo.UpdateTemplateTx(
+	recordID, err := service.dayRecordRepo.UpdateTemplate(
 		ctx,
 		transaction,
 		userID,
@@ -277,7 +277,7 @@ func (service *DayTrackingService) UpdateTemplateByDate(
 	if err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -310,7 +310,7 @@ func (service *DayTrackingService) FindOrCreateDayRecordTx(
 	if err != nil {
 		return 0, err
 	}
-	return service.dayRecordRepo.FindOrCreateTx(
+	return service.dayRecordRepo.FindOrCreate(
 		ctx,
 		transaction,
 		userID,
@@ -331,7 +331,7 @@ func (service *DayTrackingService) resolveTemplateSnapshotTx(
 	templateID := requestedTemplateID
 	if templateID == nil {
 		var err error
-		templateID, err = service.scheduleRepo.ResolveTemplateForDateTx(
+		templateID, err = service.scheduleRepo.ResolveTemplateForDate(
 			ctx,
 			transaction,
 			userID,
@@ -344,34 +344,34 @@ func (service *DayTrackingService) resolveTemplateSnapshotTx(
 	if templateID == nil {
 		return nil, nil, nil
 	}
-	snapshotID, err := service.dayTemplateRepo.FindLatestSnapshotIDTx(ctx, transaction, *templateID)
+	snapshotID, err := service.dayTemplateRepo.FindLatestSnapshotID(ctx, transaction, *templateID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return templateID, snapshotID, nil
 }
 
-func (service *DayTrackingService) hydrateRecord(ctx context.Context, record *DayRecord) error {
+func (service *DayTrackingService) hydrateRecord(ctx context.Context, db dbQuerier, record *DayRecord) error {
 	record.SnapshotBlocks = make([]SnapshotBlock, 0)
 	record.ActualBlocks = make([]ActualBlock, 0)
 	record.Events = make([]DayEvent, 0)
 	if record.SnapshotID != nil {
-		blocks, err := service.dayTemplateRepo.FindSnapshotBlocks(ctx, *record.SnapshotID)
+		blocks, err := service.dayTemplateRepo.FindSnapshotBlocks(ctx, db, *record.SnapshotID)
 		if err != nil {
 			return err
 		}
 		record.SnapshotBlocks = blocks
-		record.SnapshottedAt, err = service.dayTemplateRepo.FindSnapshotTime(ctx, *record.SnapshotID)
+		record.SnapshottedAt, err = service.dayTemplateRepo.FindSnapshotTime(ctx, db, *record.SnapshotID)
 		if err != nil {
 			return err
 		}
 	}
-	actualBlocks, err := service.actualBlockRepo.FindByRecordID(ctx, record.ID)
+	actualBlocks, err := service.actualBlockRepo.FindByRecordID(ctx, db, record.ID)
 	if err != nil {
 		return err
 	}
 	record.ActualBlocks = actualBlocks
-	events, err := service.dayEventRepo.FindByRecordID(ctx, record.ID)
+	events, err := service.dayEventRepo.FindByRecordID(ctx, db, record.ID)
 	if err != nil {
 		return err
 	}
@@ -393,20 +393,20 @@ func (service *DayTrackingService) ReplaceActualBlocks(
 	}
 	defer transaction.Rollback(ctx)
 
-	if err := service.dayRecordRepo.EnsureOwnedTx(ctx, transaction, dayRecordID, userID); err != nil {
+	if err := service.dayRecordRepo.EnsureOwned(ctx, transaction, dayRecordID, userID); err != nil {
 		return nil, err
 	}
 	blocks, err := service.actualBlockRepo.ReplaceTx(ctx, transaction, dayRecordID, inputs)
 	if err != nil {
 		return nil, err
 	}
-	if err := service.dayRecordRepo.MarkBlocksEditedTx(ctx, transaction, dayRecordID, userID); err != nil {
+	if err := service.dayRecordRepo.MarkBlocksEdited(ctx, transaction, dayRecordID, userID); err != nil {
 		return nil, err
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return addUntrackedGaps(blocks), nil
+	return blocks, nil
 }
 
 // rebuildActualBlocksTx replaces the day's blocks with the ones derived from all events.
@@ -415,7 +415,7 @@ func (service *DayTrackingService) rebuildActualBlocksTx(
 	transaction pgx.Tx,
 	dayRecordID int,
 ) error {
-	events, err := service.dayEventRepo.FindByRecordIDTx(ctx, transaction, dayRecordID)
+	events, err := service.dayEventRepo.FindByRecordID(ctx, transaction, dayRecordID)
 	if err != nil {
 		return err
 	}

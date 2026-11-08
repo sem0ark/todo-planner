@@ -181,7 +181,7 @@ erDiagram
         integer id PK
         integer day_record_id FK
         integer category_id FK
-        string block_type
+        string block_type "actual only"
         timestamp start_at "UTC instant"
         integer duration_minutes
         timestamp updated_at
@@ -853,7 +853,7 @@ Day records are the primary data surface for both the live widget and the review
 }
 ```
 
-`plan` is empty when no template is assigned. With the offset `120` above, a client shows the actual block as 09:05–10:00. Actual blocks can be `actual`, `blank`, or server-derived `untracked`.
+`plan` is empty when no template is assigned. With the offset `120` above, a client shows the actual block as 09:05–10:00. Actual blocks have `block_type` `actual` only; gaps between blocks are not returned, clients derive untracked time from them.
 
 ### `GET /days?from=&to=`
 Returns existing day records within the specified inclusive date range. Dates without a day record are null and do not initialize one.
@@ -1011,7 +1011,7 @@ Native clients may persist events locally and submit them in batches during star
 1. **Apply amendments** — For each amendment, update the target event's effective time to `corrected_at`; amendments themselves are not stored as blocks.
 2. **Sort by effective time** — Deterministic order: `(effective_at, server_id)`, never client timestamp alone, to guarantee repeatable results across recomputation.
 3. **Extract boundaries** — Transitions always drive actual block computation. A confirmation or note with the same category as the current block is attached to that block; a confirmation or note with a different category creates a boundary like a transition.
-4. **Compute blocks** — If zero boundaries exist, the entire day is `untracked`. Otherwise, each boundary closes the prior block and opens a new one. When no later boundary exists, the latest attached confirmation closes the materialized duration of the final block; without one, the open block is not materialized. Time before the first boundary is `untracked`.
+4. **Compute blocks** — If zero boundaries exist, there are no blocks. Otherwise, each boundary closes the prior block and opens a new one. When no later boundary exists, the latest attached confirmation closes the materialized duration of the final block; without one, the open block is not materialized. Time before the first boundary has no block.
 
 **Block Computation Rules:**
 - A day with **zero boundaries** has **zero actual blocks** and is entirely `untracked`.
@@ -1077,8 +1077,8 @@ Replaces the complete actual block list of an existing day record. This is used 
 {
   "actual": [
     {
-      "category_id": "integer | null",
-      "block_type": "string (actual | blank)",
+      "category_id": "integer",
+      "block_type": "actual",
       "start_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
       "duration_minutes": "integer"
     }
@@ -1086,7 +1086,7 @@ Replaces the complete actual block list of an existing day record. This is used 
 }
 ```
 
-`category_id` is required for `actual` blocks and must be `null` for `blank` blocks. `start_at` is a UTC instant; clients convert from the day's local wall clock using `timezone_offset_minutes`. The server does not shift it. Later blocks in the list replace the covered parts of earlier ones, so stored blocks never overlap. Block grid rules (15-minute increments, 30-minute minimum) are enforced by clients.
+`block_type` must be `actual` and `category_id` is required. `start_at` is a UTC instant; clients convert from the day's local wall clock using `timezone_offset_minutes`. The server does not shift it. Later blocks in the list replace the covered parts of earlier ones, so stored blocks never overlap. Block grid rules (15-minute increments, 30-minute minimum) are enforced by clients.
 
 **Output `200`:** The standard day record shape.
 

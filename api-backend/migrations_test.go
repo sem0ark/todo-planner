@@ -55,8 +55,8 @@ func TestMigration12ConvertsActualBlocksAndDayOffsets(t *testing.T) {
 			before = append(before, migration)
 		}
 	}
-	if len(before) != len(all)-1 {
-		t.Fatalf("expected migration 12 to be the last migration, got %d of %d", len(before), len(all))
+	if len(before) != 11 {
+		t.Fatalf("expected migrations 1..11 before cleanup migrations, got %d", len(before))
 	}
 	if err := ApplyMigrations(ctx, database, before); err != nil {
 		t.Fatalf("failed to apply migrations 1..11: %v", err)
@@ -84,7 +84,7 @@ func TestMigration12ConvertsActualBlocksAndDayOffsets(t *testing.T) {
 		{`INSERT INTO day_events (day_record_id, event_type, occurred_at, occurred_at_local)
 			VALUES ($1, 'note', '2026-10-20T08:00:00Z', '2026-10-20T03:00:00-05:00')`, []any{unlockedRecordID}},
 		{`INSERT INTO actual_blocks (day_record_id, block_type, start_time, duration_minutes)
-			VALUES ($1, 'blank', '06:30:00', 30)`, []any{lockedRecordID}},
+			VALUES ($1, 'actual', '06:30:00', 30)`, []any{lockedRecordID}},
 		{`INSERT INTO actual_blocks (day_record_id, block_type, start_time, duration_minutes)
 			VALUES ($1, 'blank', '22:30:00', 30)`, []any{lockedRecordID}},
 	}
@@ -96,6 +96,10 @@ func TestMigration12ConvertsActualBlocksAndDayOffsets(t *testing.T) {
 
 	if err := ApplyMigrations(ctx, database, all); err != nil {
 		t.Fatalf("migration 12 failed: %v", err)
+	}
+	var blockType string
+	if err := database.QueryRow(ctx, `SELECT block_type FROM actual_blocks LIMIT 1`).Scan(&blockType); err != nil || blockType != "actual" {
+		t.Fatalf("expected legacy blank blocks to be removed, got %q (%v)", blockType, err)
 	}
 
 	rows, err := database.Query(ctx, `SELECT start_at FROM actual_blocks ORDER BY id`)
@@ -111,8 +115,8 @@ func TestMigration12ConvertsActualBlocksAndDayOffsets(t *testing.T) {
 		}
 		starts = append(starts, startAt.UTC())
 	}
-	expected := []time.Time{parseTime("2026-10-19T06:30:00Z"), parseTime("2026-10-18T22:30:00Z")}
-	if len(starts) != 2 || !starts[0].Equal(expected[0]) || !starts[1].Equal(expected[1]) {
+	expected := []time.Time{parseTime("2026-10-19T06:30:00Z")}
+	if len(starts) != 1 || !starts[0].Equal(expected[0]) {
 		t.Fatalf("expected start_at %v, got %v", expected, starts)
 	}
 
@@ -153,5 +157,34 @@ func TestMigration12ConvertsActualBlocksAndDayOffsets(t *testing.T) {
 	}
 	if !blocksEdited {
 		t.Error("expected a past day with stored blocks to be frozen (blocks_edited)")
+	}
+
+	if err := all[len(all)-1].Down(ctx, database); err != nil {
+		t.Fatalf("migration 13 down failed: %v", err)
+	}
+	if err := all[len(all)-2].Down(ctx, database); err != nil {
+		t.Fatalf("migration 12 down failed: %v", err)
+	}
+
+	var restoredColumns int
+	if err := database.QueryRow(ctx, `
+		SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = 'public' AND (
+			(table_name = 'actual_blocks' AND column_name = 'start_time') OR
+			(table_name = 'day_records' AND column_name = 'timezone_offset_locked') OR
+			(table_name = 'day_events' AND column_name IN ('occurred_at_local', 'corrected_at_local')))
+	`).Scan(&restoredColumns); err != nil {
+		t.Fatal(err)
+	}
+	if restoredColumns != 4 {
+		t.Fatalf("expected migration 12 down to restore four legacy columns, got %d", restoredColumns)
+	}
+
+	var restoredStartTime time.Time
+	if err := database.QueryRow(ctx, `SELECT start_time FROM actual_blocks ORDER BY id LIMIT 1`).Scan(&restoredStartTime); err != nil {
+		t.Fatalf("failed to read restored block time: %v", err)
+	}
+	if restoredStartTime.Format("15:04:05") != "06:30:00" {
+		t.Fatalf("expected restored UTC time of day 06:30:00, got %s", restoredStartTime.Format("15:04:05"))
 	}
 }

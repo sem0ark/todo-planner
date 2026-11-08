@@ -135,12 +135,12 @@ func (repository *BackupRepository) Export(ctx context.Context, userID int) (*Ba
 	for _, record := range records {
 		var snapshotBlocks []SnapshotBlock
 		if record.SnapshotID != nil {
-			snapshotBlocks, err = dayTemplateRepository.FindSnapshotBlocks(ctx, *record.SnapshotID)
+			snapshotBlocks, err = dayTemplateRepository.FindSnapshotBlocks(ctx, repository.db, *record.SnapshotID)
 			if err != nil {
 				return nil, err
 			}
 		}
-		actualBlocks, err := actualBlockRepository.FindByRecordID(ctx, record.ID)
+		actualBlocks, err := actualBlockRepository.FindByRecordID(ctx, repository.db, record.ID)
 		if err != nil {
 			return nil, err
 		}

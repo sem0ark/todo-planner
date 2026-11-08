@@ -12,7 +12,7 @@ The core question the app answers over time: "Is the life structure I designed f
 ## Goals
 - **Design and version sustainable day structures** per life state and season. Templates are independent, named, and maintained in a personal library. "Create From" workflow allows iterative refinement without starting from scratch.
 - **Capture reality with near-zero friction** - the live surface is the primary input mechanism, designed to stay out of the way during active work and surface only at natural transition points. The review surface provides a safety net: any day can be reconstructed/adjusted after the fact.
-- **Make untracked time and unlogged days a visible signal** - gaps in the record are never silently ignored or treated as neutral. They are surfaced as potentially meaningful data, distinct from rest and distinct from intentional blank periods the user cannot recall.
+- **Make untracked time and unlogged days a visible signal** - clients derive gaps from the actual timeline and surface them as potentially meaningful data.
 - **Reveal template health over time** - the app accumulates the gap between planned structure and lived reality, and makes that gap legible: per-template, per-category, and across time windows the user selects. The goal is to surface whether a template is realistic, not to judge whether the user followed it.
 - **Account for personal seasonal and contextual variation** - life state and season are first-class dimensions of the planning system. Templates reflect individual patterns (energy, schedule, environment) rather than general norms, and the user maintains distinct versions for distinct contexts.
 
@@ -27,10 +27,8 @@ Domain Entities:
 - *Activity Category (Block Category for short)* - a top-level category of activity that classifies all time blocks, user defined.
 - *Time Block (Block for short)* - a contiguous period of time assigned to a single category, with a defined start time and duration. The atomic unit of templates.
     - *Snapshot Block* - a category block stored within a Template Snapshot, representing intended activity for that saved template schedule.
-    - *Blank Block* - a special actual block marking a period the user cannot recall. Distinct from rest and untracked time. Treated as a health signal.
-    - *Actual Block* - a category block as recorded for a specific calendar day, representing what the user actually did.
-    - *Untracked Block* - a gap in a day's actual record where no block of any type has been placed, treated as blank until the user does not adjust it during the day review.
-- *Day Record* - the complete data for a single calendar day: the template in use, all actual blocks, skips, and blank blocks.
+     - *Actual Block* - a category block as recorded for a specific calendar day, representing what the user actually did.
+- *Day Record* - the complete data for a single calendar day: the template in use, actual blocks, and day events.
     - *Day event* - some event used for logging the real state of day. Can confirm that the activity is still in progress, can state transitions from one category to another. It is important to note that resulting timeline and blocks derived from the events may be different from blocks in the template.
          - *Confirmation* - user confirms staying focused on the activity.
          - *Note* - user records a short, timed note while staying in the current category, up to 512 characters.
@@ -149,15 +147,14 @@ Three event types for now:
 
 Actual Block Derivation:
 - The Actual Block timeline for a day is **derived** from the ordered sequence of Day Events during live tracking.
-- Untracked gaps remain distinct from submitted actual and blank blocks and are derived from the gaps in the current timeline.
+- Untracked gaps are not stored; clients derive them from gaps in the actual timeline.
 
 #### Block Types in Derived Timeline
 
 | Block Type | Description |
 |---|---|
 | **Actual Block** | A contiguous period assigned to a category, derived from events or supplied as a review correction. |
-| **Blank Block** | A user-marked period the user cannot recall. Minimum 30 min, 15-min steps. Treated as a health signal, not as rest or untracked. |
-| **Untracked** | A gap in the day with no block of any type placed. Shown as empty/dimmed. Distinct from Blank. |
+| **Untracked gap** | A gap in the day with no actual block. Derived by clients and shown as empty/dimmed. |
 
 ## Live Widget
 A persistent, minimal UI element always visible during the day on desktop and mobile. Handles Day Event input (Confirmations, Notes, and Transitions). Never requires navigation for its core function.
@@ -268,7 +265,6 @@ Retroactive reconstruction and review of a single calendar day. Primary logging 
 | Drag block body | Reposition within the day |
 | Tap block | Opens category picker to relabel |
 | Tap midpoint + drag | Splits block into two |
-| Paint time region as Blank | Creates a Blank Block (min 30 min, 15-min steps) |
 
 - Editing actual blocks is available for active, future, and past days. Snapshot assignment is editable only for active and future days.
 
@@ -278,9 +274,8 @@ A 7-day overview of actual theme distribution. Default landing view of the web a
 
 - Displays a 7-day horizontal strip. Each day = a vertical bar divided by category colors (Actual data only).
 - Planned template is **not** shown in this view.
-- **Unlogged days** (with no Actual blocks): blank and flagged (visual indicator - border or icon). No ghost template shown.
+- **Unlogged days** (with no Actual blocks): empty and flagged (visual indicator - border or icon). No ghost template shown.
 - **Gaps within logged days**: visible as empty/dimmed segments within the day bar.
-- **Blank Blocks**: shown as a distinct pattern (e.g., hatched) within the day bar.
 - User can navigate to any past week.
 - Tapping any day bar navigates to that day's Day View.
 
@@ -307,9 +302,9 @@ Per-category breakdown for the selected time window:
 |---|---|---|---|---|
 | Working | 33% | 8h | 9.5h | +1.5h |
 | Exercising | 8% | 2h | 0.5h | -1.5h |
-| Untracked / Blank | - | - | 1.5h | - |
+| Untracked gaps | - | - | 1.5h | - |
 
-- Untracked and Blank are reported separately.
+- Untracked gaps are reported as client-derived time outside stored actual blocks.
 - All Day Records in the selected time window are included.
 
 #### Time Window
@@ -375,8 +370,6 @@ Returns the health analysis for a single template over a user-selected time wind
       "delta_minutes": "number"
     }
   ],
-  "untracked_avg_minutes_per_day": "number",
-  "blank_avg_minutes_per_day": "number",
   "overlay_blocks": [
     {
       "category_id": "integer",

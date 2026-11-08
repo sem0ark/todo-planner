@@ -190,8 +190,8 @@ func (r *DayTemplateRepository) loadCurrentSnapshot(ctx context.Context, templat
 	return nil
 }
 
-func (r *DayTemplateRepository) FindSnapshotBlocks(ctx context.Context, snapshotID int) ([]SnapshotBlock, error) {
-	rows, err := r.db.Query(ctx, `
+func (r *DayTemplateRepository) FindSnapshotBlocks(ctx context.Context, db dbQuerier, snapshotID int) ([]SnapshotBlock, error) {
+	rows, err := db.Query(ctx, `
 		SELECT id, snapshot_id, category_id, start_time, duration_minutes
 		FROM snapshot_blocks
 		WHERE snapshot_id = $1
@@ -216,18 +216,18 @@ func (r *DayTemplateRepository) FindSnapshotBlocks(ctx context.Context, snapshot
 	return blocks, rows.Err()
 }
 
-func (r *DayTemplateRepository) FindSnapshotTime(ctx context.Context, snapshotID int) (time.Time, error) {
+func (r *DayTemplateRepository) FindSnapshotTime(ctx context.Context, db dbQuerier, snapshotID int) (time.Time, error) {
 	var snapshottedAt time.Time
-	err := r.db.QueryRow(ctx,
+	err := db.QueryRow(ctx,
 		`SELECT snapshotted_at FROM template_snapshots WHERE id = $1`,
 		snapshotID,
 	).Scan(&snapshottedAt)
 	return snapshottedAt, err
 }
 
-func (r *DayTemplateRepository) FindLatestSnapshotIDTx(
+func (r *DayTemplateRepository) FindLatestSnapshotID(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	templateID int,
 ) (*int, error) {
 	var snapshotID int
@@ -246,9 +246,9 @@ func (r *DayTemplateRepository) FindLatestSnapshotIDTx(
 	return &snapshotID, nil
 }
 
-func (r *DayTemplateRepository) ExistsForUserTx(
+func (r *DayTemplateRepository) ExistsForUser(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	templateID int,
 	userID int,
 ) (bool, error) {

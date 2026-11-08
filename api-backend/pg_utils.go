@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type pgBatchSender interface {
@@ -35,4 +36,13 @@ func (builder *pgBatchBuilder) Execute(
 		return consumeError
 	}
 	return closeError
+}
+
+// dbQuerier is satisfied by both *pgxpool.Pool and pgx.Tx, so read queries
+// need no separate transactional copy.
+type dbQuerier interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	SendBatch(context.Context, *pgx.Batch) pgx.BatchResults
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }

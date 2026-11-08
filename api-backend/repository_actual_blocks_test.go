@@ -8,8 +8,9 @@ import (
 func TestActualBlockRepository_ReplaceAndFindByRecordID(t *testing.T) {
 	database := setupTestDB(t)
 	user := createTestUser(t, database, "actual-block-repository", "password123")
+	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
 	record, err := newDayTrackingServiceForTest(database).CreateDayRecord(
-		context.Background(), user.ID, mustCalendarDate("2026-09-06"),
+		context.Background(), user.ID, mustCalendarDate("2026-09-06"), 0,
 	)
 	if err != nil {
 		t.Fatalf("failed to create day record: %v", err)
@@ -24,8 +25,9 @@ func TestActualBlockRepository_ReplaceAndFindByRecordID(t *testing.T) {
 		transaction,
 		record.ID,
 		[]ActualBlockInput{{
-			BlockType:       "blank",
-			StartTime:       mustScheduleTime("09:00:00"),
+			CategoryID:      &category.ID,
+			BlockType:       "actual",
+			StartAt:         parseTime("2026-09-06T09:00:00Z"),
 			DurationMinutes: 30,
 		}},
 	)
@@ -39,11 +41,11 @@ func TestActualBlockRepository_ReplaceAndFindByRecordID(t *testing.T) {
 	if len(createdBlocks) != 1 {
 		t.Fatalf("expected one created block, got %d", len(createdBlocks))
 	}
-	loadedBlocks, err := blockRepository.FindByRecordID(context.Background(), record.ID)
+	loadedBlocks, err := blockRepository.FindByRecordID(context.Background(), database, record.ID)
 	if err != nil {
 		t.Fatalf("failed to load blocks: %v", err)
 	}
-	if len(loadedBlocks) != 1 || loadedBlocks[0].StartTime != mustScheduleTime("09:00:00") {
+	if len(loadedBlocks) != 1 || !loadedBlocks[0].StartAt.Equal(parseTime("2026-09-06T09:00:00Z")) {
 		t.Fatalf("unexpected loaded blocks: %+v", loadedBlocks)
 	}
 }

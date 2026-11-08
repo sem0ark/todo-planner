@@ -14,7 +14,7 @@ type ActualBlock struct {
 	ID              int       `json:"id"`
 	DayRecordID     int       `json:"day_record_id"`
 	CategoryID      *int      `json:"category_id"`
-	BlockType       string    `json:"block_type"` // actual | blank | untracked
+	BlockType       string    `json:"block_type"` // always "actual"
 	StartAt         time.Time `json:"start_at"`
 	DurationMinutes int       `json:"duration_minutes"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -41,8 +41,8 @@ func NewActualBlockRepository(db *pgxpool.Pool) *ActualBlockRepository {
 	return &ActualBlockRepository{db: db}
 }
 
-func (repository *ActualBlockRepository) FindByRecordID(ctx context.Context, dayRecordID int) ([]ActualBlock, error) {
-	rows, err := repository.db.Query(ctx, `
+func (repository *ActualBlockRepository) FindByRecordID(ctx context.Context, db dbQuerier, dayRecordID int) ([]ActualBlock, error) {
+	rows, err := db.Query(ctx, `
 		SELECT id, day_record_id, category_id, block_type, start_at, duration_minutes, updated_at
 		FROM actual_blocks
 		WHERE day_record_id = $1

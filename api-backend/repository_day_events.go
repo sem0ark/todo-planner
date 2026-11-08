@@ -54,9 +54,9 @@ func NewDayEventRepository(db *pgxpool.Pool) *DayEventRepository {
 	return &DayEventRepository{db: db}
 }
 
-func (repository *DayEventRepository) FindDeviceUserIDTx(
+func (repository *DayEventRepository) FindDeviceUserID(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	deviceID int,
 ) (int, error) {
 	var userID int
@@ -67,12 +67,8 @@ func (repository *DayEventRepository) FindDeviceUserIDTx(
 	return userID, err
 }
 
-func (repository *DayEventRepository) FindByRecordIDTx(
-	ctx context.Context,
-	transaction pgx.Tx,
-	dayRecordID int,
-) ([]DayEvent, error) {
-	rows, err := transaction.Query(ctx, `
+func (repository *DayEventRepository) FindByRecordID(ctx context.Context, db dbQuerier, dayRecordID int) ([]DayEvent, error) {
+	rows, err := db.Query(ctx, `
 		SELECT id, day_record_id, device_id, client_event_id, event_type, category_id, text,
 			occurred_at, target_client_event_id, corrected_at
 		FROM day_events
@@ -99,37 +95,9 @@ func (repository *DayEventRepository) FindByRecordIDTx(
 	return events, rows.Err()
 }
 
-func (repository *DayEventRepository) FindByRecordID(ctx context.Context, dayRecordID int) ([]DayEvent, error) {
-	rows, err := repository.db.Query(ctx, `
-		SELECT id, day_record_id, device_id, client_event_id, event_type, category_id, text,
-			occurred_at, target_client_event_id, corrected_at
-		FROM day_events
-		WHERE day_record_id = $1
-		ORDER BY id ASC
-	`, dayRecordID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	events := make([]DayEvent, 0)
-	for rows.Next() {
-		var event DayEvent
-		if err := rows.Scan(
-			&event.ID, &event.DayRecordID, &event.DeviceID, &event.ClientEventID,
-			&event.EventType, &event.CategoryID, &event.Text, &event.OccurredAt,
-			&event.TargetClientEventID, &event.CorrectedAt,
-		); err != nil {
-			return nil, err
-		}
-		events = append(events, event)
-	}
-	return events, rows.Err()
-}
-
-func (repository *DayEventRepository) FindExistingClientEventIDsTx(
+func (repository *DayEventRepository) FindExistingClientEventIDs(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	dayRecordID int,
 	clientEventIDs []string,
 ) (map[string]struct{}, error) {
@@ -158,9 +126,9 @@ func (repository *DayEventRepository) FindExistingClientEventIDsTx(
 	return existingIDs, rows.Err()
 }
 
-func (repository *DayEventRepository) InsertTx(
+func (repository *DayEventRepository) Insert(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	dayRecordID int,
 	deviceID int,
 	inputs []DayEventInput,

@@ -110,9 +110,9 @@ func TestComputeTimelineEventConfigurations(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			blocks, err := computeTimeline(testCase.events)
+			blocks, err := computeDayTimeline(testCase.events)
 			if err != nil {
-				t.Fatalf("computeTimeline failed: %v", err)
+				t.Fatalf("computeDayTimeline failed: %v", err)
 			}
 			if len(blocks) != len(testCase.expectedTypes) {
 				t.Fatalf("expected %d blocks, got %d: %+v", len(testCase.expectedTypes), len(blocks), blocks)
@@ -138,12 +138,12 @@ func TestComputeTimelineAmendmentChangesEffectiveTime(t *testing.T) {
 		{ID: 2, EventType: "amendment", TargetClientEventID: &targetEventID, CorrectedAt: &correctedTime, OccurredAt: parseTime("2026-07-20T12:00:00Z")},
 		{ID: 3, EventType: "confirmation", CategoryID: &categoryID, OccurredAt: parseTime("2026-07-20T13:00:00Z")},
 	}
-	blocks, err := computeTimeline(events)
+	blocks, err := computeDayTimeline(events)
 	if err != nil {
-		t.Fatalf("computeTimeline failed: %v", err)
+		t.Fatalf("computeDayTimeline failed: %v", err)
 	}
-	if blocks[0].StartTime != correctedTime {
-		t.Fatalf("expected amended start %v, got %v", correctedTime, blocks[0].StartTime)
+	if !blocks[0].StartAt.Equal(correctedTime) {
+		t.Fatalf("expected amended start %v, got %v", correctedTime, blocks[0].StartAt)
 	}
 }
 
@@ -158,9 +158,9 @@ func TestComputeTimelineEqualEffectiveTransitionsKeepLastObservation(t *testing.
 		{ID: 3, EventType: "confirmation", CategoryID: &secondCategoryID, OccurredAt: endTime},
 	}
 
-	blocks, err := computeTimeline(events)
+	blocks, err := computeDayTimeline(events)
 	if err != nil {
-		t.Fatalf("computeTimeline failed: %v", err)
+		t.Fatalf("computeDayTimeline failed: %v", err)
 	}
 	if len(blocks) != 1 {
 		t.Fatalf("expected one block, got %d: %+v", len(blocks), blocks)
@@ -220,8 +220,8 @@ func TestResolveOverlappingActualBlocksLaterBlockWins(t *testing.T) {
 	firstCategoryID := 1
 	secondCategoryID := 2
 	blocks := []ActualBlockInput{
-		{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 120},
-		{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 30},
+		{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T09:00:00Z"), DurationMinutes: 120},
+		{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 30},
 	}
 
 	// Act
@@ -231,13 +231,13 @@ func TestResolveOverlappingActualBlocksLaterBlockWins(t *testing.T) {
 	if len(resolvedBlocks) != 3 {
 		t.Fatalf("expected earlier block to be split around later block, got %d blocks", len(resolvedBlocks))
 	}
-	if resolvedBlocks[0].StartTime != mustScheduleTime("09:00:00") || resolvedBlocks[0].DurationMinutes != 60 {
+	if !resolvedBlocks[0].StartAt.Equal(parseTime("2026-07-20T09:00:00Z")) || resolvedBlocks[0].DurationMinutes != 60 {
 		t.Errorf("unexpected left block: %+v", resolvedBlocks[0])
 	}
-	if resolvedBlocks[1].StartTime != mustScheduleTime("10:00:00") || resolvedBlocks[1].DurationMinutes != 30 {
+	if !resolvedBlocks[1].StartAt.Equal(parseTime("2026-07-20T10:00:00Z")) || resolvedBlocks[1].DurationMinutes != 30 {
 		t.Errorf("unexpected later block: %+v", resolvedBlocks[1])
 	}
-	if resolvedBlocks[2].StartTime != mustScheduleTime("10:30:00") || resolvedBlocks[2].DurationMinutes != 30 {
+	if !resolvedBlocks[2].StartAt.Equal(parseTime("2026-07-20T10:30:00Z")) || resolvedBlocks[2].DurationMinutes != 30 {
 		t.Errorf("unexpected right block: %+v", resolvedBlocks[2])
 	}
 }
@@ -247,8 +247,8 @@ func TestResolveOverlappingActualBlocksRemovesFullyCoveredEarlierBlock(t *testin
 	firstCategoryID := 1
 	secondCategoryID := 2
 	blocks := []ActualBlockInput{
-		{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("09:30:00"), DurationMinutes: 30},
-		{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 120},
+		{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T09:30:00Z"), DurationMinutes: 30},
+		{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T09:00:00Z"), DurationMinutes: 120},
 	}
 
 	// Act
@@ -275,45 +275,45 @@ func TestResolveOverlappingActualBlocksHandlesOverlapShapes(t *testing.T) {
 		{
 			name: "later block overlaps the beginning",
 			blocks: []ActualBlockInput{
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 60},
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("09:30:00"), DurationMinutes: 45},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 60},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T09:30:00Z"), DurationMinutes: 45},
 			},
 			expected: []ActualBlockInput{
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("09:30:00"), DurationMinutes: 45},
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:15:00"), DurationMinutes: 45},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T09:30:00Z"), DurationMinutes: 45},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:15:00Z"), DurationMinutes: 45},
 			},
 		},
 		{
 			name: "later block overlaps the end",
 			blocks: []ActualBlockInput{
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 60},
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:45:00"), DurationMinutes: 45},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 60},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:45:00Z"), DurationMinutes: 45},
 			},
 			expected: []ActualBlockInput{
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 45},
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:45:00"), DurationMinutes: 45},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 45},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:45:00Z"), DurationMinutes: 45},
 			},
 		},
 		{
 			name: "later block replaces same start",
 			blocks: []ActualBlockInput{
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 60},
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 30},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 60},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 30},
 			},
 			expected: []ActualBlockInput{
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 30},
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:30:00"), DurationMinutes: 30},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 30},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:30:00Z"), DurationMinutes: 30},
 			},
 		},
 		{
 			name: "adjacent blocks do not overlap",
 			blocks: []ActualBlockInput{
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 30},
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:30:00"), DurationMinutes: 30},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 30},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:30:00Z"), DurationMinutes: 30},
 			},
 			expected: []ActualBlockInput{
-				{CategoryID: &firstCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 30},
-				{CategoryID: &secondCategoryID, BlockType: "actual", StartTime: mustScheduleTime("10:30:00"), DurationMinutes: 30},
+				{CategoryID: &firstCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:00:00Z"), DurationMinutes: 30},
+				{CategoryID: &secondCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-20T10:30:00Z"), DurationMinutes: 30},
 			},
 		},
 	}
@@ -329,7 +329,7 @@ func TestResolveOverlappingActualBlocksHandlesOverlapShapes(t *testing.T) {
 			}
 			for blockIndex, expectedBlock := range testCase.expected {
 				actualBlock := resolvedBlocks[blockIndex]
-				if actualBlock.StartTime != expectedBlock.StartTime || actualBlock.DurationMinutes != expectedBlock.DurationMinutes {
+				if !actualBlock.StartAt.Equal(expectedBlock.StartAt) || actualBlock.DurationMinutes != expectedBlock.DurationMinutes {
 					t.Errorf("block %d: expected %+v, got %+v", blockIndex, expectedBlock, actualBlock)
 				}
 				if actualBlock.CategoryID == nil || expectedBlock.CategoryID == nil || *actualBlock.CategoryID != *expectedBlock.CategoryID {
@@ -337,96 +337,5 @@ func TestResolveOverlappingActualBlocksHandlesOverlapShapes(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestTrimTimelineBlocksPreservesCrossingCategory(t *testing.T) {
-	// Arrange
-	categoryID := 7
-	checkpoint := parseTime("2026-07-20T10:00:00Z")
-	blocks := []timelineBlock{
-		{categoryID: &categoryID, start: parseTime("2026-07-20T09:00:00Z"), end: parseTime("2026-07-20T10:15:00Z")},
-		{categoryID: &categoryID, start: parseTime("2026-07-20T10:15:00Z"), end: parseTime("2026-07-20T11:00:00Z")},
-		{categoryID: &categoryID, start: parseTime("2026-07-20T08:00:00Z"), end: parseTime("2026-07-20T09:00:00Z")},
-	}
-
-	// Act
-	trimmedBlocks := trimTimelineBlocks(blocks, checkpoint)
-
-	// Assert
-	if len(trimmedBlocks) != 2 {
-		t.Fatalf("expected two blocks after checkpoint, got %d", len(trimmedBlocks))
-	}
-	if trimmedBlocks[0].start != checkpoint || trimmedBlocks[0].end != blocks[0].end {
-		t.Errorf("expected crossing block to start at checkpoint, got %+v", trimmedBlocks[0])
-	}
-}
-
-func TestComputeIncrementalTimelineUsesSavedCheckpoint(t *testing.T) {
-	// Arrange
-	categoryID := 1
-	newCategoryID := 2
-	existingBlocks := []ActualBlock{{
-		BlockType:       "actual",
-		CategoryID:      &categoryID,
-		StartTime:       mustScheduleTime("09:00:00"),
-		DurationMinutes: 60,
-	}}
-	events := []DayEvent{
-		{ID: 1, EventType: "transition", CategoryID: &newCategoryID, OccurredAt: parseTime("2026-07-20T09:59:00Z")},
-		{ID: 2, EventType: "confirmation", CategoryID: &newCategoryID, OccurredAt: parseTime("2026-07-20T10:00:00Z")},
-		{ID: 3, EventType: "transition", CategoryID: &newCategoryID, OccurredAt: parseTime("2026-07-20T10:10:00Z")},
-	}
-
-	// Act
-	computedBlocks, err := computeIncrementalTimeline(events, existingBlocks, mustCalendarDate("2026-07-20"))
-
-	// Assert
-	if err != nil {
-		t.Fatalf("computeIncrementalTimeline failed: %v", err)
-	}
-	if len(computedBlocks) != 1 {
-		t.Fatalf("expected one appended block, got %d", len(computedBlocks))
-	}
-	if computedBlocks[0].StartTime != parseTime("2026-07-20T10:00:00Z") {
-		t.Errorf("expected checkpoint event to be ignored, got start %v", computedBlocks[0].StartTime)
-	}
-	if computedBlocks[0].DurationMinutes != 10 {
-		t.Errorf("expected ten-minute block, got %d minutes", computedBlocks[0].DurationMinutes)
-	}
-}
-
-func TestComputeIncrementalTimelineTrimsAmendedHistoricalEvent(t *testing.T) {
-	// Arrange
-	categoryID := 1
-	newCategoryID := 2
-	clientEventID := "old-transition"
-	targetClientEventID := "old-transition"
-	correctedTime := parseTime("2026-07-20T10:30:00Z")
-	existingBlocks := []ActualBlock{{
-		BlockType:       "actual",
-		CategoryID:      &categoryID,
-		StartTime:       mustScheduleTime("09:00:00"),
-		DurationMinutes: 60,
-	}}
-	events := []DayEvent{
-		{ID: 1, EventType: "amendment", TargetClientEventID: &targetClientEventID, CorrectedAt: &correctedTime, OccurredAt: parseTime("2026-07-20T11:00:00Z")},
-		{ID: 2, EventType: "transition", ClientEventID: &clientEventID, CategoryID: &newCategoryID, OccurredAt: parseTime("2026-07-20T09:30:00Z")},
-		{ID: 3, EventType: "confirmation", CategoryID: &categoryID, OccurredAt: parseTime("2026-07-20T11:00:00Z")},
-		{ID: 4, EventType: "transition", CategoryID: &categoryID, OccurredAt: parseTime("2026-07-20T09:00:00Z")},
-	}
-
-	// Act
-	computedBlocks, err := computeIncrementalTimeline(events, existingBlocks, mustCalendarDate("2026-07-20"))
-
-	// Assert
-	if err != nil {
-		t.Fatalf("computeIncrementalTimeline failed: %v", err)
-	}
-	if len(computedBlocks) != 2 {
-		t.Fatalf("expected two blocks after trimming, got %+v", computedBlocks)
-	}
-	if computedBlocks[0].StartTime != parseTime("2026-07-20T10:00:00Z") || computedBlocks[0].DurationMinutes != 30 {
-		t.Errorf("expected trimmed block from 10:00 to 10:30, got %+v", computedBlocks[0])
 	}
 }

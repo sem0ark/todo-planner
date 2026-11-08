@@ -51,7 +51,7 @@ func NewDayRecordRepository(db *pgxpool.Pool) *DayRecordRepository {
 	return &DayRecordRepository{db: db}
 }
 
-func (repository *DayRecordRepository) EnsureOwnedTx(ctx context.Context, transaction pgx.Tx, recordID, userID int) error {
+func (repository *DayRecordRepository) EnsureOwned(ctx context.Context, transaction dbQuerier, recordID, userID int) error {
 	err := transaction.QueryRow(ctx, `
 		SELECT id FROM day_records WHERE id = $1 AND user_id = $2
 	`, recordID, userID).Scan(&recordID)
@@ -61,7 +61,7 @@ func (repository *DayRecordRepository) EnsureOwnedTx(ctx context.Context, transa
 	return err
 }
 
-func (repository *DayRecordRepository) MarkBlocksEditedTx(ctx context.Context, transaction pgx.Tx, recordID, userID int) error {
+func (repository *DayRecordRepository) MarkBlocksEdited(ctx context.Context, transaction dbQuerier, recordID, userID int) error {
 	_, err := transaction.Exec(ctx, `
 		UPDATE day_records SET blocks_edited = TRUE, updated_at = NOW() WHERE id = $1 AND user_id = $2
 	`, recordID, userID)
@@ -87,10 +87,10 @@ func (repository *DayRecordRepository) UpdateTimezoneOffset(
 	return recordID, err
 }
 
-// FindIDForDateTx returns ErrDayRecordNotFound when the day was never created.
-func (repository *DayRecordRepository) FindIDForDateTx(
+// FindIDForDate returns ErrDayRecordNotFound when the day was never created.
+func (repository *DayRecordRepository) FindIDForDate(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	userID int,
 	calendarDate CalendarDate,
 ) (int, error) {
@@ -104,9 +104,9 @@ func (repository *DayRecordRepository) FindIDForDateTx(
 	return recordID, err
 }
 
-func (repository *DayRecordRepository) FindOrCreateTx(
+func (repository *DayRecordRepository) FindOrCreate(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	userID int,
 	calendarDate CalendarDate,
 	offsetMinutes int,
@@ -183,9 +183,9 @@ func (repository *DayRecordRepository) FindByID(ctx context.Context, id, userID 
 	return &record, nil
 }
 
-func (repository *DayRecordRepository) CreateTx(
+func (repository *DayRecordRepository) Create(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	userID int,
 	calendarDate CalendarDate,
 	offsetMinutes int,
@@ -203,9 +203,9 @@ func (repository *DayRecordRepository) CreateTx(
 	return &record, nil
 }
 
-func (repository *DayRecordRepository) UpdateTemplateTx(
+func (repository *DayRecordRepository) UpdateTemplate(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	userID int,
 	calendarDate CalendarDate,
 	templateID *int,
@@ -235,9 +235,9 @@ func (repository *DayRecordRepository) UpdateTemplateTx(
 	return recordID, nil
 }
 
-func (repository *DayRecordRepository) TouchAndFindByIDTx(
+func (repository *DayRecordRepository) TouchAndFindByID(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	dayRecordID int,
 	userID int,
 ) (*DayRecord, error) {

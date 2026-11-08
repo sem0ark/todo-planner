@@ -345,7 +345,7 @@ func transitionInput(clientEventID string, categoryID *int, occurredAt string) D
 
 func loadActualBlocksForTest(t *testing.T, database *pgxpool.Pool, recordID int) []ActualBlock {
 	t.Helper()
-	blocks, err := NewActualBlockRepository(database).FindByRecordID(context.Background(), recordID)
+	blocks, err := NewActualBlockRepository(database).FindByRecordID(context.Background(), database, recordID)
 	if err != nil {
 		t.Fatalf("failed to load blocks: %v", err)
 	}

@@ -9,9 +9,8 @@ var (
 	ErrIncompleteAmendment         = NewBadRequestError("amendments require target_client_event_id and corrected_at")
 	ErrMissingEventTimestamp       = NewBadRequestError("occurred_at is required")
 	ErrMissingClientEventID        = NewBadRequestError("client_event_id is required")
-	ErrInvalidActualBlockType      = NewBadRequestError("block_type must be 'actual' or 'blank'")
+	ErrInvalidActualBlockType      = NewBadRequestError("block_type must be 'actual'")
 	ErrActualBlockCategoryRequired = NewBadRequestError("category_id is required for actual blocks")
-	ErrBlankBlockCategoryForbidden = NewBadRequestError("category_id must be null for blank blocks")
 	ErrInvalidBlockStartTime       = NewBadRequestError("start_at must be a valid UTC timestamp")
 	ErrInvalidBlockDuration        = NewBadRequestError("block duration must be non-negative")
 	ErrInvalidDayDateRange         = NewBadRequestError("invalid date range")
@@ -62,14 +61,11 @@ func validateDateEvents(events []DayEventInput) error {
 
 func validateActualBlocks(blocks []ActualBlockInput) error {
 	for _, block := range blocks {
-		if block.BlockType != "actual" && block.BlockType != "blank" {
+		if block.BlockType != "actual" {
 			return ErrInvalidActualBlockType
 		}
-		if block.BlockType == "actual" && block.CategoryID == nil {
+		if block.CategoryID == nil {
 			return ErrActualBlockCategoryRequired
-		}
-		if block.BlockType == "blank" && block.CategoryID != nil {
-			return ErrBlankBlockCategoryForbidden
 		}
 		if block.StartAt.IsZero() {
 			return ErrInvalidBlockStartTime

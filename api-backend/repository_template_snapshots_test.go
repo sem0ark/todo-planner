@@ -159,7 +159,7 @@ func TestDayRecordCreation_WithTemplateSnapshot(t *testing.T) {
 	scheduleRepo.ReplaceWeeklySchedule(ctx, user.ID, weeklySchedule)
 
 	// Act - create a day record for a Monday (2026-07-07 is a Tuesday, so use 2026-07-06 Monday)
-	dayRecord, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, mustCalendarDate("2026-07-06"))
+	dayRecord, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, mustCalendarDate("2026-07-06"), 0)
 
 	// Assert
 	if err != nil {

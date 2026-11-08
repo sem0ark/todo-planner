@@ -24,32 +24,6 @@ type resolvedDayEvent struct {
 	effectiveAt time.Time
 }
 
-// addUntrackedGaps synthesises `untracked` blocks between stored blocks for responses.
-func addUntrackedGaps(blocks []ActualBlock) []ActualBlock {
-	if len(blocks) < 2 {
-		return blocks
-	}
-	result := make([]ActualBlock, 0, len(blocks)*2)
-	for index, block := range blocks {
-		result = append(result, block)
-		if index == len(blocks)-1 {
-			continue
-		}
-		gapStart := block.StartAt.Add(time.Duration(block.DurationMinutes) * time.Minute)
-		gapMinutes := int(blocks[index+1].StartAt.Sub(gapStart).Minutes())
-		if gapMinutes > 0 {
-			result = append(result, ActualBlock{
-				DayRecordID:     block.DayRecordID,
-				BlockType:       "untracked",
-				StartAt:         gapStart,
-				DurationMinutes: gapMinutes,
-				UpdatedAt:       block.UpdatedAt,
-			})
-		}
-	}
-	return result
-}
-
 // resolveTimeline applies the latest correction per target, then orders by the
 // corrected timestamp and the server insertion id.
 func resolveTimeline(events []DayEvent) []resolvedDayEvent {

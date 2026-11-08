@@ -640,5 +640,17 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID: 13, Name: "remove_legacy_blank_actual_blocks",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `DELETE FROM actual_blocks WHERE block_type = 'blank';
+					ALTER TABLE actual_blocks ADD CONSTRAINT actual_blocks_block_type_check CHECK (block_type = 'actual');`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `ALTER TABLE actual_blocks DROP CONSTRAINT IF EXISTS actual_blocks_block_type_check`)
+				return err
+			},
+		},
 	}
 }

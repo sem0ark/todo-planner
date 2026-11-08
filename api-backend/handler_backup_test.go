@@ -186,8 +186,8 @@ func TestBackupRouterImportsVersion1UTCTimeOfDayBlocks(t *testing.T) {
 		"timezone_offset_minutes":120,
 		"timezone_offset_locked":true,
 		"actual":[
-			{"block_type":"blank","start_time":"06:30:00","duration_minutes":30},
-			{"block_type":"blank","start_time":"22:30:00","duration_minutes":30}
+			{"block_type":"actual","start_time":"06:30:00","duration_minutes":30},
+			{"block_type":"actual","start_time":"22:30:00","duration_minutes":30}
 		],
 		"created_at":"2026-10-19T00:00:00Z","updated_at":"2026-10-19T00:00:00Z"
 	}]}`

@@ -16,7 +16,7 @@ func TestPutDateTemplate(t *testing.T) {
 	user := createTestUser(t, database, "put-day-template", "password123")
 	template := createTestDayTemplate(t, database, user.ID, "Requested", nil)
 	calendarDate := calendarDateRelativeToToday(t, database, 1)
-	if _, err := api.dayTrackingService.CreateDayRecord(context.Background(), user.ID, calendarDate); err != nil {
+	if _, err := api.dayTrackingService.CreateDayRecord(context.Background(), user.ID, calendarDate, 0); err != nil {
 		t.Fatalf("failed to create day record: %v", err)
 	}
 	requestBody := `{"day_template_id":` + strconv.Itoa(template.ID) + `}`
@@ -46,7 +46,7 @@ func TestPutDateTemplateRejectsMalformedRequests(t *testing.T) {
 	api := NewAPI(database, "test-secret", NewLogger("test"))
 	user := createTestUser(t, database, "invalid-put-day-template", "password123")
 	calendarDate := calendarDateRelativeToToday(t, database, 1)
-	if _, err := api.dayTrackingService.CreateDayRecord(context.Background(), user.ID, calendarDate); err != nil {
+	if _, err := api.dayTrackingService.CreateDayRecord(context.Background(), user.ID, calendarDate, 0); err != nil {
 		t.Fatalf("failed to create day record: %v", err)
 	}
 	testCases := []struct {
