@@ -39,14 +39,12 @@ final class RepositorySyncTests: WidgetTestCase {
               clientEventId: earlierEvent.clientEventId,
               eventType: earlierEvent.eventType,
               categoryId: earlierEvent.categoryId,
-              occurredAt: earlierEvent.occurredAt,
-              occurredAtLocal: earlierEvent.occurredAtLocal),
+              occurredAt: earlierEvent.occurredAt),
             AcceptedEvent(
               clientEventId: laterEvent.clientEventId,
               eventType: laterEvent.eventType,
               categoryId: laterEvent.categoryId,
-              occurredAt: laterEvent.occurredAt,
-              occurredAtLocal: laterEvent.occurredAtLocal),
+              occurredAt: laterEvent.occurredAt),
           ],
           calendarDate: Fixtures.today))
     ]
@@ -84,8 +82,7 @@ final class RepositorySyncTests: WidgetTestCase {
               clientEventId: events[0].clientEventId,
               eventType: events[0].eventType,
               categoryId: events[0].categoryId,
-              occurredAt: events[0].occurredAt,
-              occurredAtLocal: events[0].occurredAtLocal)
+              occurredAt: events[0].occurredAt)
           ], calendarDate: Fixtures.today)),
       .success(
         DayEventsResponse(

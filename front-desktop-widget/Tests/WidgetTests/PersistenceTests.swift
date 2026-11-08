@@ -81,7 +81,7 @@ final class PersistenceTests: WidgetTestCase {
     try assertEqual(eventStore.pendingEvents().count, 2)
   }
 
-  func test_localEventStoreBackfillsMissingLocalTimestamps() throws {
+  func test_localEventStoreDecodesUTCOnlyTimestamps() throws {
     let (eventStore, directory) = try makeTemporaryEventStore()
     defer { try? FileManager.default.removeItem(at: directory) }
     let queueJSON = """
@@ -94,8 +94,8 @@ final class PersistenceTests: WidgetTestCase {
       throw AssertionError.failed("Legacy corrected_at should decode")
     }
 
-    try assertEqual(event.occurredAtLocal, TimeFormats.localTimestamp(for: event.occurredAt))
-    try assertEqual(event.correctedAtLocal, TimeFormats.localTimestamp(for: correctedAt))
+    try assert(event.occurredAt.timeIntervalSince1970 > 0, "UTC occurred_at should decode")
+    try assert(correctedAt.timeIntervalSince1970 > 0, "UTC corrected_at should decode")
   }
 
   func test_appendFailurePreservesQueueAndBackup() throws {
@@ -181,8 +181,8 @@ final class PersistenceTests: WidgetTestCase {
         { try tests.test_localEventStoreMigratesLegacyJSONQueueToJSONLines() }
       ),
       (
-        "test_localEventStoreBackfillsMissingLocalTimestamps",
-        { try tests.test_localEventStoreBackfillsMissingLocalTimestamps() }
+        "test_localEventStoreDecodesUTCOnlyTimestamps",
+        { try tests.test_localEventStoreDecodesUTCOnlyTimestamps() }
       ),
       (
         "test_appendFailurePreservesQueueAndBackup",

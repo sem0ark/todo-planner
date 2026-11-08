@@ -6,10 +6,8 @@ struct DayEvent: Codable {
   let categoryId: Int?
   let text: String?
   let occurredAt: Date
-  let occurredAtLocal: String
   let targetClientEventId: String?
   let correctedAt: Date?
-  let correctedAtLocal: String?
 
   enum CodingKeys: String, CodingKey {
     case clientEventId = "client_event_id"
@@ -17,10 +15,8 @@ struct DayEvent: Codable {
     case categoryId = "category_id"
     case text
     case occurredAt = "occurred_at"
-    case occurredAtLocal = "occurred_at_local"
     case targetClientEventId = "target_client_event_id"
     case correctedAt = "corrected_at"
-    case correctedAtLocal = "corrected_at_local"
   }
 
   init(from decoder: Decoder) throws {
@@ -33,14 +29,6 @@ struct DayEvent: Codable {
     targetClientEventId = try container.decodeIfPresent(String.self, forKey: .targetClientEventId)
     correctedAt = try container.decodeIfPresent(Date.self, forKey: .correctedAt)
 
-    // Older queue entries predate the local timestamp fields. Reconstruct them
-    // from their UTC timestamps so those entries remain synchronizable.
-    occurredAtLocal =
-      try container.decodeIfPresent(String.self, forKey: .occurredAtLocal)
-      ?? TimeFormats.localTimestamp(for: occurredAt)
-    correctedAtLocal =
-      try container.decodeIfPresent(String.self, forKey: .correctedAtLocal)
-      ?? correctedAt.map { TimeFormats.localTimestamp(for: $0) }
   }
 
   init(
@@ -49,22 +37,16 @@ struct DayEvent: Codable {
     categoryId: Int?,
     text: String? = nil,
     occurredAt: Date,
-    occurredAtLocal: String? = nil,
     targetClientEventId: String? = nil,
-    correctedAt: Date? = nil,
-    correctedAtLocal: String? = nil
+    correctedAt: Date? = nil
   ) {
     self.clientEventId = clientEventId
     self.eventType = eventType
     self.categoryId = categoryId
     self.text = text
     self.occurredAt = occurredAt
-    self.occurredAtLocal = occurredAtLocal ?? TimeFormats.localTimestamp(for: occurredAt)
     self.targetClientEventId = targetClientEventId
     self.correctedAt = correctedAt
-    self.correctedAtLocal =
-      correctedAtLocal
-      ?? correctedAt.map { TimeFormats.localTimestamp(for: $0) }
   }
 }
 
@@ -118,14 +100,12 @@ struct AcceptedEvent: Codable {
   let categoryId: Int?
   let text: String? = nil
   let occurredAt: Date
-  let occurredAtLocal: String?
   enum CodingKeys: String, CodingKey {
     case clientEventId = "client_event_id"
     case eventType = "event_type"
     case categoryId = "category_id"
     case text
     case occurredAt = "occurred_at"
-    case occurredAtLocal = "occurred_at_local"
   }
 
 }

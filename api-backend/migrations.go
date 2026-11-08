@@ -533,5 +533,135 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
+		{
+			ID:   12,
+			Name: "utc_actual_blocks_and_explicit_day_offset",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					-- 1. Days that never got an offset (unlocked) take it from their first
+					--    event's local timestamp, otherwise UTC.
+					UPDATE day_records AS records
+					SET timezone_offset_minutes = parsed.offset_minutes
+					FROM (
+						SELECT DISTINCT ON (day_record_id) day_record_id,
+							(CASE WHEN occurred_at_local ~ '-\d{2}:\d{2}$' THEN -1 ELSE 1 END) *
+							(substring(occurred_at_local FROM '[+-](\d{2}):\d{2}$')::int * 60 +
+							 substring(occurred_at_local FROM ':(\d{2})$')::int) AS offset_minutes
+						FROM day_events
+						WHERE occurred_at_local ~ '[+-]\d{2}:\d{2}$'
+						ORDER BY day_record_id, id
+					) AS parsed
+					WHERE records.id = parsed.day_record_id
+					  AND records.timezone_offset_minutes IS NULL;
+					UPDATE day_records SET timezone_offset_minutes = 0 WHERE timezone_offset_minutes IS NULL;
+					ALTER TABLE day_records
+						ALTER COLUMN timezone_offset_minutes SET DEFAULT 0,
+						ALTER COLUMN timezone_offset_minutes SET NOT NULL,
+						DROP COLUMN timezone_offset_locked,
+						ADD COLUMN blocks_edited BOOLEAN NOT NULL DEFAULT FALSE;
+
+					-- 2. Actual blocks: UTC time of day -> UTC instant. A block belongs to
+					--    the first occurrence of that time of day inside the record's local
+					--    day window [calendar_date - offset, +24h).
+					ALTER TABLE actual_blocks ADD COLUMN start_at TIMESTAMPTZ;
+					UPDATE actual_blocks AS blocks
+					SET start_at = (
+						CASE WHEN window_start.candidate < window_start.day_start
+							THEN window_start.candidate + INTERVAL '1 day'
+							ELSE window_start.candidate END
+					) AT TIME ZONE 'UTC'
+					FROM (
+						SELECT blocks_inner.id,
+							records.calendar_date::timestamp -
+								make_interval(mins => records.timezone_offset_minutes) AS day_start,
+							date_trunc('day', records.calendar_date::timestamp -
+								make_interval(mins => records.timezone_offset_minutes)) +
+								blocks_inner.start_time AS candidate
+						FROM actual_blocks AS blocks_inner
+						JOIN day_records AS records ON records.id = blocks_inner.day_record_id
+					) AS window_start
+					WHERE blocks.id = window_start.id;
+					ALTER TABLE actual_blocks ALTER COLUMN start_at SET NOT NULL;
+					DROP INDEX IF EXISTS idx_actual_blocks_record_start;
+					ALTER TABLE actual_blocks DROP COLUMN start_time;
+					CREATE INDEX idx_actual_blocks_record_start ON actual_blocks(day_record_id, start_at);
+
+					-- Stored blocks cannot be told apart as derived or reviewed, so freeze
+					-- every day that is over or has no events; today keeps deriving.
+					UPDATE day_records SET blocks_edited = TRUE
+					WHERE id IN (SELECT day_record_id FROM actual_blocks)
+					  AND (calendar_date < CURRENT_DATE
+					       OR id NOT IN (SELECT day_record_id FROM day_events));
+
+					-- 3. Stringified timestamps are gone: events keep UTC instants only.
+					ALTER TABLE day_events
+						DROP COLUMN occurred_at_local,
+						DROP COLUMN corrected_at_local;
+				`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `
+					ALTER TABLE day_events
+						ADD COLUMN occurred_at_local TEXT,
+						ADD COLUMN corrected_at_local TEXT;
+					UPDATE day_events AS events
+					SET occurred_at_local = to_char(
+							events.occurred_at AT TIME ZONE 'UTC' + make_interval(mins => records.timezone_offset_minutes),
+							'YYYY-MM-DD"T"HH24:MI:SS') ||
+						CASE WHEN records.timezone_offset_minutes < 0 THEN '-' ELSE '+' END ||
+						to_char(abs(records.timezone_offset_minutes) / 60, 'FM00') || ':' ||
+						to_char(abs(records.timezone_offset_minutes) % 60, 'FM00'),
+						corrected_at_local = CASE WHEN events.corrected_at IS NULL THEN NULL ELSE
+							to_char(
+								events.corrected_at AT TIME ZONE 'UTC' + make_interval(mins => records.timezone_offset_minutes),
+								'YYYY-MM-DD"T"HH24:MI:SS') ||
+							CASE WHEN records.timezone_offset_minutes < 0 THEN '-' ELSE '+' END ||
+							to_char(abs(records.timezone_offset_minutes) / 60, 'FM00') || ':' ||
+							to_char(abs(records.timezone_offset_minutes) % 60, 'FM00') END
+					FROM day_records AS records
+					WHERE records.id = events.day_record_id;
+
+					DROP INDEX IF EXISTS idx_actual_blocks_record_start;
+					ALTER TABLE actual_blocks ADD COLUMN start_time TIME;
+					UPDATE actual_blocks SET start_time = (start_at AT TIME ZONE 'UTC')::time;
+					ALTER TABLE actual_blocks ALTER COLUMN start_time SET NOT NULL;
+					ALTER TABLE actual_blocks DROP COLUMN start_at;
+					CREATE INDEX idx_actual_blocks_record_start ON actual_blocks(day_record_id, start_time);
+
+					ALTER TABLE day_records
+						DROP COLUMN blocks_edited,
+						ADD COLUMN timezone_offset_locked BOOLEAN NOT NULL DEFAULT FALSE,
+						ALTER COLUMN timezone_offset_minutes DROP NOT NULL,
+						ALTER COLUMN timezone_offset_minutes DROP DEFAULT;
+					UPDATE day_records SET timezone_offset_locked = TRUE
+					WHERE id IN (SELECT day_record_id FROM day_events);
+				`)
+				return err
+			},
+		},
+		{
+			ID: 13, Name: "remove_legacy_blank_actual_blocks",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `DELETE FROM actual_blocks WHERE block_type = 'blank';
+					ALTER TABLE actual_blocks ADD CONSTRAINT actual_blocks_block_type_check CHECK (block_type = 'actual');`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `ALTER TABLE actual_blocks DROP CONSTRAINT IF EXISTS actual_blocks_block_type_check`)
+				return err
+			},
+		},
+		{
+			ID: 14, Name: "remove_blocks_edited",
+			Up: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `ALTER TABLE day_records DROP COLUMN IF EXISTS blocks_edited`)
+				return err
+			},
+			Down: func(ctx context.Context, db *pgxpool.Pool) error {
+				_, err := db.Exec(ctx, `ALTER TABLE day_records ADD COLUMN IF NOT EXISTS blocks_edited BOOLEAN NOT NULL DEFAULT FALSE`)
+				return err
+			},
+		},
 	}
 }

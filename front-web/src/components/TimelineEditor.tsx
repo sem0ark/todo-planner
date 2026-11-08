@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useRef, type MouseEvent } from "react";
 import type { PlannedBlock } from "../services/templates";
-import type { ActualBlockInput } from "../services/dayRecords";
 import type { Category } from "../services/categories";
 import { DraggableColumn, type LayoutItem } from "./DraggableColumn";
 import { getContrastTextColor } from "../utils/colors";
@@ -36,7 +35,14 @@ function formatTime(time: string): string {
   return time.substring(0, 5);
 }
 
-type EditableBlock = PlannedBlock | ActualBlockInput;
+type ActualTimelineBlock = {
+  category_id: number;
+  block_type: "actual";
+  start_time: string;
+  duration_minutes: number;
+};
+
+type EditableBlock = PlannedBlock | ActualTimelineBlock;
 
 function BlockEditPopover({
   block,
@@ -123,21 +129,11 @@ function BlockEditPopover({
         <select
           value={block.category_id ?? ""}
           onChange={(event) => {
-            if ("block_type" in block) {
-              onUpdate(blockIndex, {
-                category_id: event.target.value
-                  ? parseInt(event.target.value)
-                  : null,
-                block_type: event.target.value ? "actual" : "blank",
-              });
-              return;
-            }
             onUpdate(blockIndex, { category_id: parseInt(event.target.value) });
           }}
           className="w-full px-3 py-2 text-sm text-snow bg-navy/80 border border-slate-grey rounded-lg outline-none focus:border-cloud transition-colors duration-micro"
           autoFocus
         >
-          {"block_type" in block && <option value="">Blank</option>}
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
@@ -217,7 +213,6 @@ export default function TimelineEditor<T extends EditableBlock>({
   categories,
   onChange,
   title = "Snapshot Blocks",
-  allowBlank = false,
   dayRangeStartTime = "00:00:00",
   dayRangeEndTime = "24:00:00",
   snapInterval = SNAP_INTERVAL,
@@ -229,7 +224,6 @@ export default function TimelineEditor<T extends EditableBlock>({
   categories: Category[];
   onChange: (blocks: T[]) => void;
   title?: string;
-  allowBlank?: boolean;
   dayRangeStartTime?: string;
   dayRangeEndTime?: string;
   snapInterval?: number;
@@ -458,21 +452,6 @@ export default function TimelineEditor<T extends EditableBlock>({
     revealNewBlockPosition(newBlockPosition);
   };
 
-  const addBlankBlock = () => {
-    const newBlockPosition = findNewBlockPosition();
-    if (!newBlockPosition) return;
-    onChange([
-      ...blocks,
-      {
-        category_id: null,
-        block_type: "blank",
-        start_time: minutesToTime(newBlockPosition.startMinutes),
-        duration_minutes: newBlockPosition.durationMinutes,
-      } as T,
-    ]);
-    revealNewBlockPosition(newBlockPosition);
-  };
-
   const selectedBlockIndex = useMemo(() => {
     if (!selectedBlockId) return null;
     return (
@@ -508,14 +487,6 @@ export default function TimelineEditor<T extends EditableBlock>({
           >
             + Add Block
           </button>
-          {allowBlank && (
-            <button
-              onClick={addBlankBlock}
-              className="h-9 px-4 text-sm font-semibold text-cloud border border-slate-grey rounded-lg transition-all duration-micro hover:bg-slate-blue/10"
-            >
-              + Blank
-            </button>
-          )}
         </div>
       </div>
       {categories.length === 0 && (
@@ -573,9 +544,7 @@ export default function TimelineEditor<T extends EditableBlock>({
                       <div className="absolute top-1 right-1 w-2 h-2 bg-snow rounded-full shadow" />
                     )}
                     <div className="font-semibold truncate">
-                      {"block_type" in block && block.block_type === "blank"
-                        ? "Blank"
-                        : getCategoryName(item.categoryId)}
+                      {getCategoryName(item.categoryId)}
                     </div>
                     <div className="font-mono text-sm opacity-80 tabular-nums">
                       {formatTime(block.start_time)} · {Math.floor(item.size)}m

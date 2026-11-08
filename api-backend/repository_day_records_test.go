@@ -131,7 +131,7 @@ func TestDayRecordRepository_FindByIDDoesNotCrossUsers(t *testing.T) {
 	}
 }
 
-func TestDayRecordRepository_UpdateTemplateTx(t *testing.T) {
+func TestDayRecordRepository_UpdateTemplate(t *testing.T) {
 	database := setupTestDB(t)
 	user := createTestUser(t, database, "day-record-update-template", "password123")
 	repository := NewDayRecordRepository(database)
@@ -153,7 +153,7 @@ func TestDayRecordRepository_UpdateTemplateTx(t *testing.T) {
 	}
 	defer transaction.Rollback(context.Background())
 
-	updatedRecordID, err := repository.UpdateTemplateTx(
+	updatedRecordID, err := repository.UpdateTemplate(
 		context.Background(),
 		transaction,
 		user.ID,
@@ -183,7 +183,7 @@ func TestDayRecordRepository_UpdateTemplateTx(t *testing.T) {
 	}
 }
 
-func TestDayRecordRepository_UpdateTemplateTxClearsTemplate(t *testing.T) {
+func TestDayRecordRepository_UpdateTemplateClearsTemplate(t *testing.T) {
 	database := setupTestDB(t)
 	user := createTestUser(t, database, "day-record-clear-template", "password123")
 	repository := NewDayRecordRepository(database)
@@ -201,7 +201,7 @@ func TestDayRecordRepository_UpdateTemplateTxClearsTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to begin template-assignment transaction: %v", err)
 	}
-	if _, err := repository.UpdateTemplateTx(
+	if _, err := repository.UpdateTemplate(
 		context.Background(),
 		assignmentTransaction,
 		user.ID,
@@ -222,7 +222,7 @@ func TestDayRecordRepository_UpdateTemplateTxClearsTemplate(t *testing.T) {
 	}
 	defer transaction.Rollback(context.Background())
 
-	updatedRecordID, err := repository.UpdateTemplateTx(
+	updatedRecordID, err := repository.UpdateTemplate(
 		context.Background(), transaction, user.ID, calendarDate, nil, nil,
 	)
 	if err != nil {
@@ -243,7 +243,7 @@ func TestDayRecordRepository_UpdateTemplateTxClearsTemplate(t *testing.T) {
 	}
 }
 
-func TestDayRecordRepository_UpdateTemplateTxRejectsPastOrMissingRecords(t *testing.T) {
+func TestDayRecordRepository_UpdateTemplateRejectsPastOrMissingRecords(t *testing.T) {
 	testCases := []struct {
 		name          string
 		dayOffset     int
@@ -284,7 +284,7 @@ func TestDayRecordRepository_UpdateTemplateTxRejectsPastOrMissingRecords(t *test
 			}
 			defer transaction.Rollback(context.Background())
 
-			_, updateError := NewDayRecordRepository(database).UpdateTemplateTx(
+			_, updateError := NewDayRecordRepository(database).UpdateTemplate(
 				context.Background(), transaction, user.ID, calendarDate, nil, nil,
 			)
 			if !errors.Is(updateError, testCase.expectedError) {
@@ -307,8 +307,8 @@ func createDayRecordForRepositoryTest(
 		t.Fatalf("failed to begin day-record transaction: %v", err)
 	}
 	defer transaction.Rollback(context.Background())
-	createdRecord, err := repository.CreateTx(
-		context.Background(), transaction, userID, calendarDate, nil, nil,
+	createdRecord, err := repository.Create(
+		context.Background(), transaction, userID, calendarDate, 0, nil, nil,
 	)
 	if err != nil {
 		t.Fatalf("failed to create day record: %v", err)

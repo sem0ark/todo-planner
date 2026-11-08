@@ -1,10 +1,10 @@
 # Date and Time Formats
 - **Date-only values** — ISO 8601 - `YYYY-MM-DD` (ISO calendar date). Used for calendar route parameters, `calendar_date`, and `from`/`to` query parameters.
-- **Schedule times** — ISO 8601 - `HH:MM:SS` - define events in scope of a single day, such as actual timeline, planned timeline, template.
-- **UTC event timestamps & Server-managed timestamps** — ISO 8601 - `YYYY-MM-DDTHH:MM:SSZ` in UTC, for example `2026-09-06T14:26:37Z`. Used for `occurred_at`, `created_at`, `updated_at`, etc.
-- **Local event timestamps** — ISO 8601 with a numeric UTC offset, `YYYY-MM-DDTHH:MM:SS±HH:MM`, for example `2026-09-06T14:26:37+02:00`. Used only for `occurred_at_local` and `corrected_at_local`; this is the sole mechanism by which the server learns the offset used for a day.
+- **Schedule times** — ISO 8601 - `HH:MM:SS` - wall-clock times of day for the *plan* (templates, snapshot blocks) and for the tracking day range settings.
+- **UTC timestamps** — ISO 8601 - `YYYY-MM-DDTHH:MM:SSZ` in UTC, for example `2026-09-06T14:26:37Z`. Used for `occurred_at`, `corrected_at`, `created_at`, `updated_at`, and for the `start_at` of actual blocks.
+- **Day timezone offset** — `timezone_offset_minutes`, an integer between `-840` and `840` stored on each day record (default `0`). It is metadata for presentation only: the server never applies it to events/blocks.
 
-Date-only values must not include a time or timezone. Schedule times must not include a date or timezone. UTC timestamp fields use the exact `YYYY-MM-DDTHH:MM:SSZ` representation; local event timestamp fields preserve their numeric offset and do not identify an IANA timezone.
+Date-only values must not include a time or timezone. Schedule times must not include a date or timezone. UTC timestamp fields use the exact `YYYY-MM-DDTHH:MM:SSZ` representation.
 
 # API Summary
 
@@ -49,13 +49,14 @@ Date-only values must not include a time or timezone. Schedule times must not in
 - **Days**
   - `GET /days?from=&to=` - fetch existing records in date range; missing dates are null, and each record includes its snapshot blocks and actual blocks inline
   - `GET /days/{date}` - fetch a single day record
-  - `POST /days/{date}` - create a record and pin the active template snapshot
-  - `POST /days/{date}/events` - append batch of day events; auto-creates and recomputes actual blocks
-  - `PUT /days/{date}/blocks` - replace the actual blocks for a day during review
+  - `POST /days/{date}` - create a record, set its timezone offset (optional, default 0) and pin the active template snapshot
+  - `PUT /days/{date}` - override the timezone offset of an existing record
+  - `POST /days/{date}/events` - append batch of day events to an existing record; derives actual blocks from all events and appends those after the latest stored block
+  - `PUT /days/{date}/blocks` - replace the actual blocks of an existing record during review
   - `PUT /days/{date}/template` - re-resolve or explicitly assign the template and re-pin an active/future day
 
 - **Client Init**
-  - `POST /init` - bootstrap settings, categories, and a day record
+  - `POST /init` - bootstrap settings, categories, and day records (requires the client timezone offset for days it creates)
 - **Backup**
   - `GET /backup` - download a versioned JSON backup of user settings, templates, day records, and events
   - `POST /backup` - merge settings and events from a previously exported backup
@@ -156,8 +157,7 @@ erDiagram
         integer day_template_id FK
         integer snapshot_id FK
         date calendar_date
-        integer timezone_offset_minutes
-        boolean timezone_offset_locked
+        integer timezone_offset_minutes "NOT NULL, default 0; presentation only"
         timestamp created_at
         timestamp updated_at
     }
@@ -171,9 +171,8 @@ erDiagram
         integer category_id FK
         string text "nullable; required for note; max 512 characters"
         timestamp occurred_at
-        string occurred_at_local
         string target_client_event_id
-        timestamp corrected_at
+        timestamp corrected_at "nullable; amendments only"
         timestamp received_at
     }
 
@@ -181,8 +180,8 @@ erDiagram
         integer id PK
         integer day_record_id FK
         integer category_id FK
-        string block_type
-        time start_time
+        string block_type "actual only"
+        timestamp start_at "UTC instant"
         integer duration_minutes
         timestamp updated_at
     }
@@ -252,7 +251,7 @@ The `(user_id, calendar_date)` index must be unique. It is the lookup key for al
 
 `ACTUAL_BLOCK`
 - **`(day_record_id)`** — every day record fetch joins to its actual blocks; high frequency, same pattern as `SNAPSHOT_BLOCK`
-- **`(day_record_id, start_time)`** — analytics and health view need blocks in time order within a day; also used when recomputing blocks after new events.
+- **`(day_record_id, start_at)`** — analytics and health view need blocks in time order within a day.
 
 # API Specification
 
@@ -819,7 +818,6 @@ Day records are the primary data surface for both the live widget and the review
   "calendar_date": "2026-10-30",
   "day_template_id": 5,
   "timezone_offset_minutes": 120,
-  "timezone_offset_locked": true,
   "plan": [
     {
       "category_id": 3,
@@ -827,11 +825,11 @@ Day records are the primary data surface for both the live widget and the review
       "duration_minutes": 60
     }
   ],
-      "actual": [
+  "actual": [
     {
       "category_id": 3,
       "block_type": "actual",
-      "start_time": "09:05:00",
+      "start_at": "2026-10-30T07:05:00Z",
       "duration_minutes": 55
     }
   ],
@@ -840,15 +838,13 @@ Day records are the primary data surface for both the live widget and the review
       "event_type": "transition",
       "category_id": 3,
       "text": null,
-      "occurred_at": "2026-10-30T10:00:00Z",
-      "occurred_at_local": "2026-10-30T12:00:00+02:00"
+      "occurred_at": "2026-10-30T07:05:00Z"
     },
     {
       "event_type": "note",
       "category_id": 3,
       "text": "Some note...",
-      "occurred_at": "2026-10-30T10:00:00Z",
-      "occurred_at_local": "2026-10-30T12:00:00+02:00"
+      "occurred_at": "2026-10-30T07:30:00Z"
     }
   ],
   "created_at": "2026-10-30T08:00:00Z",
@@ -856,7 +852,7 @@ Day records are the primary data surface for both the live widget and the review
 }
 ```
 
-The `snapshot` is `null` when no template is assigned. Actual blocks can be `actual`, `blank`, or server-derived `untracked`.
+`plan` is empty when no template is assigned. With the offset `120` above, a client shows the actual block as 09:05–10:00. Actual blocks have `block_type` `actual` only; gaps between blocks are not returned, clients derive untracked time from them.
 
 ### `GET /days?from=&to=`
 Returns existing day records within the specified inclusive date range. Dates without a day record are null and do not initialize one.
@@ -871,7 +867,6 @@ Returns existing day records within the specified inclusive date range. Dates wi
       "calendar_date": "2026-10-30",
       "day_template_id": 5,
       "timezone_offset_minutes": 120,
-      "timezone_offset_locked": true,
       "plan": [
         {
           "category_id": 3,
@@ -883,7 +878,7 @@ Returns existing day records within the specified inclusive date range. Dates wi
         {
           "category_id": 3,
           "block_type": "actual",
-          "start_time": "09:05:00",
+          "start_at": "2026-10-30T07:05:00Z",
           "duration_minutes": 55
         }
       ],
@@ -892,15 +887,13 @@ Returns existing day records within the specified inclusive date range. Dates wi
           "event_type": "transition",
           "category_id": 3,
           "text": null,
-          "occurred_at": "2026-10-30T10:00:00Z",
-          "occurred_at_local": "2026-10-30T12:00:00+02:00"
+          "occurred_at": "2026-10-30T10:00:00Z"
         },
         {
           "event_type": "note",
           "category_id": 3,
           "text": "Some note...",
-          "occurred_at": "2026-10-30T10:00:00Z",
-          "occurred_at_local": "2026-10-30T12:00:00+02:00"
+          "occurred_at": "2026-10-30T10:00:00Z"
         }
       ],
       "created_at": "2026-10-30T08:00:00Z",
@@ -924,8 +917,7 @@ In case of missing dates:
       "day_record": {
         "calendar_date": "2026-09-07",
         "day_template_id": null,
-        "timezone_offset_minutes": null,
-        "timezone_offset_locked": false,
+        "timezone_offset_minutes": 0,
         "plan": [],
         "actual": [],
         "created_at": "2026-09-07T08:00:00Z",
@@ -949,16 +941,41 @@ Returns the day record for `{date}`. This endpoint does not create a record.
 - `404` — no day record exists for this date
 
 ### `POST /days/{date}`
-Creates a day record for `{date}`. The server resolves the active template for the date, checking schedule overrides first and then the weekly schedule, and pins the most recent snapshot. The URL date is the only input; no body is required.
+Creates a day record for `{date}`. The server resolves the active template for the date, checking schedule overrides first and then the weekly schedule, and pins the most recent snapshot. The body is optional and sets the timezone offset that clients use to present the day; it defaults to `0` (UTC).
+
+**Input (optional):**
+```json
+{
+  "timezone_offset_minutes": "integer (-840..840)"
+}
+```
 
 **Output `201`:** The standard day record shape.
 
 **Errors:**
-- `400` — invalid date format
+- `400` — invalid date format or `timezone_offset_minutes` outside `-840..840`
 - `409` — a day record already exists for this date
 
+### `PUT /days/{date}`
+Overrides the timezone offset of an existing day record. Only the offset changes: events, actual blocks and the pinned template are untouched, because they are stored in UTC.
+
+**Input:**
+```json
+{
+  "timezone_offset_minutes": "integer (-840..840)"
+}
+```
+
+**Output `200`:** The standard day record shape.
+
+**Errors:**
+- `400` — invalid date format, or missing/out-of-range `timezone_offset_minutes`
+- `404` — no day record exists for this date
+
 ### `POST /days/{date}/events`
-Appends one or more day events to the day record identified by `{date}`. If no record exists, the server creates it and resolves the template in the same transaction. Clients can retry a batch safely because `client_event_id` is idempotent. After persisting events, the server recomputes and replaces the actual blocks.
+Appends one or more day events to the existing day record identified by `{date}` (create it first with `POST /days/{date}`).
+- Clients can retry a batch safely because `client_event_id` is idempotent.
+- After persisting events, the server recomputes the full block list from all of the day's events and merges it with the stored blocks. The server does not check that events fall inside the local calendar day.
 
 Native clients may persist events locally and submit them in batches during startup, shutdown, or an explicit user-triggered sync. Clients must retain locally queued events until they receive either the event in `accepted_events` or its ID in `duplicate_client_event_ids`.
 
@@ -982,10 +999,8 @@ Native clients may persist events locally and submit them in batches during star
       "category_id": 4,
       "text": "string, required for note events, maximum 512 characters, otherwise null",
       "occurred_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
-      "occurred_at_local": "string (YYYY-MM-DDTHH:MM:SS±HH:MM)",
       "target_client_event_id": "uuid | null",
-      "corrected_at": "string (YYYY-MM-DDTHH:MM:SSZ) | null",
-      "corrected_at_local": "string (YYYY-MM-DDTHH:MM:SS±HH:MM) | null"
+      "corrected_at": "string (YYYY-MM-DDTHH:MM:SSZ) | null"
     }
   ]
 }
@@ -994,14 +1009,12 @@ Native clients may persist events locally and submit them in batches during star
 **Event Resolution Algorithm:**
 1. **Apply amendments** — For each amendment, update the target event's effective time to `corrected_at`; amendments themselves are not stored as blocks.
 2. **Sort by effective time** — Deterministic order: `(effective_at, server_id)`, never client timestamp alone, to guarantee repeatable results across recomputation.
-3. **Clamp to day boundary** — Events outside the day's 24-hour window are excluded (retained for audit).
-4. **Extract boundaries** — Transitions always drive actual block computation. A confirmation or note with the same category as the current block is attached to that block; a confirmation or note with a different category creates a boundary like a transition.
-5. **Compute blocks** — If zero boundaries exist, the entire day is `untracked`. Otherwise, each boundary closes the prior block and opens a new one. When no later boundary exists, the latest attached confirmation closes the materialized duration of the final block; without one, the open block is not materialized. Time before the first boundary is `untracked`.
+3. **Extract boundaries** — Transitions always drive actual block computation. A confirmation or note with the same category as the current block is attached to that block; a confirmation or note with a different category creates a boundary like a transition.
+4. **Compute blocks** — If zero boundaries exist, there are no blocks. Otherwise, each boundary closes the prior block and opens a new one. When no later boundary exists, the latest attached confirmation closes the materialized duration of the final block; without one, the open block is not materialized. Time before the first boundary has no block.
 
 **Block Computation Rules:**
 - A day with **zero boundaries** has **zero actual blocks** and is entirely `untracked`.
 - The **first block starts at the first boundary's time**, not at the day boundary.
-- **Last block is always `is_open: true`** for today; closed and `is_open: false` for past days.
 - **Out-of-order amendments** (where corrected time creates non-monotonic transitions) cause a **409 Conflict**; the batch is rejected and rolled back.
 
 **Output `200`:**
@@ -1016,14 +1029,14 @@ Native clients may persist events locally and submit them in batches during star
       "duration_minutes": 60
     }
   ],
+  "timezone_offset_minutes": 120,
   "accepted_events": [
     {
       "client_event_id": "uuid",
       "event_type": "transition",
       "category_id": 4,
       "text": null,
-      "occurred_at": "2026-09-06T14:26:37Z",
-      "occurred_at_local": "2026-09-06T16:26:37+02:00"
+      "occurred_at": "2026-09-06T14:26:37Z"
     }
   ],
   "duplicate_client_event_ids": [
@@ -1033,9 +1046,8 @@ Native clients may persist events locally and submit them in batches during star
     {
       "category_id": 4,
       "block_type": "actual",
-      "start_time": "14:26:00",
-      "duration_minutes": 0,
-      "is_open": true
+      "start_at": "2026-09-06T14:26:37Z",
+      "duration_minutes": 0
     }
   ],
   "events": [
@@ -1043,8 +1055,7 @@ Native clients may persist events locally and submit them in batches during star
       "event_type": "note",
       "category_id": 4,
       "text": "Some note...",
-      "occurred_at": "2026-09-06T14:26:37Z",
-      "occurred_at_local": "2026-09-06T16:26:37+02:00"
+      "occurred_at": "2026-09-06T14:26:37Z"
     }
   ],
   "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
@@ -1055,32 +1066,32 @@ Native clients may persist events locally and submit them in batches during star
 **Errors:**
 - `400` — invalid date, missing device_id, invalid event fields, incomplete amendment
 - `409` — amendment creates non-monotonic transitions (e.g., reordering events past their successors)
-- `404` — device not found or does not belong to user
+- `404` — day record does not exist, or device not found or does not belong to user
 
 ### `PUT /days/{date}/blocks`
-Creates the day record when `{date}` does not yet have one, then replaces the complete actual block list. This is used during review to correct or reconstruct the actual timeline. When creating the record, the server resolves and pins the applicable template. Untracked gaps are derived by the server and returned in the standard day record response.
+Replaces the complete actual block list of an existing day record. This is used during review to correct or reconstruct the actual timeline. Later events only extend the list past its last block, as described for `POST /days/{date}/events`. Gaps are not returned; clients derive untracked time.
 
 **Input:**
 ```json
 {
   "actual": [
     {
-      "category_id": "integer | null",
-      "block_type": "string (actual | blank)",
-      "start_time": "string (HH:MM:SS)",
+      "category_id": "integer",
+      "block_type": "actual",
+      "start_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
       "duration_minutes": "integer"
     }
   ]
 }
 ```
 
-`category_id` is required for `actual` blocks and must be `null` for `blank` blocks. Actual and blank blocks must use 15-minute start and duration increments, have a minimum duration of 30 minutes, and must not overlap.
+`block_type` must be `actual` and `category_id` is required. `start_at` is a UTC instant; clients convert from the day's local wall clock using `timezone_offset_minutes`. The server does not shift it. Later blocks in the list replace the covered parts of earlier ones, so stored blocks never overlap. Block grid rules (15-minute increments, 30-minute minimum) are enforced by clients.
 
 **Output `200`:** The standard day record shape.
 
 **Errors:**
-- `400` — invalid block fields, overlapping blocks, invalid 15-minute boundary, duration below 30 minutes or not a 15-minute multiple, unknown category_id
-- `404` — day record does not belong to the user
+- `400` — invalid block fields, unknown category_id
+- `404` — day record does not exist
 
 ### `PUT /days/{date}/template`
 Changes the planned template for an active or future day record without changing its events or actual blocks. If `day_template_id` is `null`, the server resolves the template from the date override and weekly schedule. If an ID is provided, the server uses that template's latest snapshot.
@@ -1106,13 +1117,14 @@ Changes the planned template for an active or future day record without changing
 ## Client Init
 
 ### `POST /init`
-Composite bootstrap for native clients. It returns settings, active categories, and a day record in one request. The day record is created if it does not exist.
+Composite bootstrap for native clients. It returns settings, active categories, and the day records for 7 consecutive days starting at `calendar_date`. Missing day records are created with the supplied offset; existing records keep their own offset.
 
 **Input:**
 ```json
 {
   "device_id": 12,
-  "calendar_date": "string (YYYY-MM-DD)"
+  "calendar_date": "string (YYYY-MM-DD)",
+  "timezone_offset_minutes": "integer (-840..840), required"
 }
 ```
 
@@ -1120,7 +1132,8 @@ Composite bootstrap for native clients. It returns settings, active categories, 
 ```json
 {
   "settings": {
-    "day_boundary_time": "string (HH:MM:SS)",
+    "day_range_start_time": "string (HH:MM:SS)",
+    "day_range_end_time": "string (HH:MM:SS)",
     "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
   },
   "categories": [
@@ -1132,50 +1145,25 @@ Composite bootstrap for native clients. It returns settings, active categories, 
       "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
     }
   ],
-  "day_record": {
-    "calendar_date": "string (YYYY-MM-DD)",
-    "day_template_id": "integer",
-    "timezone_offset_minutes": "integer | null",
-    "timezone_offset_locked": "boolean",
-    "plan": [
-      {
-        "category_id": "integer",
-        "start_time": "string (HH:MM:SS)",
-        "duration_minutes": "integer"
-      }
-    ],
-    "actual": [
-      {
-        "category_id": "integer",
-        "block_type": "string",
-        "start_time": "string (HH:MM:SS)",
-        "duration_minutes": "integer"
-      }
-    ],
-    "created_at": "string (YYYY-MM-DDTHH:MM:SSZ)",
-    "updated_at": "string (YYYY-MM-DDTHH:MM:SSZ)"
-  }
+  "day_records": [
+    "standard day record shape, 7 entries"
+  ]
 }
 ```
 
 **Errors:**
-- `400` — invalid date
+- `400` — invalid date, or missing/out-of-range `timezone_offset_minutes`
 - `404` — device not found or does not belong to user
 
 ## Backup
 
 ### `GET /backup`
-Downloads a versioned JSON backup for the authenticated user. The backup includes
-settings, categories, template groups, templates with their current snapshots,
-weekly schedule, future overrides, day records, and raw day events. The response
-has `Content-Disposition: attachment; filename="todo-planner-backup.json"`.
+Downloads a versioned JSON backup for the authenticated user. The backup includes settings, categories, template groups, templates with their current snapshots, weekly schedule, future overrides, day records, and raw day events. The response has `Content-Disposition: attachment; filename="todo-planner-backup.json"`. The export is backup version `2`.
 
 ### `POST /backup`
-Merges settings, day actual blocks, timezone metadata, and raw events from a
-version `1` backup. Events are deduplicated by their `client_event_id` and are
-stored without recomputing actual blocks. Day plan blocks include their explicit
-`start_time` values. Database IDs are not used to select another user's records.
-The response contains `imported` and `imported_events`.
+- Merges settings, day actual blocks, day timezone offsets, and raw events from a version `1` or `2` backup. Events are deduplicated by their `client_event_id` and are stored without recomputing actual blocks.
+- Version `2` backups store actual blocks as UTC `start_at` instants; version `1` blocks carried a UTC `start_time` of day, which is converted to the first matching instant inside the day's local window (`calendar_date` shifted by the day's offset).
+- Version `1` days that have blocks are imported as manually edited. Day plan blocks include their explicit `start_time` values. Database IDs are not used to select another user's records. The response contains `imported` and `imported_events`.
 
 **Errors:**
 - `400` — malformed JSON or unsupported backup version

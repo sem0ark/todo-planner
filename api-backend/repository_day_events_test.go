@@ -13,7 +13,7 @@ func TestDayEventRepository_InsertAndFindByRecordID(t *testing.T) {
 		t.Fatalf("failed to create device: %v", err)
 	}
 	record, err := newDayTrackingServiceForTest(database).CreateDayRecord(
-		context.Background(), user.ID, mustCalendarDate("2026-09-06"),
+		context.Background(), user.ID, mustCalendarDate("2026-09-06"), 0,
 	)
 	if err != nil {
 		t.Fatalf("failed to create day record: %v", err)
@@ -23,16 +23,15 @@ func TestDayEventRepository_InsertAndFindByRecordID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to begin transaction: %v", err)
 	}
-	createdEvents, duplicateEventIDs, err := eventRepository.InsertTx(
+	createdEvents, duplicateEventIDs, err := eventRepository.Insert(
 		context.Background(),
 		transaction,
 		record.ID,
 		device.ID,
 		[]DayEventInput{{
-			ClientEventID:   "repository-event",
-			EventType:       "note",
-			OccurredAt:      parseTime("2026-09-06T09:00:00Z"),
-			OccurredAtLocal: "2026-09-06T09:00:00+00:00",
+			ClientEventID: "repository-event",
+			EventType:     "note",
+			OccurredAt:    parseTime("2026-09-06T09:00:00Z"),
 		}},
 	)
 	if err != nil {
@@ -45,7 +44,7 @@ func TestDayEventRepository_InsertAndFindByRecordID(t *testing.T) {
 	if len(createdEvents) != 1 || len(duplicateEventIDs) != 0 {
 		t.Fatalf("unexpected insert result: events=%d duplicates=%v", len(createdEvents), duplicateEventIDs)
 	}
-	loadedEvents, err := eventRepository.FindByRecordID(context.Background(), record.ID)
+	loadedEvents, err := eventRepository.FindByRecordID(context.Background(), database, record.ID)
 	if err != nil {
 		t.Fatalf("failed to load events: %v", err)
 	}

@@ -13,6 +13,7 @@ final class ModelsAndInitializationTests: WidgetTestCase {
         "categories": [],
         "day_records": [{
           "calendar_date": "2026-09-06",
+          "timezone_offset_minutes": 120,
           "day_template_id": 5,
           "plan": [
               {
@@ -42,6 +43,7 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assert(
       response.settings.updatedAt.timeIntervalSince1970 > 0, "settings timestamp should decode")
     try assertEqual(response.dayRecords[0].calendarDate, "2026-09-06")
+    try assertEqual(response.dayRecords[0].timezoneOffsetMinutes, 120)
     try assertEqual(response.dayRecords[0].plan[0].startTime, "08:00:00")
   }
 
@@ -99,7 +101,6 @@ final class ModelsAndInitializationTests: WidgetTestCase {
       eventType: "amendment",
       categoryId: 3,
       occurredAt: Fixtures.now,
-      occurredAtLocal: TimeFormats.localTimestamp(for: Fixtures.now),
       targetClientEventId: "event-0",
       correctedAt: Fixtures.now
     )
@@ -111,7 +112,8 @@ final class ModelsAndInitializationTests: WidgetTestCase {
     try assertEqual(object?["client_event_id"] as? String, "event-1")
     try assertEqual(object?["event_type"] as? String, "amendment")
     try assertEqual(object?["target_client_event_id"] as? String, "event-0")
-    try assert(object?["occurred_at_local"] != nil, "occurred_at_local should be encoded")
+    try assert(object?["occurred_at_local"] == nil, "occurred_at_local must not be encoded")
+    try assert(object?["corrected_at_local"] == nil, "corrected_at_local must not be encoded")
   }
 
   func test_init_freshDay_createsRecord() async throws {

@@ -6,15 +6,17 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func computeActualTimelineForTest(t *testing.T, events []DayEvent, referenceTime time.Time) []ComputedBlock {
+func computeActualTimelineForTest(t *testing.T, events []DayEvent, referenceTime time.Time) []ActualBlockInput {
 	t.Helper()
-	blocks, err := computeTimeline(events)
+	blocks, err := computeDayTimeline(events)
 	if err != nil {
-		t.Fatalf("computeTimeline failed: %v", err)
+		t.Fatalf("computeDayTimeline failed: %v", err)
 	}
-	actualBlocks := make([]ComputedBlock, 0, len(blocks))
+	actualBlocks := make([]ActualBlockInput, 0, len(blocks))
 	for _, block := range blocks {
 		if block.BlockType == "actual" {
 			actualBlocks = append(actualBlocks, block)
@@ -44,7 +46,7 @@ func TestDayTrackingService_CreateDayRecord(t *testing.T) {
 	calendarDate := mustCalendarDate("2026-07-07")
 
 	// Act
-	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate)
+	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate, 0)
 
 	// Assert
 	if err != nil {
@@ -104,7 +106,7 @@ func TestDayTrackingService_UpdateTemplateByDate(t *testing.T) {
 		t.Fatalf("failed to set up weekly schedule: %v", err)
 	}
 	if _, err := newDayTrackingServiceForTest(database).CreateDayRecord(
-		context.Background(), user.ID, calendarDate,
+		context.Background(), user.ID, calendarDate, 0,
 	); err != nil {
 		t.Fatalf("failed to create day record: %v", err)
 	}
@@ -147,7 +149,7 @@ func TestDayTrackingService_UpdateTemplateByDateRejectsInvalidTemplate(t *testin
 	otherUsersTemplate := createTestDayTemplate(t, database, otherUser.ID, "Private", nil)
 	calendarDate := calendarDateRelativeToToday(t, database, 1)
 	createdRecord, err := newDayTrackingServiceForTest(database).CreateDayRecord(
-		context.Background(), owner.ID, calendarDate,
+		context.Background(), owner.ID, calendarDate, 0,
 	)
 	if err != nil {
 		t.Fatalf("failed to create day record: %v", err)
@@ -228,7 +230,7 @@ func TestDayTrackingService_CreateDayRecordWithoutTemplate(t *testing.T) {
 	calendarDate := mustCalendarDate("2026-07-07")
 
 	// Act
-	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate)
+	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate, 0)
 
 	// Assert
 	if err != nil {
@@ -242,187 +244,238 @@ func TestDayTrackingService_CreateDayRecordWithoutTemplate(t *testing.T) {
 	}
 }
 
-func TestDayTrackingService_CreateEventsByDate_ConcurrentDateCreation(t *testing.T) {
+func TestDayTrackingService_CreateEventsByDate_RequiresExistingDay(t *testing.T) {
 	database := setupTestDB(t)
-	user := createTestUser(t, database, "concurrent-event-user", "password123")
+	user := createTestUser(t, database, "missing-day-event-user", "password123")
 	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
 	if err != nil {
 		t.Fatalf("failed to create device: %v", err)
 	}
 
-	start := make(chan struct{})
-	results := make(chan error, 2)
-	var waitGroup sync.WaitGroup
-	waitGroup.Add(2)
-	for range 2 {
-		go func() {
-			defer waitGroup.Done()
-			<-start
-			_, createError := newDayTrackingServiceForTest(database).CreateEventsByDate(
-				context.Background(),
-				user.ID,
-				mustCalendarDate("2026-09-06"),
-				device.ID,
-				nil,
-			)
-			results <- createError
-		}()
+	_, err = newDayTrackingServiceForTest(database).CreateEventsByDate(
+		context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, nil,
+	)
+	if !errors.Is(err, ErrDayRecordNotFound) {
+		t.Fatalf("expected ErrDayRecordNotFound, got %v", err)
 	}
-	close(start)
-	waitGroup.Wait()
-	close(results)
-
-	for createError := range results {
-		if createError != nil {
-			t.Fatalf("concurrent event creation failed: %v", createError)
-		}
-	}
-
 	var recordCount int
 	if err := database.QueryRow(context.Background(), `
-		SELECT COUNT(*) FROM day_records WHERE user_id = $1 AND calendar_date = $2
-	`, user.ID, mustCalendarDate("2026-09-06")).Scan(&recordCount); err != nil {
-		t.Fatalf("failed to count created records: %v", err)
+		SELECT COUNT(*) FROM day_records WHERE user_id = $1
+	`, user.ID).Scan(&recordCount); err != nil {
+		t.Fatalf("failed to count records: %v", err)
 	}
-	if recordCount != 1 {
-		t.Fatalf("expected one day record, got %d", recordCount)
+	if recordCount != 0 {
+		t.Fatalf("expected no day record to be auto-created, got %d", recordCount)
 	}
 }
 
-func TestDayTrackingService_CreateDayRecordStartsWithUnlockedOffset(t *testing.T) {
+func TestDayTrackingService_CreateDayRecordStoresExplicitOffset(t *testing.T) {
 	database := setupTestDB(t)
-	user := createTestUser(t, database, "unlocked-offset-user", "password123")
+	user := createTestUser(t, database, "explicit-offset-user", "password123")
+	service := newDayTrackingServiceForTest(database)
 
-	record, err := newDayTrackingServiceForTest(database).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
+	defaultRecord, err := service.CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-06"), 0)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	if record.TimezoneOffsetMinutes != nil {
-		t.Fatalf("expected nil timezone offset, got %v", *record.TimezoneOffsetMinutes)
+	if defaultRecord.TimezoneOffsetMinutes != 0 {
+		t.Fatalf("unexpected default record: %+v", defaultRecord)
 	}
-	if record.TimezoneOffsetLocked {
-		t.Fatal("expected newly created day to have an unlocked timezone offset")
+	offsetRecord, err := service.CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-07"), 120)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if offsetRecord.TimezoneOffsetMinutes != 120 {
+		t.Fatalf("expected offset 120, got %d", offsetRecord.TimezoneOffsetMinutes)
 	}
 }
 
-func TestDayTrackingService_LocksFirstEligibleEventOffset(t *testing.T) {
+func TestDayTrackingService_UpdateTimezoneOffsetKeepsEventsAndBlocks(t *testing.T) {
 	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "first-offset-user", "password123")
+	user := createTestUser(t, database, "update-offset-user", "password123")
 	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
-	device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
-	if err != nil {
-		t.Fatalf("failed to create device: %v", err)
+	device := createTestDevice(t, database, user.ID)
+	service := newDayTrackingServiceForTest(database)
+	date := mustCalendarDate("2026-09-06")
+	if _, err := service.CreateDayRecord(context.Background(), user.ID, date, 0); err != nil {
+		t.Fatalf("Create failed: %v", err)
 	}
-
-	events := []DayEventInput{
-		{
-			ClientEventID:   "transition-first",
-			EventType:       "transition",
-			CategoryID:      &category.ID,
-			OccurredAt:      parseTime("2026-09-06T08:00:00Z"),
-			OccurredAtLocal: "2026-09-06T10:00:00+02:00",
-		},
-		{
-			ClientEventID:   "transition-second",
-			EventType:       "transition",
-			CategoryID:      &category.ID,
-			OccurredAt:      parseTime("2026-09-06T09:00:00Z"),
-			OccurredAtLocal: "2026-09-06T04:00:00-05:00",
-		},
-	}
-	_, err = newDayTrackingServiceForTest(database).CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, events)
-	if err != nil {
+	if _, err := service.CreateEventsByDate(context.Background(), user.ID, date, device.ID, []DayEventInput{
+		transitionInput("e1", &category.ID, "2026-09-06T08:00:00Z"),
+		transitionInput("e2", &category.ID, "2026-09-06T09:00:00Z"),
+	}); err != nil {
 		t.Fatalf("CreateEventsByDate failed: %v", err)
 	}
 
-	record, err := repository.FindByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
+	record, err := service.UpdateTimezoneOffset(context.Background(), user.ID, date, -300)
 	if err != nil {
-		t.Fatalf("FindByDate failed: %v", err)
+		t.Fatalf("UpdateTimezoneOffset failed: %v", err)
 	}
-	if record.TimezoneOffsetMinutes == nil || *record.TimezoneOffsetMinutes != 120 {
-		t.Fatalf("expected first event offset 120, got %v", record.TimezoneOffsetMinutes)
+	if record.TimezoneOffsetMinutes != -300 {
+		t.Fatalf("expected offset -300, got %d", record.TimezoneOffsetMinutes)
 	}
-	if !record.TimezoneOffsetLocked {
-		t.Fatal("expected timezone offset to be locked")
+	if len(record.Events) != 2 || len(record.ActualBlocks) != 1 ||
+		!record.ActualBlocks[0].StartAt.Equal(parseTime("2026-09-06T08:00:00Z")) {
+		t.Fatalf("expected events and blocks untouched, got %+v", record)
+	}
+
+	_, err = service.UpdateTimezoneOffset(context.Background(), user.ID, mustCalendarDate("2026-09-09"), 60)
+	if !errors.Is(err, ErrDayRecordNotFound) {
+		t.Fatalf("expected ErrDayRecordNotFound, got %v", err)
 	}
 }
 
-func TestDayTrackingService_AmendmentOffsetValidation(t *testing.T) {
-	testCases := []struct {
-		name        string
-		correctedAt string
-		expectedErr error
-	}{
-		{name: "matching offset", correctedAt: "2026-09-06T11:00:00+02:00"},
-		{name: "mismatched offset", correctedAt: "2026-09-06T04:00:00-05:00", expectedErr: ErrAmendmentOffsetMismatch},
+func createTestDevice(t *testing.T, database *pgxpool.Pool, userID int) *Device {
+	t.Helper()
+	device, err := NewDeviceRepository(database).Create(context.Background(), userID, "desktop")
+	if err != nil {
+		t.Fatalf("failed to create device: %v", err)
 	}
+	return device
+}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			database := setupTestDB(t)
-			user := createTestUser(t, database, "amendment-offset-"+testCase.name, "password123")
-			category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
-			correctedAt := parseTime("2026-09-06T09:00:00Z")
-			device, err := NewDeviceRepository(database).Create(context.Background(), user.ID, "desktop")
-			if err != nil {
-				t.Fatalf("failed to create device: %v", err)
-			}
-			_, err = newDayTrackingServiceForTest(database).CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, []DayEventInput{{
-				ClientEventID:   "target-transition",
-				EventType:       "transition",
-				CategoryID:      &category.ID,
-				OccurredAt:      parseTime("2026-09-06T08:00:00Z"),
-				OccurredAtLocal: "2026-09-06T10:00:00+02:00",
-			}})
-			if err != nil {
-				t.Fatalf("failed to create target event: %v", err)
-			}
-
-			_, err = newDayTrackingServiceForTest(database).CreateEventsByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"), device.ID, []DayEventInput{{
-				ClientEventID:       "amendment-event",
-				EventType:           "amendment",
-				CategoryID:          &category.ID,
-				OccurredAt:          parseTime("2026-09-06T12:00:00Z"),
-				OccurredAtLocal:     "2026-09-06T14:00:00+02:00",
-				TargetClientEventID: "target-transition",
-				CorrectedAt:         &correctedAt,
-				CorrectedAtLocal:    &testCase.correctedAt,
-			}})
-			if err != testCase.expectedErr {
-				t.Fatalf("expected error %v, got %v", testCase.expectedErr, err)
-			}
-		})
+func transitionInput(clientEventID string, categoryID *int, occurredAt string) DayEventInput {
+	return DayEventInput{
+		ClientEventID: clientEventID,
+		EventType:     "transition",
+		CategoryID:    categoryID,
+		OccurredAt:    parseTime(occurredAt),
 	}
 }
 
-func TestDayTrackingService_ManualBlocksLockOffsetOnlyOnce(t *testing.T) {
+func loadActualBlocksForTest(t *testing.T, database *pgxpool.Pool, recordID int) []ActualBlock {
+	t.Helper()
+	blocks, err := NewActualBlockRepository(database).FindByRecordID(context.Background(), database, recordID)
+	if err != nil {
+		t.Fatalf("failed to load blocks: %v", err)
+	}
+	return blocks
+}
+
+func TestDayTrackingService_EventsRebuildBlocksFromAllEvents(t *testing.T) {
 	database := setupTestDB(t)
-	repository := NewDayRecordRepository(database)
-	user := createTestUser(t, database, "manual-offset-user", "password123")
-	record, err := newDayTrackingServiceForTest(database).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
+	user := createTestUser(t, database, "rebuild-user", "password123")
+	first := createTestCategory(t, database, user.ID, "First", "#4A90D9")
+	second := createTestCategory(t, database, user.ID, "Second", "#D94A4A")
+	device := createTestDevice(t, database, user.ID)
+	service := newDayTrackingServiceForTest(database)
+	date := mustCalendarDate("2026-09-06")
+	record, err := service.CreateDayRecord(context.Background(), user.ID, date, 120)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	blocks := []ActualBlockInput{{BlockType: "blank", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 30}}
-	initialOffsetMinutes := 120
-	secondOffsetMinutes := -300
 
-	_, err = newDayTrackingServiceForTest(database).ReplaceActualBlocks(context.Background(), record.ID, user.ID, blocks, &initialOffsetMinutes)
-	if err != nil {
-		t.Fatalf("initial ReplaceActualBlocks failed: %v", err)
+	// Act: first batch, then a second batch that extends the timeline.
+	if _, err := service.CreateEventsByDate(context.Background(), user.ID, date, device.ID, []DayEventInput{
+		transitionInput("e1", &first.ID, "2026-09-06T08:00:00Z"),
+		transitionInput("e2", &second.ID, "2026-09-06T09:00:00Z"),
+	}); err != nil {
+		t.Fatalf("first batch failed: %v", err)
 	}
-	_, err = newDayTrackingServiceForTest(database).ReplaceActualBlocks(context.Background(), record.ID, user.ID, blocks, &secondOffsetMinutes)
-	if err != nil {
-		t.Fatalf("locked ReplaceActualBlocks failed: %v", err)
+	blocks := loadActualBlocksForTest(t, database, record.ID)
+	if len(blocks) != 1 || blocks[0].DurationMinutes != 60 ||
+		!blocks[0].StartAt.Equal(parseTime("2026-09-06T08:00:00Z")) {
+		t.Fatalf("unexpected blocks after first batch: %+v", blocks)
+	}
+	if _, err := service.CreateEventsByDate(context.Background(), user.ID, date, device.ID, []DayEventInput{
+		transitionInput("e3", &first.ID, "2026-09-06T11:00:00Z"),
+	}); err != nil {
+		t.Fatalf("second batch failed: %v", err)
 	}
 
-	reloaded, err := repository.FindByDate(context.Background(), user.ID, mustCalendarDate("2026-09-06"))
-	if err != nil {
-		t.Fatalf("FindByDate failed: %v", err)
+	// Assert: blocks are the full derivation, StartAt holds the full instant.
+	blocks = loadActualBlocksForTest(t, database, record.ID)
+	if len(blocks) != 2 {
+		t.Fatalf("expected two blocks, got %+v", blocks)
 	}
-	if reloaded.TimezoneOffsetMinutes == nil || *reloaded.TimezoneOffsetMinutes != 120 {
-		t.Fatalf("expected original offset 120 to remain locked, got %v", reloaded.TimezoneOffsetMinutes)
+	if !blocks[1].StartAt.Equal(parseTime("2026-09-06T09:00:00Z")) || blocks[1].DurationMinutes != 120 ||
+		blocks[1].CategoryID == nil || *blocks[1].CategoryID != second.ID {
+		t.Fatalf("unexpected second block: %+v", blocks[1])
+	}
+}
+
+func TestDayTrackingService_AmendmentDoesNotRewriteStoredBlocks(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "amend-rederive-user", "password123")
+	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
+	device := createTestDevice(t, database, user.ID)
+	service := newDayTrackingServiceForTest(database)
+	date := mustCalendarDate("2026-09-06")
+	record, err := service.CreateDayRecord(context.Background(), user.ID, date, 0)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if _, err := service.CreateEventsByDate(context.Background(), user.ID, date, device.ID, []DayEventInput{
+		transitionInput("target", &category.ID, "2026-09-06T08:00:00Z"),
+		transitionInput("end", &category.ID, "2026-09-06T10:00:00Z"),
+	}); err != nil {
+		t.Fatalf("events failed: %v", err)
+	}
+	correctedAt := parseTime("2026-09-06T08:30:00Z")
+
+	if _, err := service.CreateEventsByDate(context.Background(), user.ID, date, device.ID, []DayEventInput{{
+		ClientEventID:       "amend",
+		EventType:           "amendment",
+		OccurredAt:          parseTime("2026-09-06T10:05:00Z"),
+		TargetClientEventID: "target",
+		CorrectedAt:         &correctedAt,
+	}}); err != nil {
+		t.Fatalf("amendment failed: %v", err)
+	}
+
+	blocks := loadActualBlocksForTest(t, database, record.ID)
+	if len(blocks) != 1 || !blocks[0].StartAt.Equal(parseTime("2026-09-06T08:00:00Z")) || blocks[0].DurationMinutes != 120 {
+		t.Fatalf("expected stored block to remain unchanged, got %+v", blocks)
+	}
+}
+
+func TestDayTrackingService_ManualBlocksSurviveLaterEvents(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database, "manual-blocks-user", "password123")
+	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
+	device := createTestDevice(t, database, user.ID)
+	service := newDayTrackingServiceForTest(database)
+	date := mustCalendarDate("2026-09-06")
+	record, err := service.CreateDayRecord(context.Background(), user.ID, date, 0)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	// Events before the edit are replaced by the edit.
+	if _, err := service.CreateEventsByDate(context.Background(), user.ID, date, device.ID, []DayEventInput{
+		transitionInput("e1", &category.ID, "2026-09-06T06:00:00Z"),
+		transitionInput("e2", &category.ID, "2026-09-06T07:00:00Z"),
+	}); err != nil {
+		t.Fatalf("events failed: %v", err)
+	}
+	if got := loadActualBlocksForTest(t, database, record.ID); len(got) != 1 {
+		t.Fatalf("expected derived block before edit, got %+v", got)
+	}
+	manual := []ActualBlockInput{{
+		CategoryID: &category.ID, BlockType: "actual",
+		StartAt: parseTime("2026-09-06T09:00:00Z"), DurationMinutes: 30,
+	}}
+	if _, err := service.ReplaceActualBlocks(context.Background(), record.ID, user.ID, manual); err != nil {
+		t.Fatalf("ReplaceActualBlocks failed: %v", err)
+	}
+	blocks := loadActualBlocksForTest(t, database, record.ID)
+	if len(blocks) != 1 || !blocks[0].StartAt.Equal(parseTime("2026-09-06T09:00:00Z")) {
+		t.Fatalf("expected the edit to replace event-derived blocks, got %+v", blocks)
+	}
+
+	result, err := service.CreateEventsByDate(context.Background(), user.ID, date, device.ID, []DayEventInput{
+		transitionInput("e3", &category.ID, "2026-09-06T12:00:00Z"),
+		transitionInput("e4", &category.ID, "2026-09-06T13:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("later events failed: %v", err)
+	}
+
+	blocks = loadActualBlocksForTest(t, database, record.ID)
+	if len(blocks) != 1 || !blocks[0].StartAt.Equal(parseTime("2026-09-06T09:00:00Z")) || blocks[0].DurationMinutes != 240 {
+		t.Fatalf("expected manual block to extend with later events, got %+v", blocks)
+	}
+	if len(result.Record.Events) != 4 {
+		t.Fatalf("expected all events kept, got %d", len(result.Record.Events))
 	}
 }
 
@@ -433,13 +486,13 @@ func TestDayTrackingService_CreateDayRecordRejectsDuplicateDate(t *testing.T) {
 	ctx := context.Background()
 
 	calendarDate := mustCalendarDate("2026-07-07")
-	_, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate)
+	_, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate, 0)
 	if err != nil {
 		t.Fatalf("First create failed: %v", err)
 	}
 
 	// Act
-	_, err = newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate)
+	_, err = newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, calendarDate, 0)
 
 	// Assert
 	if err == nil {
@@ -483,7 +536,7 @@ func TestDayTrackingService_CreateDayRecordUsesDateOverride(t *testing.T) {
 	t.Logf("Stored override template_id: %v", storedTemplateID)
 
 	// Act
-	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, date)
+	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, date, 0)
 
 	// Assert
 	if err != nil {
@@ -514,7 +567,7 @@ func TestDayTrackingService_CreateDayRecordUsesWeeklySchedule(t *testing.T) {
 
 	// Act
 	date := mustCalendarDate("2026-07-07") // Monday
-	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, date)
+	record, err := newDayTrackingServiceForTest(db).CreateDayRecord(ctx, user.ID, date, 0)
 
 	// Assert
 	if err != nil {
@@ -711,7 +764,7 @@ func TestComputeActualBlocks_EqualTimestampTransitionsKeepLastObservation(t *tes
 	}
 
 	// Act
-	blocks, err := computeTimeline(events)
+	blocks, err := computeDayTimeline(events)
 
 	// Assert
 	if err != nil {
@@ -792,26 +845,25 @@ func TestDayTrackingService_CreateEventsByDate_AmendmentOrdering(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create device: %v", err)
 			}
+			if _, err := newDayTrackingServiceForTest(database).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-06"), 0); err != nil {
+				t.Fatalf("failed to create day record: %v", err)
+			}
 			targetOccurredAt := parseTime("2026-09-06T" + testCase.targetOccurredAt + "Z")
 			amendmentOccurredAt := parseTime("2026-09-06T" + testCase.amendmentAt + "Z")
-			correctedAtLocal := "2026-09-06T08:30:00+00:00"
 			correctedAt := parseTime("2026-09-06T08:30:00Z")
 			inputs := []DayEventInput{
 				{
-					ClientEventID:   "target-event",
-					EventType:       "transition",
-					CategoryID:      &category.ID,
-					OccurredAt:      targetOccurredAt,
-					OccurredAtLocal: "2026-09-06T10:00:00+00:00",
+					ClientEventID: "target-event",
+					EventType:     "transition",
+					CategoryID:    &category.ID,
+					OccurredAt:    targetOccurredAt,
 				},
 				{
 					ClientEventID:       "amendment-event",
 					EventType:           "amendment",
 					OccurredAt:          amendmentOccurredAt,
-					OccurredAtLocal:     "2026-09-06T11:00:00+00:00",
 					TargetClientEventID: "target-event",
 					CorrectedAt:         &correctedAt,
-					CorrectedAtLocal:    &correctedAtLocal,
 				},
 			}
 			if amendmentOccurredAt.Before(targetOccurredAt) {
@@ -837,12 +889,14 @@ func TestDayTrackingService_CreateEventsByDate_ConcurrentDuplicate(t *testing.T)
 	if err != nil {
 		t.Fatalf("failed to create device: %v", err)
 	}
+	if _, err := newDayTrackingServiceForTest(database).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-06"), 0); err != nil {
+		t.Fatalf("failed to create day record: %v", err)
+	}
 	input := []DayEventInput{{
-		ClientEventID:   "concurrent-event",
-		EventType:       "transition",
-		CategoryID:      &category.ID,
-		OccurredAt:      parseTime("2026-09-06T09:00:00Z"),
-		OccurredAtLocal: "2026-09-06T09:00:00+00:00",
+		ClientEventID: "concurrent-event",
+		EventType:     "transition",
+		CategoryID:    &category.ID,
+		OccurredAt:    parseTime("2026-09-06T09:00:00Z"),
 	}}
 
 	start := make(chan struct{})
@@ -885,10 +939,10 @@ func TestDayTrackingService_ReplaceActualBlocks_RollsBackPartialBatch(t *testing
 	db := setupTestDB(t)
 	user := createTestUser(t, db, "testuser", "password123")
 	category, _ := NewCategoryRepository(db).Create(context.Background(), CategoryInput{Name: "Work", Color: "#FF5733"}, user.ID)
-	record, _ := newDayTrackingServiceForTest(db).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-07-07"))
+	record, _ := newDayTrackingServiceForTest(db).CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-07-07"), 0)
 	_, err := newDayTrackingServiceForTest(db).ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
-		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("09:00:00"), DurationMinutes: 60},
-	}, nil)
+		{CategoryID: &category.ID, BlockType: "actual", StartAt: parseTime("2026-07-07T09:00:00Z"), DurationMinutes: 60},
+	})
 	if err != nil {
 		t.Fatalf("Failed to create initial actual block: %v", err)
 	}
@@ -896,9 +950,9 @@ func TestDayTrackingService_ReplaceActualBlocks_RollsBackPartialBatch(t *testing
 
 	// Act
 	_, err = newDayTrackingServiceForTest(db).ReplaceActualBlocks(context.Background(), record.ID, user.ID, []ActualBlockInput{
-		{CategoryID: &category.ID, BlockType: "actual", StartTime: mustScheduleTime("10:00:00"), DurationMinutes: 60},
-		{CategoryID: &invalidCategoryID, BlockType: "actual", StartTime: mustScheduleTime("11:00:00"), DurationMinutes: 60},
-	}, nil)
+		{CategoryID: &category.ID, BlockType: "actual", StartAt: parseTime("2026-07-07T10:00:00Z"), DurationMinutes: 60},
+		{CategoryID: &invalidCategoryID, BlockType: "actual", StartAt: parseTime("2026-07-07T11:00:00Z"), DurationMinutes: 60},
+	})
 
 	// Assert
 	if err == nil {
@@ -911,12 +965,12 @@ func TestDayTrackingService_ReplaceActualBlocks_RollsBackPartialBatch(t *testing
 	if blockCount != 1 {
 		t.Errorf("Expected original block to remain after rollback, got %d blocks", blockCount)
 	}
-	var startTime string
-	if err := db.QueryRow(context.Background(), "SELECT start_time::text FROM actual_blocks WHERE day_record_id = $1", record.ID).Scan(&startTime); err != nil {
+	var startAt time.Time
+	if err := db.QueryRow(context.Background(), "SELECT start_at FROM actual_blocks WHERE day_record_id = $1", record.ID).Scan(&startAt); err != nil {
 		t.Fatalf("Failed to load original actual block: %v", err)
 	}
-	if startTime != "09:00:00" {
-		t.Errorf("Expected original block at 09:00:00, got %s", startTime)
+	if !startAt.Equal(parseTime("2026-07-07T09:00:00Z")) {
+		t.Errorf("Expected original block at 09:00Z, got %s", startAt)
 	}
 }
 

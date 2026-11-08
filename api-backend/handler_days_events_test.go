@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestPostDateEventsAutoCreatesAndDeduplicates(t *testing.T) {
+func TestPostDateEventsDeduplicates(t *testing.T) {
 	database := setupTestDB(t)
 	api := NewAPI(database, "test-secret", NewLogger("test"))
 	user := createTestUser(t, database, "event-migration-user", "password123")
@@ -18,6 +20,9 @@ func TestPostDateEventsAutoCreatesAndDeduplicates(t *testing.T) {
 	device, err := api.deviceRepo.Create(context.Background(), user.ID, "desktop")
 	if err != nil {
 		t.Fatalf("failed to create device: %v", err)
+	}
+	if _, err := api.dayTrackingService.CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-06"), 0); err != nil {
+		t.Fatalf("failed to create day record: %v", err)
 	}
 	eventTime := time.Date(2026, 9, 6, 14, 26, 37, 0, time.UTC)
 	requestBody := DayEventsInput{DeviceID: device.ID, Events: []DayEventInput{{ClientEventID: "event-1", EventType: "transition", CategoryID: &category.ID, OccurredAt: eventTime}}}
@@ -76,10 +81,10 @@ func TestPostDateEventsRejectsForeignDevice(t *testing.T) {
 	}
 }
 
-func TestPostDateEventsRejectsLocalDateMismatch(t *testing.T) {
+func TestPostDateEventsRequiresExistingDay(t *testing.T) {
 	database := setupTestDB(t)
 	api := NewAPI(database, "test-secret", NewLogger("test"))
-	user := createTestUser(t, database, "event-local-date-user", "password123")
+	user := createTestUser(t, database, "event-missing-day-user", "password123")
 	category := createTestCategory(t, database, user.ID, "Working", "#4A90D9")
 	device, err := api.deviceRepo.Create(context.Background(), user.ID, "desktop")
 	if err != nil {
@@ -89,7 +94,7 @@ func TestPostDateEventsRejectsLocalDateMismatch(t *testing.T) {
 	requestBody := DayEventsInput{
 		DeviceID: device.ID,
 		Events: []DayEventInput{{
-			ClientEventID: "event-local-date-mismatch",
+			ClientEventID: "event-no-day",
 			EventType:     "transition",
 			CategoryID:    &category.ID,
 			OccurredAt:    parseTime("2026-09-06T23:30:00Z"),
@@ -97,8 +102,34 @@ func TestPostDateEventsRejectsLocalDateMismatch(t *testing.T) {
 	}
 	response := postDateEventsRequest(t, api, user.ID, "2026-09-07", requestBody)
 
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
+	}
+	if _, err := api.dayRecordRepo.FindByDate(context.Background(), user.ID, mustCalendarDate("2026-09-07")); err == nil {
+		t.Fatal("expected no day record to be auto-created")
+	}
+}
+
+func TestPostDateEventsRejectsRemovedLocalFields(t *testing.T) {
+	database := setupTestDB(t)
+	api := NewAPI(database, "test-secret", NewLogger("test"))
+	user := createTestUser(t, database, "event-local-field-user", "password123")
+	device, err := api.deviceRepo.Create(context.Background(), user.ID, "desktop")
+	if err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+	if _, err := api.dayTrackingService.CreateDayRecord(context.Background(), user.ID, mustCalendarDate("2026-09-06"), 0); err != nil {
+		t.Fatalf("failed to create day record: %v", err)
+	}
+	body := `{"device_id":` + strconv.Itoa(device.ID) + `,"events":[{"client_event_id":"e1","event_type":"note","text":"x","occurred_at":"2026-09-06T09:00:00Z","occurred_at_local":"2026-09-06T11:00:00+02:00"}]}`
+	request := httptest.NewRequest(http.MethodPost, "/days/2026-09-06/events", strings.NewReader(body))
+	request = request.WithContext(withUserID(context.Background(), user.ID))
+	response := httptest.NewRecorder()
+
+	api.daysHandler(response, request)
+
 	if response.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+		t.Fatalf("expected 400 for removed field, got %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -129,12 +160,9 @@ func postDateEventsRequest(t *testing.T, api *API, userID int, calendarDate stri
 	publicEvents := make([]dayEventRequest, 0, len(input.Events))
 	for _, event := range input.Events {
 		var correctedAt *APITimestamp
-		var correctedAtLocal *string
 		if event.CorrectedAt != nil {
 			convertedTime := APITimestamp(*event.CorrectedAt)
 			correctedAt = &convertedTime
-			localValue := time.Time(*event.CorrectedAt).Format("2006-01-02T15:04:05-07:00")
-			correctedAtLocal = &localValue
 		}
 		var targetClientEventID *string
 		if event.TargetClientEventID != "" {
@@ -145,10 +173,8 @@ func postDateEventsRequest(t *testing.T, api *API, userID int, calendarDate stri
 			EventType:           event.EventType,
 			CategoryID:          event.CategoryID,
 			OccurredAt:          APITimestamp(event.OccurredAt),
-			OccurredAtLocal:     event.OccurredAt.Format("2006-01-02T15:04:05-07:00"),
 			TargetClientEventID: targetClientEventID,
 			CorrectedAt:         correctedAt,
-			CorrectedAtLocal:    correctedAtLocal,
 		})
 	}
 	requestBody := dayEventsRequest{DeviceID: input.DeviceID, Events: publicEvents}

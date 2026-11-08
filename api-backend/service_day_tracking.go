@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -52,7 +52,8 @@ func NewDayTrackingService(
 	}
 }
 
-// CreateEventsByDate creates the date record when needed and persists a retry-safe batch.
+// CreateEventsByDate persists a retry-safe batch for an existing day record and,
+// unless the day's blocks were manually edited, rebuilds them from all events.
 func (service *DayTrackingService) CreateEventsByDate(
 	ctx context.Context,
 	userID int,
@@ -66,56 +67,19 @@ func (service *DayTrackingService) CreateEventsByDate(
 	}
 	defer transaction.Rollback(ctx)
 
-	deviceUserID, err := service.dayEventRepo.FindDeviceUserIDTx(ctx, transaction, deviceID)
+	deviceUserID, err := service.dayEventRepo.FindDeviceUserID(ctx, transaction, deviceID)
 	if err != nil {
 		return nil, err
 	}
 	if deviceUserID != userID {
 		return nil, ErrDeviceNotFound
 	}
-	existingDayRecordID, timezoneOffsetLocked, err := service.dayRecordRepo.FindForDateTx(
-		ctx,
-		transaction,
-		userID,
-		calendarDate,
-	)
+	dayRecordID, err := service.dayRecordRepo.FindIDForDate(ctx, transaction, userID, calendarDate)
 	if err != nil {
 		return nil, err
 	}
 
-	dayRecordID, err := service.findOrCreateDayRecordTx(
-		ctx,
-		transaction,
-		userID,
-		calendarDate,
-		existingDayRecordID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if !timezoneOffsetLocked {
-		offsetMinutes, foundOffset, err := firstTimezoneOffset(inputs)
-		if err != nil {
-			return nil, err
-		}
-		if foundOffset {
-			if err := service.dayRecordRepo.LockTimezoneOffsetTx(
-				ctx,
-				transaction,
-				dayRecordID,
-				userID,
-				offsetMinutes,
-			); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	result := &DateEventResult{
-		AcceptedEvents:    make([]DayEvent, 0, len(inputs)),
-		DuplicateEventIDs: make([]string, 0),
-	}
-	existingLocalTimestampsByID, err := service.dayEventRepo.FindExistingLocalTimestampsTx(
+	existingEventIDs, err := service.dayEventRepo.FindExistingClientEventIDs(
 		ctx,
 		transaction,
 		dayRecordID,
@@ -124,12 +88,13 @@ func (service *DayTrackingService) CreateEventsByDate(
 	if err != nil {
 		return nil, err
 	}
-	newInputs, duplicateEventIDs, err := prepareNewDateEventInputs(inputs, existingLocalTimestampsByID)
+	newInputs, duplicateEventIDs, err := prepareNewDateEventInputs(inputs, existingEventIDs)
 	if err != nil {
 		return nil, err
 	}
-	result.DuplicateEventIDs = duplicateEventIDs
-	result.AcceptedEvents, duplicateEventIDs, err = service.dayEventRepo.InsertTx(
+	result := &DateEventResult{DuplicateEventIDs: duplicateEventIDs}
+	var insertDuplicateIDs []string
+	result.AcceptedEvents, insertDuplicateIDs, err = service.dayEventRepo.Insert(
 		ctx,
 		transaction,
 		dayRecordID,
@@ -139,40 +104,17 @@ func (service *DayTrackingService) CreateEventsByDate(
 	if err != nil {
 		return nil, err
 	}
-	result.DuplicateEventIDs = append(result.DuplicateEventIDs, duplicateEventIDs...)
+	result.DuplicateEventIDs = append(result.DuplicateEventIDs, insertDuplicateIDs...)
 
-	actualBlocks, events, err := service.recomputeActualBlocks(ctx, transaction, dayRecordID)
+	result.Record, err = service.dayRecordRepo.TouchAndFindByID(ctx, transaction, dayRecordID, userID)
 	if err != nil {
 		return nil, err
 	}
-	result.Record, err = service.dayRecordRepo.TouchAndFindByIDTx(
-		ctx,
-		transaction,
-		dayRecordID,
-		userID,
-	)
-	if err != nil {
+	if err := service.syncActualBlocksTx(ctx, transaction, dayRecordID); err != nil {
 		return nil, err
 	}
-	result.Record.ActualBlocks = actualBlocks
-	result.Record.Events = events
-	if result.Record.SnapshotID != nil {
-		result.Record.SnapshotBlocks, err = service.dayTemplateRepo.FindSnapshotBlocksTx(
-			ctx,
-			transaction,
-			*result.Record.SnapshotID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		result.Record.SnapshottedAt, err = service.dayTemplateRepo.FindSnapshotTimeTx(
-			ctx,
-			transaction,
-			*result.Record.SnapshotID,
-		)
-		if err != nil {
-			return nil, err
-		}
+	if err := service.hydrateRecord(ctx, transaction, result.Record); err != nil {
+		return nil, err
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
@@ -189,7 +131,7 @@ func (service *DayTrackingService) FindByDate(
 	if err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -204,7 +146,7 @@ func (service *DayTrackingService) FindByID(
 	if err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -223,7 +165,7 @@ func (service *DayTrackingService) FindDateRange(
 	recordsByDate := make(map[CalendarDate]*DayRecord, len(records))
 	for recordIndex := range records {
 		record := &records[recordIndex]
-		if err := service.hydrateRecord(ctx, record); err != nil {
+		if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 			return nil, err
 		}
 		recordsByDate[record.CalendarDate] = record
@@ -243,31 +185,28 @@ func (service *DayTrackingService) CreateDayRecord(
 	ctx context.Context,
 	userID int,
 	calendarDate CalendarDate,
+	offsetMinutes int,
 ) (*DayRecord, error) {
 	transaction, err := service.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer transaction.Rollback(ctx)
-	if existingRecordID, _, err := service.dayRecordRepo.FindForDateTx(
-		ctx,
-		transaction,
-		userID,
-		calendarDate,
-	); err != nil {
-		return nil, err
-	} else if existingRecordID != 0 {
+	if _, err := service.dayRecordRepo.FindIDForDate(ctx, transaction, userID, calendarDate); err == nil {
 		return nil, fmt.Errorf("%w for date %s", ErrDayRecordAlreadyExists, calendarDate.Format(DateFormat))
+	} else if !errors.Is(err, ErrDayRecordNotFound) {
+		return nil, err
 	}
 	templateID, snapshotID, err := service.resolveTemplateSnapshotTx(ctx, transaction, userID, calendarDate, nil)
 	if err != nil {
 		return nil, err
 	}
-	record, err := service.dayRecordRepo.CreateTx(
+	record, err := service.dayRecordRepo.Create(
 		ctx,
 		transaction,
 		userID,
 		calendarDate,
+		offsetMinutes,
 		templateID,
 		snapshotID,
 	)
@@ -277,7 +216,7 @@ func (service *DayTrackingService) CreateDayRecord(
 	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -295,7 +234,7 @@ func (service *DayTrackingService) UpdateTemplateByDate(
 	}
 	defer transaction.Rollback(ctx)
 	if requestedTemplateID != nil {
-		exists, err := service.dayTemplateRepo.ExistsForUserTx(
+		exists, err := service.dayTemplateRepo.ExistsForUser(
 			ctx,
 			transaction,
 			*requestedTemplateID,
@@ -318,7 +257,7 @@ func (service *DayTrackingService) UpdateTemplateByDate(
 	if err != nil {
 		return nil, err
 	}
-	recordID, err := service.dayRecordRepo.UpdateTemplateTx(
+	recordID, err := service.dayRecordRepo.UpdateTemplate(
 		ctx,
 		transaction,
 		userID,
@@ -336,61 +275,45 @@ func (service *DayTrackingService) UpdateTemplateByDate(
 	if err != nil {
 		return nil, err
 	}
-	if err := service.hydrateRecord(ctx, record); err != nil {
+	if err := service.hydrateRecord(ctx, service.db, record); err != nil {
 		return nil, err
 	}
 	return record, nil
 }
 
+// UpdateTimezoneOffset sets the offset clients use to present the day's UTC
+// instants. Stored events and blocks are never touched.
+func (service *DayTrackingService) UpdateTimezoneOffset(
+	ctx context.Context,
+	userID int,
+	calendarDate CalendarDate,
+	offsetMinutes int,
+) (*DayRecord, error) {
+	recordID, err := service.dayRecordRepo.UpdateTimezoneOffset(ctx, userID, calendarDate, offsetMinutes)
+	if err != nil {
+		return nil, err
+	}
+	return service.FindByID(ctx, recordID, userID)
+}
+
+// FindOrCreateDayRecordTx is used by bootstrap; an existing record keeps its offset.
 func (service *DayTrackingService) FindOrCreateDayRecordTx(
 	ctx context.Context,
 	transaction pgx.Tx,
 	userID int,
 	calendarDate CalendarDate,
+	offsetMinutes int,
 ) (int, error) {
-	existingRecordID, _, err := service.dayRecordRepo.FindForDateTx(
-		ctx,
-		transaction,
-		userID,
-		calendarDate,
-	)
+	templateID, snapshotID, err := service.resolveTemplateSnapshotTx(ctx, transaction, userID, calendarDate, nil)
 	if err != nil {
 		return 0, err
 	}
-	return service.findOrCreateDayRecordTx(
+	return service.dayRecordRepo.FindOrCreate(
 		ctx,
 		transaction,
 		userID,
 		calendarDate,
-		existingRecordID,
-	)
-}
-
-func (service *DayTrackingService) findOrCreateDayRecordTx(
-	ctx context.Context,
-	transaction pgx.Tx,
-	userID int,
-	calendarDate CalendarDate,
-	existingRecordID int,
-) (int, error) {
-	if existingRecordID != 0 {
-		return existingRecordID, nil
-	}
-	templateID, snapshotID, err := service.resolveTemplateSnapshotTx(
-		ctx,
-		transaction,
-		userID,
-		calendarDate,
-		nil,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return service.dayRecordRepo.FindOrCreateTx(
-		ctx,
-		transaction,
-		userID,
-		calendarDate,
+		offsetMinutes,
 		templateID,
 		snapshotID,
 	)
@@ -406,7 +329,7 @@ func (service *DayTrackingService) resolveTemplateSnapshotTx(
 	templateID := requestedTemplateID
 	if templateID == nil {
 		var err error
-		templateID, err = service.scheduleRepo.ResolveTemplateForDateTx(
+		templateID, err = service.scheduleRepo.ResolveTemplateForDate(
 			ctx,
 			transaction,
 			userID,
@@ -419,34 +342,34 @@ func (service *DayTrackingService) resolveTemplateSnapshotTx(
 	if templateID == nil {
 		return nil, nil, nil
 	}
-	snapshotID, err := service.dayTemplateRepo.FindLatestSnapshotIDTx(ctx, transaction, *templateID)
+	snapshotID, err := service.dayTemplateRepo.FindLatestSnapshotID(ctx, transaction, *templateID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return templateID, snapshotID, nil
 }
 
-func (service *DayTrackingService) hydrateRecord(ctx context.Context, record *DayRecord) error {
+func (service *DayTrackingService) hydrateRecord(ctx context.Context, db dbQuerier, record *DayRecord) error {
 	record.SnapshotBlocks = make([]SnapshotBlock, 0)
 	record.ActualBlocks = make([]ActualBlock, 0)
 	record.Events = make([]DayEvent, 0)
 	if record.SnapshotID != nil {
-		blocks, err := service.dayTemplateRepo.FindSnapshotBlocks(ctx, *record.SnapshotID)
+		blocks, err := service.dayTemplateRepo.FindSnapshotBlocks(ctx, db, *record.SnapshotID)
 		if err != nil {
 			return err
 		}
 		record.SnapshotBlocks = blocks
-		record.SnapshottedAt, err = service.dayTemplateRepo.FindSnapshotTime(ctx, *record.SnapshotID)
+		record.SnapshottedAt, err = service.dayTemplateRepo.FindSnapshotTime(ctx, db, *record.SnapshotID)
 		if err != nil {
 			return err
 		}
 	}
-	actualBlocks, err := service.actualBlockRepo.FindByRecordID(ctx, record.ID)
+	actualBlocks, err := service.actualBlockRepo.FindByRecordID(ctx, db, record.ID)
 	if err != nil {
 		return err
 	}
 	record.ActualBlocks = actualBlocks
-	events, err := service.dayEventRepo.FindByRecordID(ctx, record.ID)
+	events, err := service.dayEventRepo.FindByRecordID(ctx, db, record.ID)
 	if err != nil {
 		return err
 	}
@@ -454,13 +377,13 @@ func (service *DayTrackingService) hydrateRecord(ctx context.Context, record *Da
 	return nil
 }
 
-// ReplaceActualBlocks replaces manually tracked blocks and locks the first client timezone.
+// ReplaceActualBlocks stores a manually reviewed block list. Later events only
+// extend it past its last block (see syncActualBlocksTx).
 func (service *DayTrackingService) ReplaceActualBlocks(
 	ctx context.Context,
 	dayRecordID int,
 	userID int,
 	inputs []ActualBlockInput,
-	clientOffsetMinutes *int,
 ) ([]ActualBlock, error) {
 	transaction, err := service.db.Begin(ctx)
 	if err != nil {
@@ -468,129 +391,47 @@ func (service *DayTrackingService) ReplaceActualBlocks(
 	}
 	defer transaction.Rollback(ctx)
 
-	if err := service.dayRecordRepo.EnsureOwnedTx(ctx, transaction, dayRecordID, userID); err != nil {
+	if err := service.dayRecordRepo.EnsureOwned(ctx, transaction, dayRecordID, userID); err != nil {
 		return nil, err
-	}
-	if clientOffsetMinutes != nil {
-		if err := service.dayRecordRepo.LockTimezoneOffsetTx(
-			ctx,
-			transaction,
-			dayRecordID,
-			userID,
-			*clientOffsetMinutes,
-		); err != nil {
-			return nil, err
-		}
 	}
 	blocks, err := service.actualBlockRepo.ReplaceTx(ctx, transaction, dayRecordID, inputs)
 	if err != nil {
 		return nil, err
 	}
-	if err := service.dayRecordRepo.TouchTx(ctx, transaction, dayRecordID, userID); err != nil {
-		return nil, err
-	}
 	if err := transaction.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return addUntrackedGaps(blocks), nil
+	return blocks, nil
 }
 
-func (service *DayTrackingService) recomputeActualBlocks(
+// syncActualBlocksTx derives the day's blocks from all events and appends the
+// part after the latest stored block, so earlier or reviewed blocks stay as saved.
+func (service *DayTrackingService) syncActualBlocksTx(
 	ctx context.Context,
 	transaction pgx.Tx,
 	dayRecordID int,
-) ([]ActualBlock, []DayEvent, error) {
-	events, err := service.dayEventRepo.FindByRecordIDTx(ctx, transaction, dayRecordID)
+) error {
+	events, err := service.dayEventRepo.FindByRecordID(ctx, transaction, dayRecordID)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	calendarDate, err := service.dayRecordRepo.FindCalendarDateTx(ctx, transaction, dayRecordID)
+	blocks, err := computeDayTimeline(events)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	existingBlocks, err := service.actualBlockRepo.FindByRecordIDTx(ctx, transaction, dayRecordID)
+	stored, err := service.actualBlockRepo.FindByRecordID(ctx, transaction, dayRecordID)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	computedBlocks, err := computeIncrementalTimeline(events, existingBlocks, calendarDate)
-	if err != nil {
-		return nil, nil, err
+	existing := make([]ActualBlockInput, 0, len(stored))
+	for _, block := range stored {
+		existing = append(existing, ActualBlockInput{
+			CategoryID: block.CategoryID, BlockType: block.BlockType,
+			StartAt: block.StartAt, DurationMinutes: block.DurationMinutes,
+		})
 	}
-	computedBlocks, err = service.mergeComputedBoundaryTx(
-		ctx, transaction, computedBlocks, existingBlocks, calendarDate,
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-	insertedBlocks, err := service.actualBlockRepo.InsertComputedTx(ctx, transaction, dayRecordID, computedBlocks)
-	if err != nil {
-		return nil, nil, err
-	}
-	return append(existingBlocks, insertedBlocks...), events, nil
-}
-
-func (service *DayTrackingService) mergeComputedBoundaryTx(
-	ctx context.Context,
-	transaction pgx.Tx,
-	computedBlocks []ComputedBlock,
-	existingBlocks []ActualBlock,
-	calendarDate CalendarDate,
-) ([]ComputedBlock, error) {
-	if len(computedBlocks) == 0 {
-		return computedBlocks, nil
-	}
-
-	latestIndex := -1
-	for blockIndex := range existingBlocks {
-		if existingBlocks[blockIndex].BlockType != "actual" {
-			continue
-		}
-		if latestIndex == -1 || time.Time(existingBlocks[blockIndex].StartTime).After(time.Time(existingBlocks[latestIndex].StartTime)) {
-			latestIndex = blockIndex
-		}
-	}
-	if latestIndex == -1 {
-		return computedBlocks, nil
-	}
-
-	latestBlock := existingBlocks[latestIndex]
-	if latestBlock.CategoryID == nil || computedBlocks[0].CategoryID == nil ||
-		*latestBlock.CategoryID != *computedBlocks[0].CategoryID {
-		return computedBlocks, nil
-	}
-	latestStart := time.Date(
-		calendarDate.Year(), calendarDate.Month(), calendarDate.Day(),
-		latestBlock.StartTime.Hour(), latestBlock.StartTime.Minute(), latestBlock.StartTime.Second(),
-		0, time.UTC,
-	)
-	latestEnd := latestStart.Add(time.Duration(latestBlock.DurationMinutes) * time.Minute)
-	if computedBlocks[0].StartTime.Sub(latestEnd) > minimumActualBlockDuration {
-		return computedBlocks, nil
-	}
-	computedEnd := computedBlocks[0].StartTime.Add(
-		time.Duration(computedBlocks[0].DurationMinutes) * time.Minute,
-	)
-	mergedDuration := int(computedEnd.Sub(latestStart).Minutes())
-	if err := service.actualBlockRepo.UpdateDurationTx(
-		ctx, transaction, latestBlock.ID, mergedDuration,
-	); err != nil {
-		return nil, err
-	}
-	return computedBlocks[1:], nil
-}
-
-func firstTimezoneOffset(inputs []DayEventInput) (int, bool, error) {
-	for _, event := range inputs {
-		if event.EventType != "transition" && event.EventType != "confirmation" && event.EventType != "note" {
-			continue
-		}
-		offsetMinutes, err := extractOffsetMinutes(event.OccurredAtLocal)
-		if err != nil {
-			return 0, false, ErrInvalidLocalTimestamp
-		}
-		return offsetMinutes, true, nil
-	}
-	return 0, false, nil
+	_, err = service.actualBlockRepo.ReplaceTx(ctx, transaction, dayRecordID, mergeComputedBlocks(existing, blocks))
+	return err
 }
 
 func eventLookupIDs(inputs []DayEventInput) []string {
@@ -615,17 +456,15 @@ func eventLookupIDs(inputs []DayEventInput) []string {
 
 func prepareNewDateEventInputs(
 	inputs []DayEventInput,
-	existingLocalTimestampsByID map[string]string,
+	existingEventIDs map[string]struct{},
 ) ([]DayEventInput, []string, error) {
 	batchEventIDs := make(map[string]struct{}, len(inputs))
-	localTimestampsByID := make(map[string]string, len(inputs))
-	processedClientEventIDs := make(map[string]struct{}, len(existingLocalTimestampsByID)+len(inputs))
-	for clientEventID := range existingLocalTimestampsByID {
+	processedClientEventIDs := make(map[string]struct{}, len(existingEventIDs)+len(inputs))
+	for clientEventID := range existingEventIDs {
 		processedClientEventIDs[clientEventID] = struct{}{}
 	}
 	for _, input := range inputs {
 		batchEventIDs[input.ClientEventID] = struct{}{}
-		localTimestampsByID[input.ClientEventID] = input.OccurredAtLocal
 	}
 
 	newInputs := make([]DayEventInput, 0, len(inputs))
@@ -635,40 +474,15 @@ func prepareNewDateEventInputs(
 			duplicateEventIDs = append(duplicateEventIDs, input.ClientEventID)
 			continue
 		}
-		if err := validateDateEventAmendment(
-			input,
-			batchEventIDs,
-			localTimestampsByID,
-			existingLocalTimestampsByID,
-		); err != nil {
-			return nil, nil, err
+		if input.EventType == "amendment" {
+			_, targetInBatch := batchEventIDs[input.TargetClientEventID]
+			_, targetExists := existingEventIDs[input.TargetClientEventID]
+			if !targetInBatch && !targetExists {
+				return nil, nil, ErrAmendmentTargetNotFound
+			}
 		}
 		newInputs = append(newInputs, input)
 		processedClientEventIDs[input.ClientEventID] = struct{}{}
 	}
 	return newInputs, duplicateEventIDs, nil
-}
-
-func validateDateEventAmendment(
-	input DayEventInput,
-	batchEventIDs map[string]struct{},
-	localTimestampsByID map[string]string,
-	existingLocalTimestampsByID map[string]string,
-) error {
-	if input.EventType != "amendment" {
-		return nil
-	}
-	_, targetInBatch := batchEventIDs[input.TargetClientEventID]
-	targetLocal := localTimestampsByID[input.TargetClientEventID]
-	if !targetInBatch {
-		var targetExists bool
-		targetLocal, targetExists = existingLocalTimestampsByID[input.TargetClientEventID]
-		if !targetExists {
-			return ErrAmendmentTargetNotFound
-		}
-	}
-	if input.CorrectedAtLocal == nil {
-		return ErrIncompleteAmendment
-	}
-	return validateAmendmentOffset(targetLocal, *input.CorrectedAtLocal)
 }

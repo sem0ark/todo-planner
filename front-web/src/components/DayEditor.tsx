@@ -12,26 +12,38 @@ import {
 } from "../services/dayRecords";
 import { getCategories } from "../services/categories";
 import TimelineEditor from "./TimelineEditor";
+import {
+  getLocalTimezoneOffsetMinutes,
+  localTimeToUtcTimestamp,
+  resolveTimezoneOffsetMinutes,
+  utcTimestampToLocalTime,
+} from "../utils/timeline";
 
-const MIN_REVIEW_BLOCK_DURATION_MINUTES = 5;
+const MIN_REVIEW_BLOCK_DURATION_MINUTES = 10;
+const REVIEW_GRID_MINUTES = 5;
 
-function editableBlocks(record: DayRecord): ActualBlockInput[] {
+type LocalActualBlock = Omit<ActualBlockInput, "start_at"> & {
+  start_time: string;
+};
+
+function editableBlocks(record: DayRecord): LocalActualBlock[] {
   const actualBlocks = record.actual
     .filter(
-      (block) =>
-        block.block_type !== "untracked" &&
-        block.duration_minutes >= MIN_REVIEW_BLOCK_DURATION_MINUTES,
+      (block) => block.duration_minutes >= MIN_REVIEW_BLOCK_DURATION_MINUTES,
     )
     .map(
       ({
         category_id,
         block_type,
-        start_time,
+        start_at,
         duration_minutes,
-      }): ActualBlockInput => ({
+      }): LocalActualBlock => ({
         category_id,
-        block_type: block_type === "blank" ? "blank" : "actual",
-        start_time,
+        block_type,
+        start_time: utcTimestampToLocalTime(
+          start_at,
+          resolveTimezoneOffsetMinutes(record.timezone_offset_minutes),
+        ),
         duration_minutes,
       }),
     )
@@ -51,7 +63,7 @@ export default function DayEditor({
   const { categories, setCategories } = useCategoryStore();
   const { settings } = useSettingsStore();
   const [record, setRecord] = useState<DayRecord | null>(null);
-  const [blocks, setBlocks] = useState<ActualBlockInput[]>([]);
+  const [blocks, setBlocks] = useState<LocalActualBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +74,9 @@ export default function DayEditor({
     setLoading(true);
     Promise.all([
       getCategories(token),
-      getDayRecord(token, date).catch(() => createDayRecord(token, date)),
+      getDayRecord(token, date).catch(() =>
+        createDayRecord(token, date, getLocalTimezoneOffsetMinutes()),
+      ),
     ])
       .then(([nextCategories, nextRecord]) => {
         if (cancelled) return;
@@ -98,7 +112,15 @@ export default function DayEditor({
           .filter(
             (block) =>
               block.duration_minutes >= MIN_REVIEW_BLOCK_DURATION_MINUTES,
-          ),
+          )
+          .map(({ start_time, ...block }) => ({
+            ...block,
+            start_at: localTimeToUtcTimestamp(
+              date,
+              start_time,
+              resolveTimezoneOffsetMinutes(record?.timezone_offset_minutes),
+            ),
+          })),
       });
       setRecord(savedRecord);
       setBlocks(editableBlocks(savedRecord));
@@ -137,12 +159,11 @@ export default function DayEditor({
             categories={categories}
             onChange={setBlocks}
             title="Actual Blocks"
-            allowBlank
             dayRangeStartTime={settings?.day_range_start_time}
             dayRangeEndTime={settings?.day_range_end_time}
-            snapInterval={1}
-            minimumBlockDuration={1}
-            durationStep={1}
+            snapInterval={REVIEW_GRID_MINUTES}
+            minimumBlockDuration={MIN_REVIEW_BLOCK_DURATION_MINUTES}
+            durationStep={REVIEW_GRID_MINUTES}
             snapToEdges
           />
 

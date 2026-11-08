@@ -19,23 +19,29 @@ struct PlannedBlock: Codable, Identifiable {
 
 struct DayRecord: Codable {
   let calendarDate: String
+  let timezoneOffsetMinutes: Int
   let plan: [PlannedBlock]
 
   enum CodingKeys: String, CodingKey {
     case calendarDate = "calendar_date"
+    case timezoneOffsetMinutes = "timezone_offset_minutes"
     case plan
   }
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     calendarDate = try container.decode(String.self, forKey: .calendarDate)
+    timezoneOffsetMinutes = try container.decode(Int.self, forKey: .timezoneOffsetMinutes)
     plan = try container.decode([PlannedBlock].self, forKey: .plan)
   }
 
   init(
-    calendarDate: String, plan: [PlannedBlock] = []
+    calendarDate: String,
+    timezoneOffsetMinutes: Int = 0,
+    plan: [PlannedBlock] = []
   ) {
     self.calendarDate = calendarDate
+    self.timezoneOffsetMinutes = timezoneOffsetMinutes
     self.plan = plan
   }
 }

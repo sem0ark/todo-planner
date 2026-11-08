@@ -151,6 +151,8 @@ func (scheduleTime ScheduleTime) Sub(other ScheduleTime) time.Duration {
 // APITimestamp is a UTC timestamp with controlled API serialization.
 type APITimestamp time.Time
 
+func (timestamp APITimestamp) Time() time.Time { return time.Time(timestamp) }
+
 func parseCalendarDate(value string) (CalendarDate, error) {
 	if len(value) != len(DateFormat) {
 		return CalendarDate{}, errors.New("invalid calendar date format")

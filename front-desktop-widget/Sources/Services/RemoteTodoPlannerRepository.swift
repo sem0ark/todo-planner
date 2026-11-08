@@ -32,7 +32,9 @@ final class RemoteTodoPlannerRepository: @unchecked Sendable, TodoPlannerReposit
   }
 
   func initialize(calendarDate: String) async throws -> InitResponse {
-    let response = try await api.initialize(calendarDate: calendarDate)
+    let response = try await api.initialize(
+      calendarDate: calendarDate,
+      timezoneOffsetMinutes: TimeZone.current.secondsFromGMT() / 60)
     try bootstrapCache.save(response: response, calendarDate: calendarDate)
     return response
   }

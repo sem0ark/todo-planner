@@ -307,7 +307,7 @@ func (r *ScheduleRepository) ensureTemplateBelongsToUser(ctx context.Context, us
 	return nil
 }
 
-func (r *ScheduleRepository) repinActiveAndFutureRecords(ctx context.Context, transaction pgx.Tx, userID int) error {
+func (r *ScheduleRepository) repinActiveAndFutureRecords(ctx context.Context, transaction dbQuerier, userID int) error {
 	rows, err := transaction.Query(ctx, `
 		SELECT id, calendar_date
 		FROM day_records
@@ -340,7 +340,7 @@ func (r *ScheduleRepository) repinActiveAndFutureRecords(ctx context.Context, tr
 	return nil
 }
 
-func (r *ScheduleRepository) repinDate(ctx context.Context, transaction pgx.Tx, userID int, calendarDate CalendarDate) error {
+func (r *ScheduleRepository) repinDate(ctx context.Context, transaction dbQuerier, userID int, calendarDate CalendarDate) error {
 	var recordID int
 	err := transaction.QueryRow(ctx, `
 		SELECT id FROM day_records
@@ -355,8 +355,8 @@ func (r *ScheduleRepository) repinDate(ctx context.Context, transaction pgx.Tx, 
 	return r.repinRecord(ctx, transaction, userID, recordID, calendarDate)
 }
 
-func (r *ScheduleRepository) repinRecord(ctx context.Context, transaction pgx.Tx, userID, recordID int, calendarDate CalendarDate) error {
-	templateID, err := resolveTemplateForDateTx(ctx, transaction, userID, calendarDate)
+func (r *ScheduleRepository) repinRecord(ctx context.Context, transaction dbQuerier, userID, recordID int, calendarDate CalendarDate) error {
+	templateID, err := resolveTemplateForDate(ctx, transaction, userID, calendarDate)
 	if err != nil {
 		return err
 	}
@@ -383,7 +383,7 @@ func (r *ScheduleRepository) repinRecord(ctx context.Context, transaction pgx.Tx
 	return err
 }
 
-func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID int, calendarDate CalendarDate) (*int, error) {
+func resolveTemplateForDate(ctx context.Context, transaction dbQuerier, userID int, calendarDate CalendarDate) (*int, error) {
 	var templateID *int
 	err := transaction.QueryRow(ctx, `
 		SELECT day_template_id FROM schedule_overrides
@@ -406,13 +406,13 @@ func resolveTemplateForDateTx(ctx context.Context, transaction pgx.Tx, userID in
 	return templateID, err
 }
 
-func (repository *ScheduleRepository) ResolveTemplateForDateTx(
+func (repository *ScheduleRepository) ResolveTemplateForDate(
 	ctx context.Context,
-	transaction pgx.Tx,
+	transaction dbQuerier,
 	userID int,
 	calendarDate CalendarDate,
 ) (*int, error) {
-	return resolveTemplateForDateTx(ctx, transaction, userID, calendarDate)
+	return resolveTemplateForDate(ctx, transaction, userID, calendarDate)
 }
 
 // GetOverride retrieves a specific override by date

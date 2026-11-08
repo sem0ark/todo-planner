@@ -8,13 +8,6 @@ import (
 // ErrNonMonotonicTransitions reports corrections that make timeline ordering invalid.
 var ErrNonMonotonicTransitions = NewBadRequestError("amendment produces invalid ordering")
 
-type ComputedBlock struct {
-	CategoryID      *int
-	BlockType       string
-	StartTime       time.Time
-	DurationMinutes int
-}
-
 type timelineObservation struct {
 	occurredAt time.Time
 	categoryID *int
@@ -29,31 +22,6 @@ type timelineBlock struct {
 type resolvedDayEvent struct {
 	event       DayEvent
 	effectiveAt time.Time
-}
-
-func addUntrackedGaps(blocks []ActualBlock) []ActualBlock {
-	if len(blocks) < 2 {
-		return blocks
-	}
-	result := make([]ActualBlock, 0, len(blocks)*2)
-	for index, block := range blocks {
-		result = append(result, block)
-		if index == len(blocks)-1 {
-			continue
-		}
-		gapStart := block.StartTime.Add(time.Duration(block.DurationMinutes) * time.Minute)
-		gapMinutes := int(blocks[index+1].StartTime.Sub(gapStart).Minutes())
-		if gapMinutes > 0 {
-			result = append(result, ActualBlock{
-				DayRecordID:     block.DayRecordID,
-				BlockType:       "untracked",
-				StartTime:       gapStart,
-				DurationMinutes: gapMinutes,
-				UpdatedAt:       block.UpdatedAt,
-			})
-		}
-	}
-	return result
 }
 
 // resolveTimeline applies the latest correction per target, then orders by the
@@ -190,22 +158,6 @@ func normalizeTimelineBlocks(blocks []timelineBlock) []timelineBlock {
 	return mergedBlocks
 }
 
-func trimTimelineBlocks(blocks []timelineBlock, checkpoint time.Time) []timelineBlock {
-	trimmedBlocks := make([]timelineBlock, 0, len(blocks))
-	for _, block := range blocks {
-		if !block.end.After(checkpoint) {
-			continue
-		}
-		if block.start.Before(checkpoint) {
-			block.start = checkpoint
-		}
-		if block.end.After(block.start) {
-			trimmedBlocks = append(trimmedBlocks, block)
-		}
-	}
-	return trimmedBlocks
-}
-
 func sameCategory(left, right *int) bool {
 	if left == nil || right == nil {
 		return left == nil && right == nil
@@ -213,70 +165,63 @@ func sameCategory(left, right *int) bool {
 	return *left == *right
 }
 
-func computedBlocksFromTimeline(blocks []timelineBlock) []ComputedBlock {
-	computedBlocks := make([]ComputedBlock, 0, len(blocks))
-	for _, block := range blocks {
-		computedBlocks = append(computedBlocks, ComputedBlock{
+// computeDayTimeline derives the day's actual blocks from all of its events.
+// It is stateless: the same events always produce the same blocks, in UTC.
+func computeDayTimeline(events []DayEvent) ([]ActualBlockInput, error) {
+	rawBlocks, err := calculateTimelineBlocks(observationsFromEvents(resolveTimeline(events)))
+	if err != nil {
+		return nil, err
+	}
+	normalizedBlocks := normalizeTimelineBlocks(rawBlocks)
+	blocks := make([]ActualBlockInput, 0, len(normalizedBlocks))
+	for _, block := range normalizedBlocks {
+		blocks = append(blocks, ActualBlockInput{
 			CategoryID:      block.categoryID,
 			BlockType:       "actual",
-			StartTime:       block.start,
+			StartAt:         block.start,
 			DurationMinutes: int(block.end.Sub(block.start).Minutes()),
 		})
 	}
-	return computedBlocks
+	return blocks, nil
 }
 
-func computeResolvedBlocks(events []resolvedDayEvent) ([]ComputedBlock, error) {
-	observations := observationsFromEvents(events)
-	rawBlocks, err := calculateTimelineBlocks(observations)
-	if err != nil {
-		return nil, err
+// Appends the computed blocks that extend past the latest existing block.
+// A computed block overlapping that block is clipped to start at its end.
+// Blocks of the same category on the boundary are merged into one block.
+func mergeComputedBlocks(existing, computed []ActualBlockInput) []ActualBlockInput {
+	result := append(make([]ActualBlockInput, 0, len(existing)+len(computed)), existing...)
+	var checkpoint time.Time
+	if len(result) > 0 {
+		checkpoint = result[len(result)-1].endAt()
 	}
-	return computedBlocksFromTimeline(normalizeTimelineBlocks(rawBlocks)), nil
-}
-
-func computeTimeline(events []DayEvent) ([]ComputedBlock, error) {
-	resolvedEvents := resolveTimeline(events)
-	return computeResolvedBlocks(resolvedEvents)
-}
-
-// computeIncrementalTimeline calculates the complete event timeline, then
-// returns only the portion after the latest saved actual block.
-func computeIncrementalTimeline(events []DayEvent, existingBlocks []ActualBlock, calendarDate CalendarDate) ([]ComputedBlock, error) {
-	checkpoint, hasCheckpoint := actualBlockCheckpoint(existingBlocks, calendarDate)
-	if !hasCheckpoint {
-		checkpoint = time.Date(calendarDate.Year(), calendarDate.Month(), calendarDate.Day(), 0, 0, 0, 0, time.UTC)
-	}
-
-	resolvedEvents := resolveTimeline(events)
-	observations := observationsFromEvents(resolvedEvents)
-
-	rawBlocks, err := calculateTimelineBlocks(observations)
-	if err != nil {
-		return nil, err
-	}
-	trimmedBlocks := trimTimelineBlocks(rawBlocks, checkpoint)
-	return computedBlocksFromTimeline(normalizeTimelineBlocks(trimmedBlocks)), nil
-}
-
-func actualBlockCheckpoint(blocks []ActualBlock, calendarDate CalendarDate) (time.Time, bool) {
-	var latestBlock *ActualBlock
-	for blockIndex := range blocks {
-		block := &blocks[blockIndex]
-		if block.BlockType != "actual" {
+	for _, block := range computed {
+		end := block.endAt()
+		if len(result) > 0 && !end.After(checkpoint) {
 			continue
 		}
-		if latestBlock == nil || time.Time(block.StartTime).After(time.Time(latestBlock.StartTime)) {
-			latestBlock = block
+		start := block.StartAt
+		if len(result) > 0 && start.Before(checkpoint) {
+			start = checkpoint
 		}
+		if len(result) > 0 {
+			last := &result[len(result)-1]
+			if sameCategory(last.CategoryID, block.CategoryID) && start.Sub(last.endAt()) <= minimumActualBlockDuration {
+				if end.After(last.endAt()) {
+					last.DurationMinutes = int(end.Sub(last.StartAt).Minutes())
+				}
+				continue
+			}
+		}
+		duration := end.Sub(start)
+		if duration < minimumActualBlockDuration {
+			continue
+		}
+		result = append(result, ActualBlockInput{
+			CategoryID:      block.CategoryID,
+			BlockType:       block.BlockType,
+			StartAt:         start,
+			DurationMinutes: int(duration.Minutes()),
+		})
 	}
-	if latestBlock == nil {
-		return time.Time{}, false
-	}
-	start := time.Date(
-		calendarDate.Year(), calendarDate.Month(), calendarDate.Day(),
-		latestBlock.StartTime.Hour(), latestBlock.StartTime.Minute(), latestBlock.StartTime.Second(),
-		0, time.UTC,
-	)
-	return start.Add(time.Duration(latestBlock.DurationMinutes) * time.Minute), true
+	return result
 }
